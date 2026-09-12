@@ -45,14 +45,21 @@ _load_dotenv()
 
 # --- vision backend -------------------------------------------------------
 # The chain is tried in order and the first available backend wins, unless
-# KAMION_VLM_BACKEND pins one. Cursor leads because it is the SDK this build
-# targets; Anthropic is the fallback that keeps a live demo alive if the
-# Cursor account is unreachable.
-BACKEND_CHAIN = ("cursor", "anthropic")
+# KAMION_VLM_BACKEND pins one. OpenAI leads because GPT-5.6 is the model this
+# build is meant to run on; Cursor is the SDK integration and takes over as
+# soon as it has a key and a settled account; Anthropic is the last fallback
+# so a live demo never dies on one provider being unreachable.
+BACKEND_CHAIN = ("openai", "cursor", "anthropic")
 BACKEND_OVERRIDE = os.environ.get("KAMION_VLM_BACKEND", "").strip().lower() or None
 
 CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "").strip()
 CURSOR_MODEL = os.environ.get("KAMION_CURSOR_MODEL", "claude-4.5-sonnet").strip()
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+# The GPT-5.6 family ships as luna / sol / terra - there is no bare
+# `gpt-5.6`. See `python -m app.vlm.bench` for how this default was chosen.
+OPENAI_MODEL = os.environ.get("KAMION_OPENAI_MODEL", "gpt-5.6-sol").strip()
+OPENAI_EFFORT = os.environ.get("KAMION_OPENAI_EFFORT", "low").strip()
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.environ.get("KAMION_ANTHROPIC_MODEL", "claude-opus-5").strip()

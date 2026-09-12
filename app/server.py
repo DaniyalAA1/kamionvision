@@ -83,9 +83,9 @@ def health() -> dict:
 
 @app.get("/api/samples")
 def samples() -> list[dict]:
-    from .demo import CASES
+    from .demo import resolved_cases
     out = []
-    for case in CASES:
+    for case in resolved_cases():
         folder = REPO / case["folder"]
         out.append({"id": case["id"], "title": case["title"], "blurb": case["blurb"],
                     "expect": case["expect"], "declared": case.get("declared") or {},
@@ -133,8 +133,8 @@ async def upload(files: list[UploadFile] = File(...)) -> dict:
 
 @app.post("/api/upload-sample")
 def upload_sample(case: str = Form(...)) -> dict:
-    from .demo import CASES
-    match = next((c for c in CASES if c["id"] == case), None)
+    from .demo import resolved_cases
+    match = next((c for c in resolved_cases() if c["id"] == case), None)
     if not match:
         raise HTTPException(404, f"unknown sample {case!r}")
     folder = REPO / match["folder"]

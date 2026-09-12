@@ -1,7 +1,8 @@
 """Vision-model backends behind one interface.
 
-Two implementations ship: `cursor` (the Cursor Agent SDK, which this build
-targets) and `anthropic` (the Messages API). They are interchangeable because
+Three implementations ship: `openai` (GPT-5.6 via the Responses API),
+`cursor` (the Cursor Agent SDK) and `anthropic` (the Messages API). They are
+interchangeable because
 `evidence.py` only ever asks for "this prompt, these images, give me back
 text" - all the structure lives in the prompt and the parser, not the vendor.
 
@@ -25,7 +26,7 @@ def register(cls: type[VLMBackend]) -> type[VLMBackend]:
 def _load() -> None:
     if _REGISTRY:
         return
-    from . import anthropic_backend, cursor_backend  # noqa: F401
+    from . import anthropic_backend, cursor_backend, openai_backend  # noqa: F401
 
 
 def available_names() -> list[str]:

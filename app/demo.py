@@ -28,7 +28,11 @@ CASES = [
         "folder": "demo/tr_clean",
         "blurb": "The ordinary case: a complete dealer photo set with the odometer visible.",
         "expect": "ok",
-        "declared": {"year": 2020, "km": 420000, "make": "Ford Trucks"},
+        # Declared values are filled in from the real listing by --build, so
+        # the demo never quietly invents a spec. An earlier hardcoded year of
+        # 2021 on a 2018 truck was flagged as a major finding by the model,
+        # which was correct of it and wrong of the fixture.
+        "declared_from_listing": ["year", "km", "make"],
     },
     {
         "id": "tr_phone",
@@ -37,7 +41,21 @@ CASES = [
         "blurb": "Degraded twins - motion blur, underexposure, mud, awkward angles. "
                  "Some frames get dropped; the appraisal still lands.",
         "expect": "ok|ok_with_requests",
-        "declared": {"year": 2021, "make": "Ford Trucks"},
+        "declared_from_listing": ["year", "km", "make"],
+    },
+    {
+        "id": "odometer_lie",
+        "title": "Seller's kilometres contradict the odometer",
+        "folder": "demo/tr_clean",
+        "blurb": "Same photos, but the mileage typed into the form is deliberately "
+                 "falsified. The dashboard is read, the conflict is surfaced, and the "
+                 "band widens instead of the number quietly moving.",
+        "expect": "ok|ok_with_requests",
+        "declared_from_listing": ["year", "make"],
+        # The one fabricated input in the whole demo set, and it is fabricated
+        # on purpose: the brief says sellers "sometimes lie", so the odometer
+        # cross-check needs a lie to catch.
+        "declared_override": {"km": 420000},
     },
     {
         "id": "closeups_only",
@@ -73,9 +91,35 @@ CASES = [
         "blurb": "An American conventional dropped into the Turkish market. Prices it, "
                  "but widens the band 1.65x and says why.",
         "expect": "ok|ok_with_requests",
-        "declared": {},
+        "declared_from_listing": ["year", "km", "make"],
     },
 ]
+
+FIXTURE_MANIFEST = DEMO / "fixtures.json"
+
+
+def resolved_cases() -> list[dict]:
+    """CASES with declared values filled in from the real listings.
+
+    `--build` records which listing backed each fixture; this reads the true
+    year/km/make back out of listings.csv so a rehearsed case is never priced
+    against a spec that was made up.
+    """
+    import json as _json
+    manifest = {}
+    if FIXTURE_MANIFEST.exists():
+        manifest = _json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+    out = []
+    for case in CASES:
+        resolved = dict(case)
+        declared = dict(manifest.get(case["id"], {}).get("declared", {}))
+        wanted = case.get("declared_from_listing") or []
+        declared = {k: v for k, v in declared.items() if k in wanted}
+        declared.update(case.get("declared_override") or {})
+        resolved["declared"] = declared
+        resolved["listing_id"] = manifest.get(case["id"], {}).get("listing_id")
+        out.append(resolved)
+    return out
 
 
 # --- fixture construction -------------------------------------------------
@@ -107,6 +151,8 @@ def _pick_listing(images_csv, market: str, variant: str, need_views: set[str] | 
 
 
 def build_fixtures(force: bool = False) -> None:
+    import json as _json
+
     import cv2
     import numpy as np
     import pandas as pd
@@ -114,16 +160,32 @@ def build_fixtures(force: bool = False) -> None:
     from .config import IMAGES_CSV
 
     DEMO.mkdir(parents=True, exist_ok=True)
+    listings = pd.read_csv(REPO / "data/metadata/listings.csv")
+    manifest: dict = {}
+
+    def record(case_id: str, listing_id) -> None:
+        """Store the listing a fixture came from, and its true spec."""
+        row = listings[listings.listing_id.astype(str) == str(listing_id)]
+        declared: dict = {}
+        if len(row):
+            r = row.iloc[0]
+            declared = {"year": int(r.year), "km": int(r.km), "make": str(r.make).title()}
+        manifest[case_id] = {"listing_id": str(listing_id), "declared": declared}
+
     need = {"exterior_front_34", "tire_wheel", "dashboard_odometer", "interior_cab"}
 
     # 1 + 3: a complete Turkish set, and the close-ups from it on their own.
     lid, group = _pick_listing(IMAGES_CSV, "TR", "original", need)
     paths = [IMAGES.parent / p for p in group.path]
-    print(f"tr_clean       <- TR listing {lid}: {_copy(paths, DEMO / 'tr_clean')} photos")
+    record("tr_clean", lid)
+    record("odometer_lie", lid)
+    print(f"tr_clean       <- TR listing {lid}: {_copy(paths, DEMO / 'tr_clean')} photos "
+          f"({manifest['tr_clean']['declared']})")
 
     closeup_views = {"tire_wheel", "interior_cab", "dashboard_odometer", "engine_bay"}
     closeups = [IMAGES.parent / r.path for r in group.itertuples()
                 if r.view in closeup_views]
+    record("closeups_only", lid)
     print(f"closeups_only  <- same listing, detail frames only: "
           f"{_copy(closeups, DEMO / 'closeups_only', limit=8)} photos")
 
@@ -133,8 +195,10 @@ def build_fixtures(force: bool = False) -> None:
                     & (tr_deg.listing_id != lid)]
     lid2, g2 = max(tr_deg.groupby("listing_id"), key=lambda kv: len(set(kv[1].view)))
     paths2 = [IMAGES.parent / p for p in g2.path]
+    record("tr_phone", lid2)
     print(f"tr_phone       <- TR listing {lid2} degraded twins: "
-          f"{_copy(paths2, DEMO / 'tr_phone')} photos")
+          f"{_copy(paths2, DEMO / 'tr_phone')} photos "
+          f"({manifest['tr_phone']['declared']})")
 
     # 5: synthesised from a real frame, so the refusal is reproducible offline.
     dark = DEMO / "dark_blur"
@@ -155,8 +219,7 @@ def build_fixtures(force: bool = False) -> None:
     us = _pick_listing(IMAGES_CSV, "US", "original")
     if us:
         lid3, g3 = us
-        import pandas as pd
-        listings = pd.read_csv(REPO / "data/metadata/listings.csv")
+        record("unseen_brand", lid3)
         row = listings[listings.listing_id.astype(str) == str(lid3)]
         make = row.make.iloc[0] if len(row) else "?"
         paths3 = [IMAGES.parent / p for p in g3.path]
@@ -170,6 +233,9 @@ def build_fixtures(force: bool = False) -> None:
         fetch_non_truck(nt)
     else:
         print(f"not_a_truck    <- kept {len(list(nt.glob('*')))} existing photos")
+
+    FIXTURE_MANIFEST.write_text(_json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"wrote {FIXTURE_MANIFEST.relative_to(REPO)}")
 
 
 # The corpus is 100% tractor units by construction, so there is no negative in
@@ -230,7 +296,7 @@ def fetch_non_truck(dest: Path) -> None:
 def run_demo(only: str | None = None, backend: str | None = None) -> int:
     from . import pipeline, report
 
-    cases = [c for c in CASES if only is None or c["id"] == only]
+    cases = [c for c in resolved_cases() if only is None or c["id"] == only]
     if not cases:
         print(f"no such case {only!r}; have {[c['id'] for c in CASES]}", file=sys.stderr)
         return 2
@@ -241,7 +307,8 @@ def run_demo(only: str | None = None, backend: str | None = None) -> int:
         photos = pipeline.collect_photos(folder)
         print("\n" + "#" * 78)
         print(f"# {case['id']}  —  {case['title']}")
-        print(f"# expect: {case['expect']}   photos: {len(photos)}")
+        print(f"# expect: {case['expect']}   photos: {len(photos)}"
+              + (f"   declared: {case['declared']}" if case.get("declared") else ""))
         print("#" * 78)
         if not photos:
             print(f"  MISSING fixtures at {case['folder']} - run: python -m app.demo --build")

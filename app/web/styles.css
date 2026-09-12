@@ -29,6 +29,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* `hidden` is how every panel on this page is toggled, and a class with a
+   `display` value silently outranks it - which left the lightbox covering
+   the whole screen. This keeps the attribute authoritative. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -76,13 +81,13 @@ main { padding: var(--gut); max-width: 1400px; margin: 0 auto; }
 .intake {
   display: grid; gap: var(--gut);
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
 }
 @media (max-width: 840px) { .intake { grid-template-columns: 1fr; } }
 
 .dropzone {
   display: grid; place-content: center; text-align: center; gap: .4rem;
-  min-height: 260px; padding: 2rem;
+  min-height: 340px; padding: 2rem;
   border: 1px dashed var(--steel-600); border-radius: var(--radius);
   background: var(--steel-900); cursor: pointer;
   transition: border-color .12s, background .12s;
