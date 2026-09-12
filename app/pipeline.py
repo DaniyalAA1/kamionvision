@@ -20,11 +20,9 @@ import pandas as pd
 
 from . import evidence as evidence_stage
 from . import gate as gate_stage
-from .config import LISTINGS_CSV
+from .config import IMAGE_SUFFIXES, LISTINGS_CSV
 from .pricing import model as pricing
-from .schema import Appraisal, GateDecision, TraceStep
-
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".tif", ".tiff"}
+from .schema import Appraisal, GateDecision, PriceEstimate, TraceStep
 
 # Stated assumption, not a measurement: each missing required view widens the
 # band by this factor. Unlike the interval coverage and the unseen-brand
@@ -32,6 +30,41 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".tif", ".t
 # either has the view or the vehicle was dropped, so there is nothing to
 # measure it against. Labelled as an assumption everywhere it is surfaced.
 MISSING_VIEW_WIDENING = 1.12
+
+# Every comparable in the corpus is a tractor unit (çekici): vehicle type came
+# from listing metadata, never from a photo. So a rigid, a tipper or a box truck
+# has no comparables here at all, and pricing one off this fit would be a
+# confident wrong answer of exactly the kind the brief warns about. The gate
+# cannot catch it - COCO calls all of them "truck" - so it is caught here, from
+# the body type the vision model read off the vehicle.
+PRICEABLE_BODY_TYPES = {"tractor_unit", None, "", "unknown"}
+BODY_TYPE_CONFIDENCE = 0.55
+
+
+def pricing_blocker(ev) -> tuple[str, str] | None:
+    """Reasons the comparables cannot honestly price what the photos show.
+
+    Returns (headline, reason) or None. Kept pure and separate from `appraise`
+    so both conditions can be tested without spending a vision call.
+    """
+    if ev is None:
+        return None
+
+    if not ev.same_vehicle:
+        detail = (ev.vehicle_mismatch or "").strip()
+        return (("These photos are not all of the same truck. " + detail).strip(),
+                ("these photos are not all the same vehicle, so there is nothing "
+                 "coherent to price. " + detail).strip())
+
+    body = (ev.vehicle.body_type or "").strip().lower().replace(" ", "_")
+    if body and body not in PRICEABLE_BODY_TYPES and ev.vehicle.confidence >= BODY_TYPE_CONFIDENCE:
+        pretty = body.replace("_", " ")
+        return (f"This looks like a {pretty}. I can describe its condition, but I have "
+                f"no comparable {pretty}s to price it against.",
+                f"the photos show a {pretty}, not a tractor unit. Every comparable this "
+                f"model was fit on is a tractor unit, so it has nothing honest to price "
+                f"a {pretty} against. The condition notes below still stand.")
+    return None
 
 _LISTINGS: pd.DataFrame | None = None
 _MODEL = None
@@ -87,9 +120,11 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     note("evidence", f"reading {len(gate.usable_photo_ids)} photos")
     ev = evidence_stage.run(gate, declared, backend=backend)
     result.evidence = ev
-    result.trace.append(TraceStep(
-        "evidence", f"{len(ev.issues)} findings, {len(ev.coverage_gaps)} gaps "
-                    f"({ev.backend}/{ev.model})", ev.elapsed_s))
+    detail = (f"{len(ev.issues)} findings, {len(ev.coverage_gaps)} gaps "
+              f"({ev.backend}/{ev.model})")
+    if ev.fell_back_from:
+        detail += f" — fell back from {len(ev.fell_back_from)} failed backend(s)"
+    result.trace.append(TraceStep("evidence", detail, ev.elapsed_s))
     # Deliberately NOT merged into result.requests: the gate's requests are
     # canonical views the seller can go and shoot right now, the evidence's
     # coverage gaps are things that could not be assessed at all. Collapsing
@@ -104,6 +139,22 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # --- 3. price ---------------------------------------------------------
     note("price", "looking up comparables")
     t = time.time()
+
+    blocked = pricing_blocker(ev)
+    if blocked:
+        headline, reason = blocked
+        price = PriceEstimate(ok=False, reason=reason,
+                              currency="TRY" if market.upper() == "TR" else "USD")
+        price.elapsed_s = round(time.time() - t, 2)
+        result.price = price
+        result.trace.append(TraceStep("price", f"declined: {reason[:60]}", price.elapsed_s))
+        result.status = "need_more_photos"
+        result.headline = headline
+        if not ev.same_vehicle:
+            result.requests.insert(0, "one set of photos of the single truck you are selling")
+        result.elapsed_s = round(time.time() - t0, 2)
+        return result
+
     widening = []
     if gate.missing_views:
         pretty = ", ".join(v.replace("_", " ") for v in gate.missing_views)

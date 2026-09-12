@@ -40,6 +40,7 @@
       <label>Year <input type="number" id="f-year" min="1990" max="2027" placeholder="2020"></label>
       <label>Kilometres <input type="number" id="f-km" min="0" step="1000" placeholder="420000"></label>
       <label>Make <input type="text" id="f-make" placeholder="Ford Trucks"></label>
+      <label>Asking price <input type="number" id="f-asking" min="0" step="10000" placeholder="2800000"></label>
       <label>Market
         <select id="f-market"><option value="TR">Türkiye</option><option value="US">United States</option></select>
       </label>
@@ -65,6 +66,8 @@
 
   <div class="verdict" id="verdict">
     <p class="headline" id="headline"></p>
+    <p class="fallback-note" id="fallback-note" hidden></p>
+    <p class="asking-verdict" id="asking-verdict" hidden></p>
     <div class="gauge-wrap" id="gauge-wrap">
       <svg class="gauge" id="gauge" viewBox="0 0 1000 215" preserveAspectRatio="none" role="img"></svg>
       <p class="gauge-note" id="gauge-note"></p>

@@ -10,8 +10,8 @@ One agent per call, never reused. An Agent is a conversation, and reusing it
 across appraisals would carry one truck's photos into the next truck's
 evidence - a silent, very hard to notice correctness bug.
 
-Auth note: the SDK wants a Cursor *API key* (`key_...` from
-cursor.com/dashboard -> Integrations -> API Keys). The `cursor-agent` CLI's
+Auth note: the SDK wants a Cursor *API key* (from
+cursor.com/dashboard -> API & SSH Keys). The `cursor-agent` CLI's
 stored login is a session JWT and the SDK rejects it with
 `unauthenticated: Invalid User API Key`, so being logged in to the CLI is
 not sufficient.
@@ -59,12 +59,12 @@ class CursorBackend(VLMBackend):
                 model=self.model)
         from cursor_sdk import Cursor
         try:
-            user = Cursor.me()
+            user = Cursor.me(api_key=CURSOR_API_KEY)
         except Exception as exc:
             detail, blocked = _classify(exc)
             return BackendStatus(self.name, False, detail, model=self.model,
                                  account_blocked=blocked)
-        who = getattr(user, "email", None) or getattr(user, "id", "") or "authenticated"
+        who = getattr(user, "user_email", None) or getattr(user, "user_id", "") or "authenticated"
         return BackendStatus(self.name, True, f"ready ({self.model}, {who})", model=self.model)
 
     def complete(self, prompt: str, images: list[Path], *,
@@ -74,7 +74,7 @@ class CursorBackend(VLMBackend):
         # carried in the prompt and enforced by evidence.parse. json_schema is
         # accepted and ignored to keep the two backends interchangeable.
         try:
-            from cursor_sdk import Agent, AgentOptions, SDKImage, UserMessage
+            from cursor_sdk import Agent, AgentOptions, SDKImage, UserMessage, ModelSelection, ModelParameterValue
         except ImportError as exc:
             raise VLMError("cursor-sdk is not installed") from exc
         if not CURSOR_API_KEY:
@@ -94,15 +94,25 @@ class CursorBackend(VLMBackend):
 
         t0 = time.time()
         try:
-            agent = Agent.create(AgentOptions(
-                model=self.model,
+            with Agent.create(AgentOptions(
+                model=ModelSelection(id=self.model, params=[
+                    ModelParameterValue(id="reasoning", value="low"),
+                ]),
                 api_key=CURSOR_API_KEY,
                 local={"cwd": str(REPO)},
                 tools=[],          # pure inference: no shell, no file reads
-            ))
-            run = agent.send(UserMessage(text=text, images=sdk_images))
-            out = run.text()
-            result = run.wait()
+            )) as agent:
+                run = agent.send(UserMessage(text=text, images=sdk_images))
+                out = run.text()
+                result = run.wait()
+                if result.status != "finished":
+                    raise VLMError(f"Cursor run ended with status {result.status}")
+                actual_model = getattr(result.model, "id", None)
+                if actual_model != self.model:
+                    raise VLMError(
+                        f"Cursor model mismatch: requested {self.model}, returned {actual_model}")
+                if not out.strip():
+                    raise VLMError("Cursor returned an empty inference response")
         except Exception as exc:
             detail, blocked = _classify(exc)
             hint = (" - the Cursor account is blocked, not the key; clear it at "
@@ -115,5 +125,5 @@ class CursorBackend(VLMBackend):
                 value = getattr(result.usage, field, None)
                 if value is not None:
                     usage[field] = value
-        return VLMResponse(text=out, backend=self.name, model=self.model,
+        return VLMResponse(text=out, backend=self.name, model=actual_model,
                            elapsed_s=round(time.time() - t0, 2), usage=usage)

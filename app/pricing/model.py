@@ -27,7 +27,8 @@ import pandas as pd
 
 from ..config import (FX_AS_OF, LISTINGS_CSV, PRICE_MODEL, USD_TRY,
                       euro_norm_for_year)
-from ..schema import Comparable, ConditionAdjustment, EvidenceReport, PriceEstimate
+from ..schema import (AskingVerdict, Comparable, ConditionAdjustment, EvidenceReport,
+                       PriceEstimate)
 from . import features as F
 
 # Severity and stated price impact combine multiplicatively, then scale by the
@@ -172,6 +173,40 @@ def find_comparables(df: pd.DataFrame, feats: dict, market: str, k: int = 5) -> 
     return out
 
 
+def judge_asking_price(asking: float, est: PriceEstimate) -> AskingVerdict:
+    """Compare the seller's number to the two bands.
+
+    A listing can be priced exactly like its comparables and still be poor value
+    once the photos are read, so both comparisons are reported. The headline
+    label is the comparables one, because that is the measured band.
+    """
+    comp_mid = (est.baseline_low + est.baseline_high) / 2 or est.baseline_point
+    v = AskingVerdict(
+        asking=round(asking, -3), currency=est.currency,
+        vs_comparables_pct=round((asking / comp_mid - 1) * 100, 1) if comp_mid else 0.0,
+        vs_estimate_pct=round((asking / est.point - 1) * 100, 1) if est.point else 0.0,
+        inside_comparable_band=bool(est.baseline_low <= asking <= est.baseline_high),
+    )
+    if v.inside_comparable_band:
+        v.label = "in line with the market"
+        v.summary = ("The asking price sits inside the band that comparable trucks "
+                     "of this age and mileage are listed at.")
+    elif asking > est.baseline_high:
+        v.label = "above the market"
+        v.summary = (f"The asking price is {v.vs_comparables_pct:+.0f}% against the middle "
+                     f"of the comparable band and sits above its top end.")
+    else:
+        v.label = "below the market"
+        v.summary = (f"The asking price is {v.vs_comparables_pct:+.0f}% against the middle "
+                     f"of the comparable band and sits below its bottom end. Worth asking "
+                     f"why before treating it as a bargain.")
+    if est.point and abs(v.vs_estimate_pct) >= 5:
+        direction = "more" if v.vs_estimate_pct > 0 else "less"
+        v.summary += (f" Against the condition-adjusted estimate it is "
+                      f"{abs(v.vs_estimate_pct):.0f}% {direction}.")
+    return v
+
+
 # --- the estimate ---------------------------------------------------------
 
 def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
@@ -179,6 +214,7 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
              provenance: dict | None = None,
              extra_widening: list[tuple[str, float]] | None = None,
              level: float = 0.8,
+             asking_price: float | None = None,
              listings: pd.DataFrame | None = None) -> PriceEstimate:
     est = PriceEstimate(interval_level=level)
     est.currency = "TRY" if str(market).upper() == "TR" else "USD"
@@ -252,6 +288,8 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
             f"{model.meta.get('tr_brand_note', 'one make dominates')}), so an unfamiliar "
             "make is priced off the market average rather than off its own curve.")
 
+    if asking_price:
+        est.asking = judge_asking_price(float(asking_price), est)
     if listings is not None:
         est.comparables = find_comparables(listings, feats, market)
     return est
@@ -316,4 +354,5 @@ def price_from_evidence(model: PriceModel, evidence: EvidenceReport | None,
 
     return estimate(model, year=year, km=km, make=make, market=market,
                     evidence=evidence, provenance=prov, listings=listings,
-                    extra_widening=widening)
+                    extra_widening=widening,
+                    asking_price=declared.get("asking_price"))

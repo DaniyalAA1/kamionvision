@@ -117,6 +117,17 @@ app/
 - **Measured numbers and assumed ones are labelled differently in the output.** Interval coverage,
   gate false-refusal and the 1.65× unseen-brand widening are measured. The 1.12×-per-missing-view
   widening and the severity weights are stated assumptions and say so.
+- **Two questions the detector cannot answer stop the pricing stage** (`pipeline.pricing_blocker`,
+  pure and unit-tested): is this one vehicle, and is it a tractor unit? COCO calls a rigid, a
+  tipper and a tractor all "truck", and every comparable in the corpus is a tractor unit. A low
+  body-type confidence does NOT block — "I don't know what this is" is not "I know it's a rigid".
+- **A backend pin prefers, it does not restrict.** `vlm.resolve_chain` puts the pinned backend
+  first and keeps the rest as fallbacks, and `evidence.run` walks the whole chain. A fallback is
+  recorded on `EvidenceReport.fell_back_from` and shown in the trace, the card and the UI — falling
+  back is allowed, doing it quietly is not.
+- **HEIC is registered in `config.py` at import.** iPhones shoot it by default and the brief is
+  "a seller with a phone". `config.IMAGE_SUFFIXES` is the single source of truth; the CLI folder
+  walk and the web upload filter both read it, and a test asserts they agree.
 
 ## Dataset pipeline
 

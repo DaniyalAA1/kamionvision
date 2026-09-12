@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -194,6 +195,56 @@ class Pricing(unittest.TestCase):
         self.assertLess(e.baseline_low, e.baseline_high)
 
 
+class AskingPriceVerdict(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from app.pricing import load_model
+        cls.model = load_model()
+
+    def estimate(self, asking):
+        from app.pricing import model as M
+        return M.estimate(self.model, year=2021, km=300000, make="FORD",
+                          market="TR", evidence=None, asking_price=asking)
+
+    def test_inside_the_comparable_band_reads_as_market_rate(self):
+        e = self.estimate(1)          # get the band first
+        mid = (e.baseline_low + e.baseline_high) / 2
+        v = self.estimate(mid).asking
+        self.assertTrue(v.inside_comparable_band)
+        self.assertEqual(v.label, "in line with the market")
+
+    def test_above_and_below_are_distinguished(self):
+        e = self.estimate(1)
+        self.assertEqual(self.estimate(e.baseline_high * 1.4).asking.label, "above the market")
+        self.assertEqual(self.estimate(e.baseline_low * 0.6).asking.label, "below the market")
+
+    def test_percentages_have_the_right_sign(self):
+        e = self.estimate(1)
+        high = self.estimate(e.baseline_high * 1.4).asking
+        self.assertGreater(high.vs_comparables_pct, 0)
+        low = self.estimate(e.baseline_low * 0.6).asking
+        self.assertLess(low.vs_comparables_pct, 0)
+
+    def test_absent_when_not_supplied(self):
+        from app.pricing import model as M
+        e = M.estimate(self.model, year=2021, km=300000, make="FORD",
+                       market="TR", evidence=None)
+        self.assertIsNone(e.asking)
+
+
+class ImageFormats(unittest.TestCase):
+    def test_heic_is_accepted_when_the_decoder_is_installed(self):
+        from app import config
+        if not config.HEIF_SUPPORT:
+            self.skipTest("pillow-heif not installed")
+        self.assertIn(".heic", config.IMAGE_SUFFIXES)
+
+    def test_cli_and_web_accept_the_same_set(self):
+        """A file the folder walk collects must not be rejected by the upload."""
+        from app import config, server
+        self.assertEqual(set(server.ALLOWED), set(config.IMAGE_SUFFIXES))
+
+
 class CaptureMetrics(unittest.TestCase):
     def test_blur_lowers_the_variance_below_the_floor(self):
         import cv2
@@ -217,6 +268,118 @@ class CaptureMetrics(unittest.TestCase):
             s = gate.quality_score(gate.capture_metrics(img), 600, 400)
             self.assertGreaterEqual(s, 0.0)
             self.assertLessEqual(s, 1.0)
+
+
+class PricingBlockers(unittest.TestCase):
+    """Conditions where the comparables cannot honestly price what is shown."""
+
+    def make(self, **kw):
+        from app.schema import VehicleRead
+        ev = EvidenceReport()
+        ev.vehicle = VehicleRead(body_type=kw.pop("body_type", "tractor_unit"),
+                                 confidence=kw.pop("confidence", 0.9))
+        for k, v in kw.items():
+            setattr(ev, k, v)
+        return ev
+
+    def test_tractor_unit_is_priceable(self):
+        from app.pipeline import pricing_blocker
+        self.assertIsNone(pricing_blocker(self.make()))
+
+    def test_unstated_body_type_is_not_blocked(self):
+        """A missing read is not evidence of the wrong vehicle."""
+        from app.pipeline import pricing_blocker
+        self.assertIsNone(pricing_blocker(self.make(body_type=None)))
+        self.assertIsNone(pricing_blocker(self.make(body_type="")))
+
+    def test_rigid_blocks_pricing(self):
+        from app.pipeline import pricing_blocker
+        blocked = pricing_blocker(self.make(body_type="rigid"))
+        self.assertIsNotNone(blocked)
+        self.assertIn("rigid", blocked[0])
+
+    def test_low_confidence_body_read_does_not_block(self):
+        """'I don't know what this is' is different from 'I know it's a rigid'."""
+        from app.pipeline import pricing_blocker
+        self.assertIsNone(pricing_blocker(self.make(body_type="rigid", confidence=0.05)))
+
+    def test_mixed_vehicles_block_and_quote_the_mismatch(self):
+        from app.pipeline import pricing_blocker
+        blocked = pricing_blocker(self.make(same_vehicle=False,
+                                            vehicle_mismatch="plates differ"))
+        self.assertIsNotNone(blocked)
+        self.assertIn("plates differ", blocked[0])
+
+    def test_mixed_vehicles_outrank_body_type(self):
+        """If it is not even one vehicle, body type is the lesser problem."""
+        from app.pipeline import pricing_blocker
+        blocked = pricing_blocker(self.make(body_type="rigid", same_vehicle=False))
+        self.assertIn("not all of the same truck", blocked[0])
+
+    def test_none_evidence_is_safe(self):
+        from app.pipeline import pricing_blocker
+        self.assertIsNone(pricing_blocker(None))
+
+
+class BackendChain(unittest.TestCase):
+    """Ordering logic only, against stub backends.
+
+    Deliberately does not probe the real providers: `Cursor.me()` is a network
+    call, which made this flaky and made an "offline" suite take three times as
+    long for no extra coverage.
+    """
+
+    def setUp(self):
+        from app import vlm
+        from app.vlm.base import BackendStatus, VLMBackend
+
+        class Stub(VLMBackend):
+            ready = True
+
+            def probe(self):
+                return BackendStatus(self.name, self.ready, "stub")
+
+        self.vlm = vlm
+        self.saved = dict(vlm._REGISTRY)
+        vlm._REGISTRY.clear()
+        for name in ("alpha", "beta", "gamma"):
+            vlm._REGISTRY[name] = type(f"{name}Stub", (Stub,), {"name": name})
+        self.chain_patch = unittest.mock.patch(
+            "app.config.BACKEND_CHAIN", ("alpha", "beta", "gamma"))
+        self.override_patch = unittest.mock.patch("app.config.BACKEND_OVERRIDE", None)
+        self.chain_patch.start()
+        self.override_patch.start()
+
+    def tearDown(self):
+        self.chain_patch.stop()
+        self.override_patch.stop()
+        self.vlm._REGISTRY.clear()
+        self.vlm._REGISTRY.update(self.saved)
+
+    def test_default_order_follows_the_configured_chain(self):
+        self.assertEqual([b.name for b in self.vlm.resolve_chain()],
+                         ["alpha", "beta", "gamma"])
+
+    def test_pin_moves_to_front_without_truncating(self):
+        """A pin must not disable failover - the demo has to survive an outage."""
+        self.assertEqual([b.name for b in self.vlm.resolve_chain("gamma")],
+                         ["gamma", "alpha", "beta"])
+
+    def test_unready_backends_are_skipped(self):
+        self.vlm._REGISTRY["beta"].ready = False
+        self.assertEqual([b.name for b in self.vlm.resolve_chain()], ["alpha", "gamma"])
+
+    def test_all_unready_raises_with_every_reason(self):
+        for name in ("alpha", "beta", "gamma"):
+            self.vlm._REGISTRY[name].ready = False
+        with self.assertRaises(self.vlm.VLMError) as ctx:
+            self.vlm.resolve_chain()
+        for name in ("alpha", "beta", "gamma"):
+            self.assertIn(name, str(ctx.exception))
+
+    def test_unknown_pin_raises(self):
+        with self.assertRaises(self.vlm.VLMError):
+            self.vlm.resolve_chain("not-a-backend")
 
 
 class Rendering(unittest.TestCase):

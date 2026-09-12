@@ -65,6 +65,17 @@ are dropped rather than trusted. Anything not visible becomes a coverage gap,
 which becomes a request for another photo, rather than a confident guess. The
 photo set is selected view-first, so thirty frames of the same tire cost one slot.
 
+It also answers two questions the detector cannot, and either one stops the
+pricing stage:
+
+  * **Is this one vehicle?** Sellers pad listings with photos of a tidier truck,
+    and a condition report averaged over two vehicles is confidently wrong about
+    both. The model compares plates, paint, trim, badges, wheels and cab
+    generation across the set.
+  * **Is it a tractor unit?** COCO calls a rigid, a tipper and a tractor all
+    "truck". Every comparable in the corpus is a tractor unit, established from
+    listing metadata, so a rigid has nothing here to be priced against.
+
 Vocabulary is the point: steer versus drive tires, tread shoulder wear and
 cupping, fifth wheel plate scoring, frame rail corrosion, air bag sag, AdBlue
 tank, DPF, bunk and bolster wear. A generic dent/scratch/paint taxonomy is the
@@ -75,10 +86,20 @@ log(km) + brand + market + euro6` fit on the harvested asking prices, plus the
 comparable listings it was priced against and a bounded condition adjustment.
 The model never sees the photos; the VLM never sees a price.
 
+If the seller's asking price is supplied, it is judged against the comparable
+band — the measured one — and reported as in line with, above, or below the
+market, with the gap to the condition-adjusted estimate alongside. That is the
+question a Kamion buyer actually opens the app with.
+
 **4. Report** (`app/report.py`) — the same `Appraisal` object rendered as a
 terminal card or streamed to the web screen. Every condition line names its
 photo by filename, the price is always a range, and the measured coverage of
 that range is printed beside it.
+
+Phone photos work: HEIC/HEIF is registered at import (`pillow-heif`) and EXIF
+rotation is applied everywhere. Without that, a folder of iPhone photos decodes
+to nothing and the gate refuses the whole set on capture quality — the worst
+possible way to fail in front of someone holding the photos.
 
 ## What is measured, and what is assumed
 
@@ -111,8 +132,11 @@ Three things that went the other way, and were fixed because they were measured:
 
 ## Vision backends
 
-Three ship behind one interface (`app/vlm/`), tried in order, first one that
-authenticates wins; `KAMION_VLM_BACKEND` pins one explicitly.
+Three ship behind one interface (`app/vlm/`). The default is pinned to
+**Cursor SDK / GPT-5.6 Sol**, with low reasoning effort and tools disabled.
+No automatic provider fallback is allowed; other backends require an explicit
+`KAMION_VLM_BACKEND` override. Each Cursor response must report the requested
+model and a finished run before its evidence is accepted.
 
 | Backend | Model | Structured output |
 |---|---|---|
@@ -124,11 +148,13 @@ authenticates wins; `KAMION_VLM_BACKEND` pins one explicitly.
 findings returned, share of findings using heavy-vehicle vocabulary, schema
 violations — which is how the default was chosen rather than guessed.
 
-**Cursor is wired but not currently usable from this machine**, and `doctor`
-reports why rather than failing silently: the SDK needs a `key_...` API key from
-cursor.com/dashboard (the `cursor-agent` CLI login is a session JWT that the SDK
-rejects with `unauthenticated: Invalid User API Key`), and the account returns
-`You have an unpaid invoice`.
+Cursor was authenticated and live photo inference verified on 2026-09-12.
+The SDK uses a user API key from [API & SSH Keys](https://cursor.com/dashboard/api),
+not the CLI session token. Store it as `CURSOR_API_KEY` in the git-ignored `.env`
+(file permissions `600`); never commit credentials. SDK runs use Cursor's
+[existing pricing and request pools](https://cursor.com/docs/sdk/python#usage-and-billing).
+Use `python -m app.cli doctor` to check current authentication; authentication
+alone is not proof of a completed inference.
 
 ## The rehearsed cases
 
@@ -145,13 +171,18 @@ cross-check needs a lie to catch.
 
 | Case | Expected |
 |---|---|
-| `tr_clean` — complete Turkish dealer set | priced |
+| `tr_clean` — complete Turkish dealer set | priced, asking price judged |
 | `tr_phone` — degraded twins: blur, underexposure, mud | priced, some frames dropped |
 | `odometer_lie` — mileage typed into the form contradicts the dash | priced, conflict surfaced, band widened |
 | `closeups_only` — tire and cab only, never the whole truck | condition notes, **no price**, asks for the shot |
+| `mixed_vehicles` — three different rigids in one listing | condition notes, **no price**, names what differs |
 | `not_a_truck` — motorcycle, parked car, empty room | refused before any vision call |
 | `dark_blur` — unreadably dark and blurry | refused on capture quality |
 | `unseen_brand` — an American conventional in the Turkish market | priced, band widened 1.65×, says why |
+
+Four of the eight produce no price. That is the point: the brief scores "does it
+know its limits" on its own line, and each of those four fails for a *different*
+reason with a *different* thing to do about it.
 
 ## The dataset
 

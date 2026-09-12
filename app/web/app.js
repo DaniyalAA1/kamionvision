@@ -28,7 +28,7 @@ let photoUrls = {};
 async function loadHealth() {
   try {
     const h = await (await fetch('/api/health')).json();
-    const ready = h.backends.find((b) => b.ready);
+    const ready = h.backends.find((b) => b.ready && (!h.selected_backend || b.name === h.selected_backend));
     const backendEl = $('rig-backend');
     if (ready) {
       backendEl.textContent = `${ready.name} · ${ready.model}`;
@@ -78,9 +78,11 @@ async function loadSamples() {
 function declaredParams() {
   const p = new URLSearchParams();
   const year = $('f-year').value, km = $('f-km').value, make = $('f-make').value.trim();
+  const asking = $('f-asking').value;
   if (year) p.set('year', year);
   if (km) p.set('km', km);
   if (make) p.set('make', make);
+  if (asking) p.set('asking', asking);
   p.set('market', $('f-market').value);
   return p;
 }
@@ -95,6 +97,7 @@ async function runSample(c) {
   $('f-year').value = d.year || '';
   $('f-km').value = d.km || '';
   $('f-make').value = d.make || '';
+  $('f-asking').value = d.asking_price || '';
   start(data.session);
 }
 
@@ -160,6 +163,8 @@ function drawGauge(price) {
     .sort((a, b) => a.v - b.v);
 
   const values = comps.map((d) => d.v);
+  const asking = price.asking ? price.asking.asking : null;
+  if (asking) values.push(asking);
   const hasBaseline = price.baseline_low && price.baseline_high
     && Math.abs(price.baseline_point - price.point) > 1;
   const lo = Math.min(price.low, hasBaseline ? price.baseline_low : price.low, ...values);
@@ -191,7 +196,7 @@ function drawGauge(price) {
   // Edge prices are anchored to the outside of the band so they cannot
   // collide with each other on a narrow band.
   const edge = (v, anchor) => {
-    const t = svg('text', { x: x(v), y: axisY - 50, fill: 'var(--sodium)',
+    const t = svg('text', { x: x(v), y: axisY - 46, fill: 'var(--sodium)',
                             'text-anchor': anchor, 'font-family': 'var(--cond)',
                             'font-size': 30, 'font-weight': 600 });
     t.textContent = money(v, price.currency);
@@ -199,6 +204,21 @@ function drawGauge(price) {
   };
   edge(price.low, 'end');
   edge(price.high, 'start');
+
+  // The seller's own number, marked separately from our estimate and coloured
+  // by whether it clears the comparable band - the one thing a buyer looks for
+  // first.
+  if (asking) {
+    const ax = x(asking);
+    const colour = price.asking.inside_comparable_band ? 'var(--signal)' : 'var(--flag)';
+    g.append(svg('line', { x1: ax, y1: axisY - 64, x2: ax, y2: axisY - 24,
+                           stroke: colour, 'stroke-width': 2, 'stroke-dasharray': '5 3' }));
+    g.append(svg('circle', { cx: ax, cy: axisY - 24, r: 4, fill: colour }));
+    const t = svg('text', { x: ax, y: axisY - 72, fill: colour, 'text-anchor': 'middle',
+                            'font-family': 'var(--cond)', 'font-size': 19 });
+    t.textContent = `seller asks ${money(asking, price.currency)}`;
+    g.append(t);
+  }
 
   // the needle
   const nx = x(price.point);
@@ -317,6 +337,23 @@ function render(a) {
   renderPhotos(a);
 
   const ev = a.evidence, price = a.price;
+
+  const fb = $('fallback-note');
+  if (ev && ev.fell_back_from && ev.fell_back_from.length) {
+    fb.hidden = false;
+    fb.innerHTML = `Answered by <b>${ev.backend} / ${ev.model}</b> after `
+      + `${ev.fell_back_from.length} backend(s) failed: ${ev.fell_back_from[0]}`;
+  } else fb.hidden = true;
+
+  const askEl = $('asking-verdict');
+  if (price && price.ok && price.asking) {
+    const v = price.asking;
+    askEl.hidden = false;
+    askEl.className = 'asking-verdict '
+      + (v.inside_comparable_band ? 'inline' : (v.vs_comparables_pct > 0 ? 'above' : 'below'));
+    askEl.innerHTML = `The seller is asking <b>${money(v.asking, v.currency)}</b> — `
+      + `<b>${v.label}</b>. ${v.summary}`;
+  } else askEl.hidden = true;
 
   if (a.status === 'refused') {
     showRefusal(a.headline,

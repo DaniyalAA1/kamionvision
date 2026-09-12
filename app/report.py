@@ -65,6 +65,12 @@ def price_lines(price: PriceEstimate) -> list[str]:
                    f"     (point estimate {money(price.point, cur)})")
     out.append(f"  {money(price.low_usd, 'USD')} – {money(price.high_usd, 'USD')} at "
                f"{card['fx']['usd_try']} TRY/USD as of {card['fx']['as_of']}")
+    if price.asking:
+        a = price.asking
+        out.append("")
+        out.append(f"  The seller is asking {money(a.asking, a.currency)} "
+                   f"— {a.label}.")
+        out.append(f"    {a.summary}")
     cov, n = card.get("coverage"), card.get("coverage_n")
     if cov is not None:
         out.append(f"  The asking band is an {int(price.interval_level * 100)}% interval. On "
@@ -159,6 +165,13 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
                 for w in price.widened:
                     L.append(f"    • {w}")
                 L.append("")
+
+    if ev and ev.fell_back_from:
+        L.append(f"  NOTE  {ev.backend}/{ev.model} produced this after "
+                 f"{len(ev.fell_back_from)} backend(s) failed:")
+        for f in ev.fell_back_from:
+            L.append(f"          {f[:150]}")
+        L.append("")
 
     if ev:
         L += [thin, f"  WHAT I CAN SEE   (grade: {ev.condition_grade}, "

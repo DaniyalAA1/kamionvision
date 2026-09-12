@@ -95,6 +95,8 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
     }}
   ],
   "condition_summary": {{ {summary_keys} }},   // one sentence each; "not visible in these photos" if so
+  "same_vehicle": boolean,              // are ALL these photos the same vehicle?
+  "vehicle_mismatch": string,           // if not, what differs and in which photos; "" if they match
   "condition_grade": one of {grades},
   "coverage_gaps": [string],            // what you would need photographed to be sure
   "confidence": 0.0-1.0
@@ -119,7 +121,16 @@ a photo is referenced; the renderer resolves them to filenames, and a number \
 written into a sentence will not match what the buyer sees.
 7. Keep it tight: at most 12 issues (the ones that move the price), one or two \
 sentences per condition_summary value, and a "per_photo" entry ONLY for photos \
-that are illegible or that carry a finding - not for every photo."""
+that are illegible or that carry a finding - not for every photo.
+8. Check that every photo is the SAME vehicle - but only call a mismatch on \
+IDENTIFYING evidence: a different number plate, a different cab generation or \
+model, a different colour, different badging, or a different axle configuration. \
+Photos of one truck routinely differ in lighting, weather, mud, blur, resolution, \
+angle, background and colour cast, and NONE of that is evidence of a different \
+vehicle - a seller with a phone produces exactly that variation. If you are not \
+certain, set "same_vehicle" true and raise the doubt in "coverage_gaps" instead. \
+Only a confident, nameable difference should set it false, because doing so \
+stops the valuation entirely."""
 
 
 def json_schema() -> dict:
@@ -135,7 +146,8 @@ def json_schema() -> dict:
         "type": "object",
         "additionalProperties": False,
         "required": ["vehicle", "per_photo", "issues", "condition_summary",
-                     "condition_grade", "coverage_gaps", "confidence"],
+                     "same_vehicle", "vehicle_mismatch", "condition_grade",
+                     "coverage_gaps", "confidence"],
         "properties": {
             "vehicle": {
                 "type": "object",
@@ -193,6 +205,8 @@ def json_schema() -> dict:
                 "required": list(SUMMARY_KEYS),
                 "properties": {k: {"type": "string"} for k in SUMMARY_KEYS},
             },
+            "same_vehicle": {"type": "boolean"},
+            "vehicle_mismatch": {"type": "string"},
             "condition_grade": {"type": "string", "enum": GRADES + ["unknown"]},
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "confidence": {"type": "number"},
@@ -389,6 +403,8 @@ def parse(text: str, selected: list) -> EvidenceReport:
     summary = data.get("condition_summary") or {}
     report.condition_summary = {k: str(summary.get(k) or "not visible in these photos")
                                 for k in SUMMARY_KEYS}
+    report.same_vehicle = bool(data.get("same_vehicle", True))
+    report.vehicle_mismatch = str(data.get("vehicle_mismatch") or "").strip()
     report.condition_grade = _clamp(data.get("condition_grade"), GRADES, "unknown")
     report.coverage_gaps = [str(g) for g in (data.get("coverage_gaps") or [])][:10]
     try:
@@ -407,13 +423,27 @@ def run(gate: GateReport, declared: dict | None = None, *,
         report.elapsed_s = round(time.time() - t0, 2)
         return report
 
-    client = vlm.resolve(backend)
     prompt = build_prompt(declared, selected, gate)
     paths = [Path(c.path) for c in selected]
 
-    response = client.complete(prompt, paths, system=SYSTEM,
-                               max_tokens=EVIDENCE_MAX_TOKENS,
-                               json_schema=json_schema() if client.supports_structured_output else None)
+    # Walk every usable backend rather than only the best one. A provider that
+    # rate-limits or 500s halfway through a live demo should cost one retry
+    # against the next provider, not the appraisal.
+    chain = vlm.resolve_chain(backend)
+    failures: list[str] = []
+    client = response = None
+    for candidate in chain:
+        try:
+            response = candidate.complete(
+                prompt, paths, system=SYSTEM, max_tokens=EVIDENCE_MAX_TOKENS,
+                json_schema=json_schema() if candidate.supports_structured_output else None)
+            client = candidate
+            break
+        except vlm.VLMError as exc:
+            failures.append(f"{candidate.name}: {exc}")
+    if client is None or response is None:
+        raise vlm.VLMError("every vision backend failed:\n  " + "\n  ".join(failures))
+
     try:
         report = parse(response.text, selected)
     except (ValueError, json.JSONDecodeError) as exc:
@@ -434,4 +464,5 @@ def run(gate: GateReport, declared: dict | None = None, *,
     report.model = response.model
     report.elapsed_s = round(time.time() - t0, 2)
     report.raw_text = response.text
+    report.fell_back_from = failures
     return report

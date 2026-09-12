@@ -170,6 +170,25 @@ main { padding: var(--gut); max-width: 1400px; margin: 0 auto; }
   line-height: 1.2; max-width: 34ch;
 }
 
+.fallback-note {
+  margin-top: .9rem; padding: .55rem .9rem; border-left: 2px solid var(--sodium);
+  background: var(--steel-900); border-radius: var(--radius);
+  color: var(--haze); font-size: .9rem; max-width: 78ch;
+}
+.fallback-note b { color: var(--sodium); font-weight: 600; }
+
+.asking-verdict {
+  margin-top: 1rem; padding: .7rem 1rem; border-left: 2px solid var(--haze-dim);
+  background: var(--steel-900); border-radius: var(--radius); max-width: 78ch;
+  color: var(--haze);
+}
+.asking-verdict b { color: var(--paper); font-weight: 600; }
+.asking-verdict.above { border-left-color: var(--flag); }
+.asking-verdict.above b { color: var(--flag); }
+.asking-verdict.below { border-left-color: var(--sodium); }
+.asking-verdict.inline { border-left-color: var(--signal); }
+.asking-verdict.inline b { color: var(--signal); }
+
 .gauge-wrap { margin-top: 1.5rem; }
 .gauge { width: 100%; height: 215px; display: block; overflow: visible; }
 .gauge-note { color: var(--haze); font-size: .9rem; margin-top: .5rem; max-width: 76ch; }

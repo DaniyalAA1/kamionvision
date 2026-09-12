@@ -151,6 +151,11 @@ class VehicleRead(_Dict):
 @dataclass
 class EvidenceReport(_Dict):
     vehicle: VehicleRead = field(default_factory=VehicleRead)
+    # Whether every photo is of the SAME vehicle. A seller padding a listing
+    # with photos of a tidier truck is a real marketplace failure, and averaging
+    # condition across two vehicles produces a confident number about neither.
+    same_vehicle: bool = True
+    vehicle_mismatch: str = ""
     per_photo: list[PhotoEvidence] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     condition_summary: dict[str, str] = field(default_factory=dict)
@@ -159,6 +164,9 @@ class EvidenceReport(_Dict):
     confidence: float = 0.0
     backend: str = ""
     model: str = ""
+    # Backends that were tried and failed before this one answered. Surfaced on
+    # the report and on screen: falling back is allowed, doing it quietly is not.
+    fell_back_from: list[str] = field(default_factory=list)
     elapsed_s: float = 0.0
     raw_text: str = ""
     parse_warnings: list[str] = field(default_factory=list)
@@ -193,6 +201,24 @@ class ConditionAdjustment(_Dict):
 
 
 @dataclass
+class AskingVerdict(_Dict):
+    """How the seller's own number compares to the evidence.
+
+    Judged against the comparable-asking band, not the condition-adjusted one:
+    the question "is this priced like other trucks of its age and mileage" and
+    the question "is it worth that given its condition" are different, and a
+    buyer needs both answered separately.
+    """
+    asking: float = 0.0
+    currency: str = "TRY"
+    vs_comparables_pct: float = 0.0
+    vs_estimate_pct: float = 0.0
+    inside_comparable_band: bool = False
+    label: str = ""            # priced with the market | above | below
+    summary: str = ""
+
+
+@dataclass
 class PriceEstimate(_Dict):
     ok: bool = True
     reason: str = ""
@@ -214,6 +240,7 @@ class PriceEstimate(_Dict):
     baseline_low: float = 0.0
     baseline_high: float = 0.0
     adjustment: ConditionAdjustment = field(default_factory=ConditionAdjustment)
+    asking: AskingVerdict | None = None
     comparables: list[Comparable] = field(default_factory=list)
     drivers: list[dict] = field(default_factory=list)   # feature contributions
     inputs: dict = field(default_factory=dict)

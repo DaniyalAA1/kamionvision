@@ -29,7 +29,9 @@ def cmd_doctor(args) -> int:
     ready_any = False
     for status in vlm.probe_all():
         if status.ready:
-            mark, ready_any = "  ok  ", True
+            mark = "  ok  "
+            if not BACKEND_OVERRIDE or status.name == BACKEND_OVERRIDE:
+                ready_any = True
         elif status.account_blocked:
             mark = " BILL "
         else:
@@ -37,9 +39,9 @@ def cmd_doctor(args) -> int:
         print(f"  [{mark}] {status.name:<10} {status.detail}")
     if not ready_any:
         ok = False
-        print("\n  No vision backend is usable. Set ANTHROPIC_API_KEY or CURSOR_API_KEY "
-              "in .env\n  (Cursor needs a key_... API key from cursor.com/dashboard -> "
-              "Integrations -> API Keys;\n  the cursor-agent CLI login is a session token "
+        print("\n  The selected vision backend is not usable. Set CURSOR_API_KEY "
+              "in .env\n  (Cursor needs a user API key from cursor.com/dashboard -> "
+              "API & SSH Keys;\n  the cursor-agent CLI login is a session token "
               "and the SDK rejects it.)")
 
     print("\nlocal models")
@@ -94,7 +96,8 @@ def cmd_appraise(args) -> int:
         photos = photos[:args.limit]
 
     declared = {k: v for k, v in
-                (("year", args.year), ("km", args.km), ("make", args.make))
+                (("year", args.year), ("km", args.km), ("make", args.make),
+                 ("asking_price", args.asking))
                 if v is not None}
 
     def note(step, detail):
@@ -143,6 +146,8 @@ def main(argv=None) -> int:
     a.add_argument("--year", type=int)
     a.add_argument("--km", type=float)
     a.add_argument("--make")
+    a.add_argument("--asking", type=float,
+                   help="the seller's asking price, to be judged against the comparables")
     a.add_argument("--market", default="TR", choices=["TR", "US"])
     a.add_argument("--backend", help="pin a vision backend (cursor | anthropic)")
     a.add_argument("--limit", type=int, help="use only the first N photos")

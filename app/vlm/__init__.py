@@ -57,6 +57,43 @@ def probe_all() -> list[BackendStatus]:
     return out
 
 
+def resolve_chain(preferred: str | None = None) -> list[VLMBackend]:
+    """Every usable backend, best first.
+
+    `evidence.run` walks this rather than taking only the first, so a provider
+    that rate-limits or falls over mid-demo costs one retry against the next
+    one instead of the whole appraisal. This is not theoretical: the OpenAI key
+    hit `credit_balance_exhausted` mid-session.
+
+    A pin moves that backend to the front; it does not make the chain one long.
+    The brief's first criterion is a live demo that does not fall over, which
+    beats failing loudly - but a fallback is never silent, it is recorded on the
+    report and shown on screen.
+    """
+    from ..config import BACKEND_CHAIN, BACKEND_OVERRIDE
+    _load()
+    pin = preferred or BACKEND_OVERRIDE
+    order = list(BACKEND_CHAIN)
+    if pin:
+        if pin not in _REGISTRY:
+            raise VLMError(f"unknown VLM backend {pin!r}; have {sorted(_REGISTRY)}")
+        order = [pin] + [n for n in order if n != pin]
+
+    out, problems = [], []
+    for name in order:
+        if name not in _REGISTRY:
+            continue
+        backend = make(name)
+        status = backend.probe()
+        if status.ready:
+            out.append(backend)
+        else:
+            problems.append(f"  {name}: {status.detail}")
+    if not out:
+        raise VLMError("no vision backend is usable:\n" + "\n".join(problems))
+    return out
+
+
 def resolve(preferred: str | None = None) -> VLMBackend:
     """The backend an appraisal should use, or raise with every reason listed."""
     from ..config import BACKEND_CHAIN, BACKEND_OVERRIDE

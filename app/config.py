@@ -43,17 +43,37 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 
+# --- image formats --------------------------------------------------------
+# Registered here, once, at import: iPhones shoot HEIC by default and the brief
+# is explicitly "a seller with a phone". Without this, a folder of iPhone photos
+# is collected, fails to decode, and every frame is marked unreadable - the gate
+# then refuses the whole set on capture quality, which is the worst possible way
+# to fail in front of someone holding the photos.
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    HEIF_SUPPORT = True
+except ImportError:  # pragma: no cover - the fallback is a clear error, not a crash
+    HEIF_SUPPORT = False
+
+# Single source of truth: the CLI folder walk and the web upload filter must
+# agree, or one accepts a file the other rejects.
+IMAGE_SUFFIXES = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif",
+    *({".heic", ".heif", ".avif"} if HEIF_SUPPORT else set()),
+})
+
+
 # --- vision backend -------------------------------------------------------
-# The chain is tried in order and the first available backend wins, unless
-# KAMION_VLM_BACKEND pins one. OpenAI leads because GPT-5.6 is the model this
-# build is meant to run on; Cursor is the SDK integration and takes over as
-# soon as it has a key and a settled account; Anthropic is the last fallback
-# so a live demo never dies on one provider being unreachable.
-BACKEND_CHAIN = ("openai", "cursor", "anthropic")
-BACKEND_OVERRIDE = os.environ.get("KAMION_VLM_BACKEND", "").strip().lower() or None
+# Pin Cursor by default: an unavailable Cursor account must fail visibly rather
+# than silently spending through another provider. Explicit overrides remain
+# available for deliberate benchmarking.
+BACKEND_CHAIN = ("cursor", "openai", "anthropic")
+BACKEND_OVERRIDE = os.environ.get("KAMION_VLM_BACKEND", "cursor").strip().lower() or "cursor"
 
 CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "").strip()
-CURSOR_MODEL = os.environ.get("KAMION_CURSOR_MODEL", "claude-4.5-sonnet").strip()
+CURSOR_MODEL = os.environ.get("KAMION_CURSOR_MODEL", "gpt-5.6-sol").strip()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 # The GPT-5.6 family ships as luna / sol / terra - there is no bare

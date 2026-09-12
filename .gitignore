@@ -17,3 +17,8 @@ demo/
 
 # Local run artifacts
 runs/
+
+# Local provider credentials
+.env
+.env.*
+!.env.example

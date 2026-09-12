@@ -21,13 +21,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from . import pipeline, report
-from .config import IMAGES, REPO, WEB
+from .config import HEIF_SUPPORT, IMAGE_SUFFIXES, IMAGES, REPO, WEB
 
 app = FastAPI(title="KamionVision", docs_url="/api/docs")
 
 SESSIONS = Path(tempfile.gettempdir()) / "kamionvision-sessions"
 SESSIONS.mkdir(parents=True, exist_ok=True)
-ALLOWED = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+ALLOWED = IMAGE_SUFFIXES
 MAX_PHOTOS = 60
 MAX_BYTES = 25 * 1024 * 1024
 
@@ -55,13 +55,14 @@ def static(name: str) -> FileResponse:
 @app.get("/api/health")
 def health() -> dict:
     from . import vlm
-    from .config import MAX_EVIDENCE_PHOTOS
+    from .config import MAX_EVIDENCE_PHOTOS, BACKEND_OVERRIDE
     from .pricing import load_model
 
     out: dict = {"backends": [
         {"name": s.name, "ready": s.ready, "detail": s.detail,
          "account_blocked": s.account_blocked, "model": s.model}
         for s in vlm.probe_all()]}
+    out["selected_backend"] = BACKEND_OVERRIDE
     out["evidence_photos"] = MAX_EVIDENCE_PHOTOS
     try:
         m = load_model()
@@ -116,7 +117,10 @@ async def upload(files: list[UploadFile] = File(...)) -> dict:
     for i, f in enumerate(files[:MAX_PHOTOS]):
         suffix = Path(f.filename or "").suffix.lower()
         if suffix not in ALLOWED:
-            skipped.append({"name": f.filename, "why": f"unsupported type {suffix or '?'}"})
+            why = f"unsupported type {suffix or '?'}"
+            if suffix in (".heic", ".heif") and not HEIF_SUPPORT:
+                why = "HEIC needs pillow-heif installed (uv pip install pillow-heif)"
+            skipped.append({"name": f.filename, "why": why})
             continue
         raw = await f.read()
         if len(raw) > MAX_BYTES:
@@ -159,6 +163,7 @@ def photo(session: str, name: str) -> FileResponse:
 @app.get("/api/appraise/{session}")
 def appraise(session: str, year: int | None = None, km: float | None = None,
              make: str | None = None, market: str = "TR",
+             asking: float | None = None,
              backend: str | None = None) -> StreamingResponse:
     folder = (SESSIONS / session).resolve()
     if not str(folder).startswith(str(SESSIONS.resolve())) or not folder.is_dir():
@@ -167,7 +172,8 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
     if not photos:
         raise HTTPException(400, "session has no photos")
 
-    declared = {k: v for k, v in (("year", year), ("km", km), ("make", make))
+    declared = {k: v for k, v in (("year", year), ("km", km), ("make", make),
+                                  ("asking_price", asking))
                 if v not in (None, "")}
     events: queue.Queue = queue.Queue()
 

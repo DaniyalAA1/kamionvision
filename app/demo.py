@@ -32,7 +32,7 @@ CASES = [
         # the demo never quietly invents a spec. An earlier hardcoded year of
         # 2021 on a 2018 truck was flagged as a major finding by the model,
         # which was correct of it and wrong of the fixture.
-        "declared_from_listing": ["year", "km", "make"],
+        "declared_from_listing": ["year", "km", "make", "asking_price"],
     },
     {
         "id": "tr_phone",
@@ -41,7 +41,7 @@ CASES = [
         "blurb": "Degraded twins - motion blur, underexposure, mud, awkward angles. "
                  "Some frames get dropped; the appraisal still lands.",
         "expect": "ok|ok_with_requests",
-        "declared_from_listing": ["year", "km", "make"],
+        "declared_from_listing": ["year", "km", "make", "asking_price"],
     },
     {
         "id": "odometer_lie",
@@ -51,7 +51,7 @@ CASES = [
                  "falsified. The dashboard is read, the conflict is surfaced, and the "
                  "band widens instead of the number quietly moving.",
         "expect": "ok|ok_with_requests",
-        "declared_from_listing": ["year", "make"],
+        "declared_from_listing": ["year", "make", "asking_price"],
         # The one fabricated input in the whole demo set, and it is fabricated
         # on purpose: the brief says sellers "sometimes lie", so the odometer
         # cross-check needs a lie to catch.
@@ -63,6 +63,16 @@ CASES = [
         "folder": "demo/closeups_only",
         "blurb": "Real truck, but never photographed whole. Describes condition, "
                  "refuses to price, asks for the shot it needs.",
+        "expect": "need_more_photos",
+        "declared": {},
+    },
+    {
+        "id": "mixed_vehicles",
+        "title": "Three different trucks in one listing",
+        "folder": "demo/rigid_truck",
+        "blurb": "Rigid box trucks, and not even the same one twice. COCO calls them "
+                 "all trucks and the gate lets them through, so the vehicle itself is "
+                 "read from the photos: different trucks, and the wrong body type.",
         "expect": "need_more_photos",
         "declared": {},
     },
@@ -91,7 +101,7 @@ CASES = [
         "blurb": "An American conventional dropped into the Turkish market. Prices it, "
                  "but widens the band 1.65x and says why.",
         "expect": "ok|ok_with_requests",
-        "declared_from_listing": ["year", "km", "make"],
+        "declared_from_listing": ["year", "km", "make", "asking_price"],
     },
 ]
 
@@ -170,6 +180,10 @@ def build_fixtures(force: bool = False) -> None:
         if len(row):
             r = row.iloc[0]
             declared = {"year": int(r.year), "km": int(r.km), "make": str(r.make).title()}
+            if not pd.isna(r.price):
+                # The listing's own asking price, so the demo judges a real
+                # number rather than an invented one.
+                declared["asking_price"] = float(r.price)
         manifest[case_id] = {"listing_id": str(listing_id), "declared": declared}
 
     need = {"exterior_front_34", "tire_wheel", "dashboard_odometer", "interior_cab"}
@@ -234,6 +248,12 @@ def build_fixtures(force: bool = False) -> None:
     else:
         print(f"not_a_truck    <- kept {len(list(nt.glob('*')))} existing photos")
 
+    rigid = DEMO / "rigid_truck"
+    if force or not any(rigid.glob("*")):
+        fetch_non_truck(rigid, RIGID_QUERIES, label="rigid_truck")
+    else:
+        print(f"rigid_truck    <- kept {len(list(rigid.glob('*')))} existing photos")
+
     FIXTURE_MANIFEST.write_text(_json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"wrote {FIXTURE_MANIFEST.relative_to(REPO)}")
 
@@ -248,26 +268,55 @@ NON_TRUCK_QUERIES = [
     ("no_vehicle", "empty living room interior furniture"),
 ]
 
+# A rigid is a truck - COCO says so, and so does the gate. It is the wrong
+# *kind* of truck, which only the vision model can tell you, so this fixture
+# exercises the body-type check rather than the gate.
+RIGID_QUERIES = [
+    ("rigid_atego", "Mercedes Atego box"),
+    ("rigid_fridge", "rigid lorry"),
+    ("rigid_box", "box truck"),
+]
+
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "kamionvision-hackathon/1.0 (demo fixtures; contact via repo)"
 
 
-def fetch_non_truck(dest: Path) -> None:
-    """Pull three freely-licensed non-truck photos into the refusal fixture."""
+def _commons_get(session, **params):
+    """One Commons request, paced and retried. Commons returns 429 readily."""
+    import time
+
     import requests
 
+    for attempt in range(4):
+        r = session.get(COMMONS_API, timeout=30, params=params)
+        if r.status_code == 429:
+            time.sleep(2 ** attempt * 1.5)
+            continue
+        r.raise_for_status()
+        return r
+    raise requests.HTTPError("Commons kept returning 429; try again in a minute")
+
+
+def fetch_non_truck(dest: Path, queries=None, label: str = "not_a_truck") -> None:
+    """Pull freely-licensed photos from Wikimedia Commons into a fixture."""
+    import time
+
+    import requests
+
+    queries = queries or NON_TRUCK_QUERIES
     dest.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
     got, attribution = 0, []
-    for name, query in NON_TRUCK_QUERIES:
+    for i, (name, query) in enumerate(queries):
+        if i:
+            time.sleep(1.5)          # be a good citizen; this is someone's free API
         try:
-            r = session.get(COMMONS_API, timeout=30, params={
+            r = _commons_get(session, **{
                 "action": "query", "format": "json", "generator": "search",
                 "gsrsearch": f"filetype:bitmap {query}", "gsrnamespace": 6,
                 "gsrlimit": 1, "prop": "imageinfo",
                 "iiprop": "url|extmetadata", "iiurlwidth": 1280})
-            r.raise_for_status()
             pages = (r.json().get("query") or {}).get("pages") or {}
             page = next(iter(pages.values()))
             info = page["imageinfo"][0]
@@ -283,12 +332,11 @@ def fetch_non_truck(dest: Path) -> None:
             print(f"  could not fetch {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
     if attribution:
         (dest / "ATTRIBUTION.txt").write_text(
-            "Non-truck fixtures, from Wikimedia Commons:\n\n"
+f"{label} fixtures, from Wikimedia Commons:\n\n"
             + "\n".join(attribution) + "\n", encoding="utf-8")
-    print(f"not_a_truck    <- fetched {got}/{len(NON_TRUCK_QUERIES)} non-truck photos")
+    print(f"{label:14s} <- fetched {got}/{len(queries)} photos from Commons")
     if got == 0:
-        print("  no network? drop any non-truck photo into demo/not_a_truck/ by hand",
-              file=sys.stderr)
+        print(f"  no network? drop photos into demo/{label}/ by hand", file=sys.stderr)
 
 
 # --- runner ---------------------------------------------------------------
