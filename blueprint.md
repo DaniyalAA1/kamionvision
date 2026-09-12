@@ -1,5 +1,11 @@
 # Vision-First Multi-Agent Truck Appraisal System for Kamion: A Technical Blueprint
 
+> **This is the long-term/product-scale research doc** (multi-week build, US+Türkiye, full observability
+> and pricing stack). For the actual weekend hackathon deliverable, see `kamion-truck-appraisal-brief.md`
+> (the sponsor brief — Türkiye-only, no dataset provided, judged live on unseen photos) and
+> `hackathon-plan.md` (the scoped-down build plan against that brief). Ideas here are fair game to borrow;
+> the roadmap, market sizing and US-market content below are not part of the hackathon scope.
+
 ## TL;DR
 - **Build a hybrid architecture**: specialist vision models (YOLO/RT-DETR detectors, SAM 2 segmentation, DINOv2 embeddings, a dedicated no-reference image-quality gate) produce a structured, auditable **condition vector**, and a VLM (GPT-5.6, accessed through the Cursor SDK) reasons over that evidence — never a VLM alone, which hallucinates damage and cannot localize. A two-stage pricing engine (public-data prior + internal-transaction posterior via Bayesian hierarchical / residual-correction modeling) converts the condition vector into a price *range* with conformal-calibrated confidence tied to photo quality.
 - **The single biggest constraint is data**: there is **no large, commercially-licensed public dataset of commercial-truck damage**. The only genuine one (DS4E "Truck Damage Detection," 4,962 images, CC BY 4.0) is small and single-author. Car-damage sets (CarDD 4,000 imgs; VehiDE 13,945 imgs) are non-commercial (Flickr/Shutterstock encumbered) and passenger-car only. Kamion **must bootstrap a proprietary truck/trailer/van dataset** and can only use public sets for transfer-learning R&D and the quality gate.
