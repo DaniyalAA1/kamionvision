@@ -588,6 +588,26 @@ market-agnosticism rather than a coincidence.
 - **Model years 2020–2022.** This is the *overlap* window — not 2019–2022 as first scoped. The Turkish source
   has **zero MY2019 listings**, so any 2019 comparison would be US-only.
 
+**⚠️ Open item — this corpus is chosen for data-access reasons, not validated against Kamion's own fleet.**
+F-MAX is justified above by *market*-wide share (§7a, TAİD: "most-chosen model in its segment") and by
+TruckMarket's clean, unblocked access — not by the make/model/body-type/age mix of Kamion's own onboarded
+drivers (6,000+, §7c/§8e), which is not broken down anywhere in this document. Three specific risks follow:
+1. **Segment mismatch.** Kamion's market is described (README) as Turkey's *fragmented* B2B trucking market —
+   SME operators (§7a: ~95% share) typically run mixed-tonnage kamyon, tippers and box trucks alongside
+   tractors. "Tractor units only" may not reflect what most Kamion drivers actually have photographed.
+2. **Age/condition mismatch.** §7a states Turkish HCV average fleet age is **18.1 years**; this corpus is
+   MY2020–2022 OEM-certified stock, and the Caveats section already notes certified channels "compress
+   condition variance." The damage specialists risk training on a wear profile far cleaner than Kamion's
+   actual population.
+3. **Photography-domain mismatch.** These are staged dealer/OEM photos; Kamion's real input is driver-phone
+   guided capture (§2B, §6). §1b's degradation pipeline covers *image quality*, not necessarily the gap
+   between professional and phone photography of the vehicle itself.
+
+**Before scaling data collection past the golden set (§9f step 4), pull an actual make/model/body-type/age
+breakdown of Kamion's onboarded-driver fleet and check it against this corpus.** If F-MAX/Cascadia-class
+tractors cover a small share of that population, treat §9 as pretraining/proof-of-concept only, and plan a
+second capture wave stratified to match Kamion's real fleet before any production model is trained.
+
 #### 9a. Demo A — United States: Freightliner Cascadia, MY2020–2022, tractor
 
 | | |
@@ -688,6 +708,7 @@ Regression rows use n=322 US / n=147 TR, a 3-parameter OLS of log price on age a
 
 | Step | Output | Check that it worked |
 |---|---|---|
+| 0 | **Pull Kamion's own driver-fleet composition** — make/model/body-type/age across the 6,000+ onboarded base | Report F-MAX/Cascadia-class tractor share of that population; if low, flag a second stratified capture wave before production training (see ⚠️ above) |
 | 1 | Harvest TR: 218 listings → ~7,600 images at `_Buyuk`, plus the full structured record per listing | ≥95% of listings yield ≥30 usable images; city field populated for all |
 | 2 | Harvest US: 385 Cascadia records via the inventory API; enrich every VIN through vPIC; pull full-res imgix originals | ≥90% of VINs decode clean; log the zero-photo rate explicitly |
 | 3 | Build the identity gate: VIN-first for US, photo-first (badge/grille/silhouette) for TR; cross-check VIN against visual class | Cab-over vs conventional classified at ≥99%; make/model top-1 ≥95% on the two-class demo |
@@ -715,9 +736,22 @@ single-model demo closes — that is the first test of whether the brand/model c
 11. **Deflate Turkish prices before fitting, and stamp every listing with a date.** Nominal TRY depreciation measures −10.9%/yr against −21.8%/yr in USD at ~31% CPI. Fit on real (CPI-deflated or FX-indexed) prices with an explicit as-of date; emit nominal TRY. Record first-seen/last-seen per listing and treat price age as both a feature and a filter.
 12. **Verify listing location per record, never by language or currency.** TruckMarket listings are confirmed Türkiye-domestic (İstanbul, Denizli, Kayseri, Hatay), but on sahibinden, arabam and any pan-EU aggregator a Turkish-language page routinely lists EU-located stock. A comparable is only Turkish if the record says so.
 13. **Price the appraisal as a wedge, not as the product** (§8f). An assessment-only business in US+TR heavy trucks addresses ~$143M TAM and yields a ~$2M three-year SOM. Per assessed truck, a 1.5% take rate on a $40,000 sale is ~$600 against ~$45 for a report — **13×** — and ACV's auction+assurance ARPU of $554/unit says that is the right order of magnitude. **Validate assumptions A5/A6 and B4/B5 (fleet count × subscription ASP) first: they are the least-grounded inputs and they carry two-thirds of the TAM.**
-14. **Treat a fixed-site scanner incumbent as a non-threat in Türkiye and a real one in the US.** UVeye and ProovStation need the truck to drive through a booth. That is viable for US fleet yards and dealer lanes; it cannot serve a Turkish market where SME fleets hold ~95% share and the average heavy vehicle is 18.1 years old and nowhere near an inspection lane. **Smartphone-first is not a compromise in Türkiye — it is the only reachable form factor.**
+14. **Validate the §9 demo corpus against Kamion's actual fleet before it becomes the production training set.**
+   F-MAX/Cascadia were chosen for market-share stats and clean data access, not against a breakdown of
+   Kamion's own 6,000+ onboarded drivers, which this document does not have. Turkey's HCV fleet averages
+   18.1 years (§7a) against this corpus's MY2020–2022 certified stock, and Kamion's market is described as
+   fragmented SME trucking, not tractor-only. Pull the real make/model/body-type/age distribution (§9f
+   step 0) and treat §9 as pretraining/proof-of-concept, not the final training population, until it's checked.
+15. **Treat a fixed-site scanner incumbent as a non-threat in Türkiye and a real one in the US.** UVeye and ProovStation need the truck to drive through a booth. That is viable for US fleet yards and dealer lanes; it cannot serve a Turkish market where SME fleets hold ~95% share and the average heavy vehicle is 18.1 years old and nowhere near an inspection lane. **Smartphone-first is not a compromise in Türkiye — it is the only reachable form factor.**
 
 ## Caveats
+- **The §9 demo corpus's match to Kamion's actual fleet is unverified.** F-MAX and Cascadia were chosen for
+  market-share stats and clean data access (§9), not against a make/model/body-type/age breakdown of Kamion's
+  6,000+ onboarded drivers, which does not exist in this document. Türkiye's HCV fleet averages 18.1 years
+  (§7a) versus this corpus's MY2020–2022 OEM-certified stock, and Kamion's market is described as fragmented
+  SME trucking rather than tractor-only — so the demo corpus may under-represent the segment, age and wear
+  profile of the trucks Kamion actually needs to appraise. Pull that breakdown (§9f step 0) before treating
+  §9 as more than pretraining/proof-of-concept.
 - **No commercial-truck damage dataset at scale exists publicly** — the biggest uncertainty; Kamion's success depends on its own data program, and timelines assume that program starts immediately.
 - **The only commercially-licensed truck-damage dataset is ~5,000 images by a single author** (DS4E, CC BY 4.0), it is European cab-over trucks, and its label quality has not been independently verified. It gives the Turkish side of the demo a head start and the US side none. If the §9 harvest slips, the CC BY 4.0 car sets noted in §1c are the fallback pretraining source — CarDD and VehiDE are not (non-commercial, Flickr/Shutterstock encumbered).
 - **Benchmark scores cited** (e.g., Qwen-VL 87.3% semantic; MANIQA SROCC; Cognexa 99.9% odometer) come from academic/vendor settings and different domains (cars, general images); real truck performance will differ and must be validated on Kamion's golden set.
