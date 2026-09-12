@@ -1,0 +1,83 @@
+{
+  "candidates": 7623,
+  "kept": 6575,
+  "dropped": 1048,
+  "drop_reasons": {
+    "drop_content_reject_document": 83,
+    "drop_content_reject_graphic": 4,
+    "drop_content_reject_placeholder": 1,
+    "drop_content_reject_screen": 120,
+    "drop_dup_corpus": 826,
+    "drop_dup_listing": 8,
+    "drop_manual_review_not_a_truck": 6
+  },
+  "vehicle_class": {
+    "truck": 1972,
+    "null": 4086,
+    "trailer_only": 337,
+    "car": 186
+  },
+  "had_gps_stripped": 77,
+  "quality_thresholds": {
+    "poor<=": 0.8564,
+    "good>": 0.9051
+  },
+  "quality_buckets": {
+    "fair": 2238,
+    "good": 2170,
+    "poor": 2173
+  },
+  "views": {
+    "interior_cab": 1154,
+    "exterior_front_34": 1135,
+    "exterior_front": 885,
+    "tire_wheel": 796,
+    "dashboard_odometer": 776,
+    "chassis_undercarriage": 535,
+    "engine_bay": 484,
+    "exterior_side": 383,
+    "fifth_wheel": 192,
+    "damage_detail": 149,
+    "exterior_rear": 92
+  },
+  "by_source": {
+    "tr_truckmarket": 3122,
+    "us_selectrucks": 2303,
+    "mascus": 1156
+  },
+  "manual_visual_review": {
+    "method": "all originals tiled into 264 numbered 5x5 contact sheets, reviewed by 24 parallel reviewers, every flagged cell then re-verified individually at full resolution",
+    "images_reviewed": 6581,
+    "flagged_by_reviewers": 12,
+    "confirmed_and_removed": 6,
+    "reviewer_false_positives_kept": 6,
+    "excluded_for_image_quality": 0,
+    "annotations_added": {
+      "marketing_overlay": 3,
+      "dealer_watermark": 2
+    }
+  },
+  "corpus_filter": {
+    "attribution": {
+      "rule": "drop any photo whose perceptual hash appears under more than one listing",
+      "shared_photos": 128,
+      "images_dropped": 125,
+      "note": "the affected vehicle keeps its remaining photos; dropping whole vehicles was measured and rejected because it left 5 of 173 Turkish vehicles and made the corpus US-only"
+    },
+    "coverage": {
+      "rule": "keep the top 50% of vehicles by photo count WITHIN EACH SOURCE, ties broken by listing id",
+      "vehicles_before": 400,
+      "vehicles_kept": 200,
+      "photo_count_cutoff_per_source": {
+        "mascus": 14,
+        "tr_truckmarket": 19,
+        "us_selectrucks": 18
+      },
+      "images_dropped": 2721,
+      "note": "cutting across the pooled corpus instead deleted all 91 Mascus vehicles, because that source was harvested with a 15-photo cap and the global cut-off landed at 18"
+    },
+    "files_deleted": 5692,
+    "bytes_freed": 1425917474,
+    "recovery": "image URLs retained in data/metadata/sources/; re-run download_images.py"
+  }
+}

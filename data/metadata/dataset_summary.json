@@ -1,0 +1,46 @@
+{
+  "images_total": 7458,
+  "images_original": 3729,
+  "images_degraded": 3729,
+  "vehicles": 200,
+  "by_market": {
+    "TR": 3358,
+    "US": 4100
+  },
+  "vehicles_by_market": {
+    "US": 116,
+    "TR": 84
+  },
+  "by_source": {
+    "tr_truckmarket": 3358,
+    "us_selectrucks": 2770,
+    "mascus": 1330
+  },
+  "by_split_images": {
+    "train": 4924,
+    "test": 1318,
+    "val": 1216
+  },
+  "views": {
+    "exterior_front_34": 1326,
+    "interior_cab": 1288,
+    "tire_wheel": 976,
+    "exterior_front": 914,
+    "dashboard_odometer": 812,
+    "chassis_undercarriage": 640,
+    "engine_bay": 572,
+    "exterior_side": 402,
+    "fifth_wheel": 252,
+    "damage_detail": 170,
+    "exterior_rear": 106
+  },
+  "quality_buckets": {
+    "fair": 1886,
+    "good": 1771,
+    "poor": 3801
+  },
+  "fx": {
+    "usd_try": 48.596,
+    "as_of": "2026-09-11"
+  }
+}

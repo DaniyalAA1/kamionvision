@@ -11,19 +11,20 @@ send me a shot of the tires" refusal path. Judged live on photos the team has ne
 The repo currently contains **only the dataset pipeline** (`scripts/`). The appraisal system itself
 (gate → evidence → price → report) is not built yet; `hackathon-plan.md` is its spec.
 
-## The three docs, in order of authority
+## The two docs, in order of authority
 
 | File | Role |
 |---|---|
 | `kamion-truck-appraisal-brief.md` | The sponsor's brief. Ground truth for what gets judged. |
-| `hackathon-plan.md` | Weekend scope, derived from the brief. **This is the plan.** |
-| `blueprint.md` | 91 KB multi-week research doc. Reference for measured facts about sources and markets — **not** the build plan. |
+| `hackathon-plan.md` | Weekend scope, derived from the brief. **The body is the plan.** |
 
-`blueprint.md` predates the scoping decision and contradicts the plan in two ways that matter: it
-narrows the demo to Ford F-MAX only (the brief says judges bring *unseen* photos, so single-brand is a
-liability) and it builds a parallel US/Cascadia track (Kamion is Türkiye-only). `hackathon-plan.md`
-drops both deliberately — don't resurrect them from the blueprint. Its §9e access-posture table and
-§9c measured market asymmetry are still the best reference in the repo.
+`hackathon-plan.md` is ~100 KB because the old `blueprint.md` was merged into it as "Appendix:
+Long-Term Product Blueprint (Not Weekend Scope)" (line ~136 onward). The appendix **predates the
+scoping decision and contradicts the plan body** in two ways that matter: it narrows the demo to Ford
+F-MAX only (the brief says judges bring *unseen* photos, so single-brand is a liability) and it builds
+a parallel US/Cascadia track (Kamion is Türkiye-only). The body drops both deliberately — don't
+resurrect them from the appendix. Its §9e access-posture table and §9c measured market asymmetry are
+still the best reference in the repo.
 
 The US corpus on disk was collected under the older two-market scope. It is real and usable, but its
 presence is not a reason to steer the build back toward a US demo.
@@ -64,7 +65,8 @@ package_dataset.py  → data/{manifest.jsonl,images.csv,listings.csv,splits.json
 .venv/bin/python scripts/sample_us.py
 .venv/bin/python scripts/download_images.py data/meta/tr_truckmarket.jsonl tr_truckmarket --tractor-only
 .venv/bin/python scripts/download_images.py data/meta/us_selectrucks_sample.jsonl us_selectrucks
-.venv/bin/python scripts/clean_dataset.py --sources tr_truckmarket us_selectrucks
+.venv/bin/python scripts/download_images.py data/meta/mascus_tractors.jsonl mascus
+.venv/bin/python scripts/clean_dataset.py --sources tr_truckmarket us_selectrucks mascus
 .venv/bin/python scripts/degrade_images.py
 .venv/bin/python scripts/package_dataset.py
 ```
@@ -83,18 +85,23 @@ rewrite their outputs wholesale.
 |---|---|
 | TR TruckMarket | 218 listings → 208 tractors → 3,932 images ✅ |
 | US SelecTrucks | 961 listings → 150 sampled → 2,447 images ✅ |
-| Mascus | **6 records, no images downloaded** — the run was cut short |
-| `clean_dataset.py` | ran on TR+US: 6,379 candidates → 5,083 kept |
-| `degrade_images.py`, `package_dataset.py` | **never run** — no `manifest.jsonl`, `splits.json` or `DATASET_CARD.md` exist yet |
+| Mascus | 91 listings (all US, **none priced**) → 1,244 images ✅ |
+| `clean_dataset.py` | all three sources: 7,623 candidates → 6,581 kept |
+| `degrade_images.py` | 6,581 twins, 1:1 with the clean set ✅ |
+| `package_dataset.py` | run: `manifest.jsonl`, `images.csv`, `listings.csv`, `splits.json`, `DATASET_CARD.md` ✅ |
 
-`data/` and `.venv/` are gitignored; only the four markdown docs are tracked. Images are ~2.5 GB.
+Joined corpus: 408 vehicles (173 TR / 235 US), 6,581 original + 6,581 degraded images, 317 with an
+asking price. `data/images/` and `.venv/` are gitignored; `data/meta/`, the manifest, CSVs, splits and
+card are tracked. Images are ~3.7 GB.
 
 ## Invariants the scripts encode — don't break them
 
 - **Vehicle type comes from listing metadata, never from the photo.** TR: the site's `Araç Tipi` field
   must read `Çekici`. US: NHTSA vPIC `BodyClass == Truck-Tractor`, decoded from VIN. Mascus: the
-  `tractor-units` category. The CLIP pass may reject non-vehicle frames, but deliberately does *not*
-  re-adjudicate car-vs-truck on close-ups — it rejected genuine F-MAX sleeper bunks as "passenger car".
+  `tractor-units` category. The CLIP pass may reject frames that are not photographs of a vehicle at
+  all, but `vehicle_class` (truck/car/trailer_only) is **advisory — nothing is dropped on it**. As a
+  rejection rule it removed 342 genuine tractors from 6,379 images: a mud-covered F-MAX rear
+  three-quarter scored `trailer_only` at 0.71, a clean Cascadia side profile scored `car` at 0.78.
 - **Photo quality is scored, never filtered on.** The brief's input is a seller with a phone;
   `capture_quality` / `quality_bucket` are labels. Only integrity, dedup and content failures drop an
   image. The degraded-twin generator exists because both OEM sources shoot on a prepped lot and
@@ -107,8 +114,8 @@ rewrite their outputs wholesale.
   TRY→USD uses one stamped rate (`USD_TRY` / `FX_AS_OF` in `package_dataset.py`); at ~31% Turkish CPI
   it goes stale fast, so recompute rather than quote it.
 - **Ruled-out sources are a decision, not an oversight.** sahibinden.com, arabam.com, TruckPaper,
-  Machinery Trader and Copart are excluded on ToS or hard blocks (`blueprint.md` §9e). Don't add
-  scrapers for them.
+  Machinery Trader and Copart are excluded on ToS or hard blocks (`hackathon-plan.md` appendix §9e).
+  Don't add scrapers for them.
 
 ## Gotchas already paid for
 

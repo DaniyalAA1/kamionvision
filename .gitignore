@@ -1,0 +1,19 @@
+# Dataset images (several GB, rebuildable via scripts/).
+# Everything else under data/ is committed, so the bundle's metadata travels
+# with the repo and only the pixels have to be shared out of band.
+data/images/
+
+# Tooling caches and session artifacts
+.firecrawl/
+.playwright-mcp/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Demo fixtures are rebuilt from the corpus: python -m app.demo --build
+demo/
+
+# Local run artifacts
+runs/

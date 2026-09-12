@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-09-12T18:05:44",
+  "method": "Derive the gate's reject thresholds from the corpus instead of guessing them.",
+  "reject_quantile_of_degraded": 0.04,
+  "warn_quantile_of_degraded": 0.15,
+  "capture": {
+    "blur_laplacian_var_floor": 34.0,
+    "blur_laplacian_var_warn": 122.4,
+    "brightness_floor": 0.0824,
+    "brightness_ceiling": 0.7514,
+    "contrast_rms_floor": 0.0858,
+    "dark_clipped_frac_ceiling": 0.6384,
+    "bright_clipped_frac_ceiling": 0.1727
+  },
+  "capture_measured": {
+    "originals_n": 3729,
+    "degraded_n": 3729,
+    "originals_rejected_pct": 2.25,
+    "degraded_rejected_pct": 14.35,
+    "originals_vehicles_fully_rejected": 0,
+    "originals_vehicles_n": 200,
+    "degraded_vehicles_fully_rejected": 0,
+    "degraded_vehicles_n": 200
+  },
+  "detector": {
+    "truck_conf_confirm": 0.5,
+    "truck_conf_weak": 0.25,
+    "disqualify_conf": 0.55,
+    "min_truck_area_frac": 0.12,
+    "disqualify_area_frac": 0.2,
+    "note": "Set-level, not per-photo. A close-up of a tire or a dashboard legitimately contains no truck box and is never rejected on that basis; the photo SET is refused only when no frame anywhere carries a truck/bus box above truck_conf_weak.",
+    "measured": {
+      "originals": {
+        "photos": 3729,
+        "vehicles": 200,
+        "seconds": 87.7,
+        "photo_frac_truck_box_at_0.25": 0.354,
+        "photo_frac_truck_box_at_0.50": 0.324,
+        "vehicles_with_no_truck_box_at_0.25": 1,
+        "vehicles_with_no_truck_box_at_0.50": 3,
+        "vehicle_conf_min": 0.193,
+        "vehicle_conf_q05": 0.856
+      },
+      "degraded": {
+        "photos": 3729,
+        "vehicles": 200,
+        "seconds": 59.0,
+        "photo_frac_truck_box_at_0.25": 0.289,
+        "photo_frac_truck_box_at_0.50": 0.251,
+        "vehicles_with_no_truck_box_at_0.25": 3,
+        "vehicles_with_no_truck_box_at_0.50": 3,
+        "vehicle_conf_min": 0.0,
+        "vehicle_conf_q05": 0.798
+      }
+    }
+  },
+  "coverage": {
+    "required": [
+      "exterior_front_34",
+      "tire_wheel",
+      "dashboard_odometer"
+    ],
+    "wanted": [
+      "interior_cab",
+      "exterior_side",
+      "chassis_undercarriage",
+      "fifth_wheel"
+    ],
+    "min_photos": 3,
+    "min_usable_photos": 2
+  }
+}

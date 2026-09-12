@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KamionVision — what's this truck worth?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Barlow+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-id">
+    <h1>KamionVision</h1>
+    <p>Appraises a used tractor unit from photos. Prices it against real listings, or tells you it can't.</p>
+  </div>
+  <dl class="rig" id="rig">
+    <div><dt>Vision</dt><dd id="rig-backend">checking…</dd></div>
+    <div><dt>Comparables</dt><dd id="rig-comps">—</dd></div>
+    <div><dt>Band accuracy</dt><dd id="rig-cov">—</dd></div>
+  </dl>
+</header>
+
+<main>
+
+<section class="intake" id="intake">
+  <div class="dropzone" id="dropzone" tabindex="0" role="button"
+       aria-label="Add photos of the truck">
+    <input type="file" id="filepicker" multiple accept="image/*" hidden>
+    <p class="dropzone-lead">Drop photos of the truck</p>
+    <p class="dropzone-sub">or press to choose files — 3 or more, any quality</p>
+  </div>
+
+  <div class="intake-side">
+    <fieldset class="declared">
+      <legend>What the seller says <span>(optional — the photos do the work)</span></legend>
+      <label>Year <input type="number" id="f-year" min="1990" max="2027" placeholder="2020"></label>
+      <label>Kilometres <input type="number" id="f-km" min="0" step="1000" placeholder="420000"></label>
+      <label>Make <input type="text" id="f-make" placeholder="Ford Trucks"></label>
+      <label>Market
+        <select id="f-market"><option value="TR">Türkiye</option><option value="US">United States</option></select>
+      </label>
+    </fieldset>
+
+    <div class="samples">
+      <h2>Or run a rehearsed case</h2>
+      <div id="sample-list" class="sample-list"></div>
+    </div>
+  </div>
+</section>
+
+<section class="run" id="run" hidden>
+  <ol class="stages" id="stages">
+    <li data-step="gate"><span class="stage-name">Gate</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
+    <li data-step="evidence"><span class="stage-name">Evidence</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
+    <li data-step="price"><span class="stage-name">Price</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
+  </ol>
+  <button class="reset" id="reset" type="button">Start over</button>
+</section>
+
+<section class="result" id="result" hidden>
+
+  <div class="verdict" id="verdict">
+    <p class="headline" id="headline"></p>
+    <div class="gauge-wrap" id="gauge-wrap">
+      <svg class="gauge" id="gauge" viewBox="0 0 1000 190" preserveAspectRatio="none" role="img"></svg>
+      <p class="gauge-note" id="gauge-note"></p>
+    </div>
+    <div class="refusal" id="refusal" hidden></div>
+  </div>
+
+  <div class="columns">
+    <aside class="photos">
+      <h2>Photos <span class="count" id="photo-count"></span></h2>
+      <div class="photo-grid" id="photo-grid"></div>
+    </aside>
+
+    <div class="panels">
+      <article class="panel" id="panel-identity" hidden>
+        <h2>Read off the truck</h2>
+        <dl class="identity" id="identity"></dl>
+      </article>
+
+      <article class="panel" id="panel-findings" hidden>
+        <h2>What I can see</h2>
+        <p class="panel-sub" id="findings-sub"></p>
+        <ul class="findings" id="findings"></ul>
+      </article>
+
+      <article class="panel" id="panel-systems" hidden>
+        <h2>System by system</h2>
+        <dl class="systems" id="systems"></dl>
+      </article>
+
+      <article class="panel" id="panel-asks" hidden>
+        <h2>Photos I still need</h2>
+        <ul class="asks" id="asks"></ul>
+      </article>
+
+      <article class="panel" id="panel-gaps" hidden>
+        <h2>What I could not assess</h2>
+        <ul class="gaps" id="gaps"></ul>
+      </article>
+
+      <article class="panel" id="panel-why" hidden>
+        <h2>Why this number</h2>
+        <table class="drivers" id="drivers"></table>
+        <h3>Compared against</h3>
+        <table class="comps" id="comps"></table>
+        <div class="provenance" id="provenance"></div>
+        <ul class="widened" id="widened"></ul>
+      </article>
+
+      <article class="panel panel-quiet" id="panel-caveats" hidden>
+        <h2>Caveats</h2>
+        <ul class="caveats" id="caveats"></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close">×</button>
+  <img id="lightbox-img" alt="">
+  <p id="lightbox-cap"></p>
+</div>
+
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

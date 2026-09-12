@@ -1,0 +1,68 @@
+{
+  "_comment": "Outcome of a full human-in-the-loop visual review: all 6,581 original images were tiled into 264 numbered 5x5 contact sheets and inspected by 24 parallel reviewers, with every flagged cell then re-verified individually at full resolution. Only images whose MAIN SUBJECT is not the truck are excluded. Nothing is excluded for photographic quality - blur, darkness, blowout, mud, glare and bad framing are all retained deliberately.",
+  "review_date": "2026-09-12",
+  "images_reviewed": 6581,
+  "cells_flagged_by_reviewers": 12,
+  "confirmed_on_full_resolution_recheck": 6,
+  "exclude": [
+    {
+      "path": "images/mascus/63AFA739/000.jpg",
+      "reason": "dealer placeholder graphic: 'NEXTRAN TRUCK CENTERS - PHOTO COMING SOON', no vehicle present"
+    },
+    {
+      "path": "images/tr_truckmarket/13984/003.jpg",
+      "reason": "TruckMarket company logo on plain white, no vehicle present"
+    },
+    {
+      "path": "images/tr_truckmarket/14195/008.jpg",
+      "reason": "photograph of a diagnostic laptop screen (compression test); also contains a reflected human face"
+    },
+    {
+      "path": "images/tr_truckmarket/14196/010.jpg",
+      "reason": "photograph of a diagnostic laptop screen (compression test); also contains a reflected human face"
+    },
+    {
+      "path": "images/tr_truckmarket/14196/018.jpg",
+      "reason": "photograph of a diagnostic laptop screen (injector calibration)"
+    },
+    {
+      "path": "images/us_selectrucks/232611/017.jpg",
+      "reason": "Freightliner/Western Star warranty marketing page, no vehicle photograph"
+    }
+  ],
+  "reviewer_false_positives_kept": [
+    {
+      "path": "images/us_selectrucks/252354/015.jpg",
+      "note": "dealer decal photographed ON the truck's bodywork - part of the vehicle"
+    },
+    {
+      "path": "images/us_selectrucks/255887/000.jpg",
+      "note": "real Freightliner Cascadia sleeper; promotional banners overlaid"
+    },
+    {
+      "path": "images/us_selectrucks/256691/000.jpg",
+      "note": "real Freightliner Cascadia day cab; promotional banners overlaid"
+    },
+    {
+      "path": "images/us_selectrucks/256920/000.jpg",
+      "note": "real Freightliner Cascadia sleeper; promotional banners overlaid"
+    },
+    {
+      "path": "images/us_selectrucks/257060/000.jpg",
+      "note": "real Freightliner Cascadia day cab; small dealer watermark only"
+    },
+    {
+      "path": "images/us_selectrucks/257104/000.jpg",
+      "note": "real Freightliner Cascadia day cab; small dealer watermark only"
+    }
+  ],
+  "annotate_marketing_overlay": [
+    "images/us_selectrucks/255887/000.jpg",
+    "images/us_selectrucks/256691/000.jpg",
+    "images/us_selectrucks/256920/000.jpg"
+  ],
+  "annotate_dealer_watermark": [
+    "images/us_selectrucks/257060/000.jpg",
+    "images/us_selectrucks/257104/000.jpg"
+  ]
+}

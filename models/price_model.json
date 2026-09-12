@@ -1,0 +1,160 @@
+{
+  "brands": [
+    "FORD",
+    "MAN",
+    "other"
+  ],
+  "columns": [
+    "log1p_age",
+    "log_km",
+    "market_tr",
+    "euro6",
+    "brand_FORD",
+    "brand_MAN",
+    "brand_other"
+  ],
+  "coef": [
+    -0.24571,
+    -0.016692,
+    0.0,
+    -0.004091,
+    -0.022118,
+    0.022118,
+    0.0
+  ],
+  "intercept": 10.768002,
+  "mean": [
+    1.857635,
+    12.671526,
+    1.0,
+    0.952381,
+    0.928571,
+    0.071429,
+    0.0
+  ],
+  "scale": [
+    0.331339,
+    0.601145,
+    1.0,
+    0.212959,
+    0.257539,
+    0.257539,
+    1.0
+  ],
+  "residual_std": 0.0988,
+  "offsets": {
+    "0.5": [
+      -0.0209,
+      0.0409
+    ],
+    "0.8": [
+      -0.1664,
+      0.0564
+    ],
+    "0.9": [
+      -0.1736,
+      0.0738
+    ]
+  },
+  "calibration": {
+    "n": 84,
+    "n_groups": 24,
+    "r2_oof": 0.8422,
+    "mae_pct_oof": 6.8,
+    "median_ape_oof": 4.2,
+    "residual_std_oof": 0.0988,
+    "coverage_0.5": 0.6013,
+    "band_width_pct_0.5": 15.1,
+    "coverage_0.8": 0.8027,
+    "band_width_pct_0.8": 31.8,
+    "coverage_0.9": 0.8612,
+    "band_width_pct_0.9": 42.4,
+    "coverage_n": 958,
+    "coverage_splits": 40,
+    "scored_on": "all markets",
+    "tr_only_view": {
+      "n": 84,
+      "n_groups": 24,
+      "r2_oof": 0.8422,
+      "mae_pct_oof": 6.8,
+      "median_ape_oof": 4.2,
+      "residual_std_oof": 0.0988,
+      "coverage_0.5": 0.6013,
+      "band_width_pct_0.5": 15.1,
+      "coverage_0.8": 0.8027,
+      "band_width_pct_0.8": 31.8,
+      "coverage_0.9": 0.8612,
+      "band_width_pct_0.9": 42.4,
+      "coverage_n": 958,
+      "coverage_splits": 40
+    },
+    "without_brand_columns": {
+      "n": 84,
+      "n_groups": 24,
+      "r2_oof": 0.8252,
+      "mae_pct_oof": 7.0,
+      "median_ape_oof": 3.9,
+      "residual_std_oof": 0.1036,
+      "coverage_0.5": 0.5637,
+      "band_width_pct_0.5": 13.2,
+      "coverage_0.8": 0.7745,
+      "band_width_pct_0.8": 33.5,
+      "coverage_0.9": 0.8372,
+      "band_width_pct_0.9": 45.3,
+      "coverage_n": 958,
+      "coverage_splits": 40
+    }
+  },
+  "widening": {
+    "unknown_brand": 1.65,
+    "unknown_brand_basis": "measured by leave-one-brand-out: entire makes were held out of the pooled fit and priced as unknowns; this is the median band inflation needed to restore 80% coverage on them",
+    "leave_one_brand_out": {
+      "FORD": {
+        "n_held_out": 78,
+        "coverage_unwidened": 0.051,
+        "widening_needed": 2.0,
+        "median_ape_pct": 35.9
+      },
+      "FREIGHTLINER": {
+        "n_held_out": 58,
+        "coverage_unwidened": 0.224,
+        "widening_needed": 2.65,
+        "median_ape_pct": 15.3
+      },
+      "KENWORTH": {
+        "n_held_out": 5,
+        "coverage_unwidened": 0.8,
+        "widening_needed": 1.0,
+        "median_ape_pct": 8.5
+      },
+      "MAN": {
+        "n_held_out": 6,
+        "coverage_unwidened": 0.667,
+        "widening_needed": 1.3,
+        "median_ape_pct": 5.6
+      },
+      "_summary": {
+        "brands_tested": 4,
+        "max_widening_needed": 2.65,
+        "median_widening_needed": 1.65
+      }
+    }
+  },
+  "meta": {
+    "fitted_at": "2026-09-12T17:57:33",
+    "training_set": "tr_only",
+    "n_listings": 84,
+    "n_groups": 24,
+    "target": "log(asking price in USD)",
+    "fx": {
+      "usd_try": 48.596,
+      "as_of": "2026-09-11"
+    },
+    "markets": [
+      "TR"
+    ],
+    "tr_brand_note": "78 of 84 Turkish listings are FORD",
+    "alpha": 1.0,
+    "grouping": "folds grouped on (market, brand, model, year, price); 84 listings collapse to 24 specs"
+  }
+}
