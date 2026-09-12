@@ -2,7 +2,7 @@
 
 ## TL;DR
 - **Build a hybrid architecture**: specialist vision models (YOLO/RT-DETR detectors, SAM 2 segmentation, DINOv2 embeddings, a dedicated no-reference image-quality gate) produce a structured, auditable **condition vector**, and a VLM (GPT-5.6, accessed through the Cursor SDK) reasons over that evidence — never a VLM alone, which hallucinates damage and cannot localize. A two-stage pricing engine (public-data prior + internal-transaction posterior via Bayesian hierarchical / residual-correction modeling) converts the condition vector into a price *range* with conformal-calibrated confidence tied to photo quality.
-- **The single biggest constraint is data**: there is **no large, commercially-licensed public dataset of commercial-truck damage**. The only one (DS4E, 4,962 images, CC BY 4.0) is single-author and all European cab-over trucks — it pretrains the Turkish side and gives the US Cascadia side nothing. **The §9 harvest is therefore the dataset, not a supplement:** ~7,600 Turkish photos at 1440×1080 are collectable today, and Kamion must bootstrap the rest through guided capture.
+- **The single biggest constraint is data**: there is **no large, commercially-licensed public dataset of commercial-truck damage**. The only genuine one (DS4E "Truck Damage Detection," 4,962 images, CC BY 4.0) is small and single-author. Car-damage sets (CarDD 4,000 imgs; VehiDE 13,945 imgs) are non-commercial (Flickr/Shutterstock encumbered) and passenger-car only. Kamion **must bootstrap a proprietary truck/trailer/van dataset** and can only use public sets for transfer-learning R&D and the quality gate.
 - **"Perfect observability" is achievable** by combining OpenTelemetry GenAI semantic conventions + a self-hosted trace backend (Langfuse or Arize Phoenix) with a domain-specific **evidence-grounding layer**: every price delta chains back pixel → bounding-box/mask → detected defect → condition score → price adjustment, with per-claim confidence, exact model/prompt versions, and replayability.
 - **Make/model/configuration is a gate, not a covariate** (§3a, §4a). A US Cascadia is a 6×4 conventional with a hood; a Turkish F-MAX is a 4×2 cab-over without one. They share no part geometry, no damage priors and no repair-cost table. An identity stage must resolve make → model → generation → configuration *before* any damage model runs, and it must work from pixels alone in Türkiye, where no free VIN decoder exists.
 - **The two markets are structurally inverted, and this is measurable** (§7, §9). Live inventory sampled 2026-09-12: US listings carry VINs, engine/HP/sleeper/wheelbase specs and ~15 photos; Turkish listings carry 35 photos at 1440×1080 and no VIN at all. US asking price leaves a **±22.6%** residual after year+mileage — the space a condition model can win. Turkish asking price leaves **±5.0%**, almost all of it quantization (20 distinct prices across 147 listings). **Learn vision where the pixels are (Türkiye); learn price where the labels are (US).**
@@ -24,59 +24,84 @@
 
 ## Details
 
-### 1. DATASET RESEARCH — TRUCKS, US & TÜRKİYE
+### 1. DATASET RESEARCH
 
-Scope: commercial trucks, US and Turkish market. Passenger-car damage sets, generic image-quality corpora
-and EU marketplace sources are out of scope — the note at the end of §1c records what was cut and when it
-would be worth reinstating.
+#### 1a/1b. Vehicle & commercial-vehicle damage datasets
 
-#### 1a. Public truck-damage data — one dataset exists
+| Dataset | Size | Classes | License | URL | Notes |
+|---|---|---|---|---|---|
+| **CarDD** | 4,000 hi-res imgs, >9,000 instances | 6: dent, scratch, crack, glass shatter, lamp broken, tire flat | Non-commercial research only (Flickr/Shutterstock copyright) | arxiv.org/abs/2211.00945; cardd-ustc.github.io; HF mirror harpreetsahota/CarDD | Largest well-curated academic car-damage set; supports classification, detection, instance seg, salient object detection. Avg resolution 684,231 px. Split 70.4/20.2/9.4%. |
+| **VehiDE (VeHIDE)** | 13,945 imgs, >32,000 instances | 8: broken glass, broken lights, scratch, lost parts, dents, torn, punctured, non-damaged | CC BY-NC 4.0 paper; images under Flickr/Shutterstock licenses — **non-commercial only** | tandfonline.com/doi/full/10.1080/24751839.2024.2367387 (DOI 10.1080/24751839.2024.2367387); Kaggle: hendrichscullen/vehide-dataset | Larger than CarDD but legally unusable for a commercial product. Cars only. Train/val ≈ 11,621/2,324. |
+| **DS4E Truck Damage Detection** | 4,962 imgs | 8 (messy taxonomy): chassis_damage, front_end_damage, front_end_corner_damage, rear_light, side_step, truck_damage, etc. | **CC BY 4.0 (commercial OK)** | universe.roboflow.com/ds4e/truck-damage-detection | ★ **Only genuine commercial-truck damage set.** European trucks (MAN TGX, Volvo FM, DAF, Actros; filenames "SCHADEOBJECT"). Small, single-author; vet quality. |
+| Damaged Vehicle Images (Sammy) | 5,072 imgs | 7: crack_and_hole, {slight/medium/severe}_deformation, {slight/severe}_scratch, windshield_damage | CC BY 4.0 | universe.roboflow.com/sammy/damaged-vehicle-images | Cars; usable commercially for transfer learning. |
+| vehicle-damage-detection-hhxfj | 6,416 imgs | 7 incl. crack_and_hole, deformation grades, windshield_damage | CC BY 4.0 | universe.roboflow.com/damage-detection-d25qu/vehicle-damage-detection-hhxfj | Cars; instance seg. |
+| Car Accidents & Deformation (M-Arslan) | 1K–10K | YOLO deformation classes | CC BY-NC 4.0 | HF: M-ArslanArshad/Car_Accidents_and_deformation_dataset | Non-commercial. |
 
-| Dataset | Size | Classes | License | Notes |
-|---|---|---|---|---|
-| **DS4E Truck Damage Detection** | 4,962 imgs | 8 (messy taxonomy): chassis_damage, front_end_damage, front_end_corner_damage, rear_light, side_step, truck_damage, … | **CC BY 4.0 — commercial use OK** | `universe.roboflow.com/ds4e/truck-damage-detection`. European trucks — MAN TGX, Volvo FM, DAF, Actros (filenames "SCHADEOBJECT"). Single-author; vet label quality before trusting it. |
+**Truck/trailer detection (not damage):** trailers-detection (930 imgs, Roboflow signals-rlxbl), Truck Trailer Detection VBeta (35 imgs), Martin/trailer (200 imgs), axle-classification (~7.46k imgs, vehicle-type only). All low relevance for condition — they detect presence/type, not defects.
 
-**It helps Türkiye and not the US.** DS4E is all cab-over European tractors — the same cab architecture as the
-Ford F-MAX (§9b). It transfers to the Turkish side of the demo and does **not** transfer to a Freightliner
-Cascadia conventional (§3a). Pretrain the Turkish part segmenter on it; expect no equivalent head start on the
-US side.
+**Bottom line (1a/1b):** No academic-grade, large, commercially-licensed commercial-truck damage dataset exists. This is the central gap.
 
-**Bottom line:** there is exactly one commercially-licensed truck-damage dataset and it is ~5,000 images by a
-single author. **That is why the §9 harvest — ~7,600 Turkish photos available today — is the dataset, not a
-supplement to one.**
+#### 1c. Imperfect / low-quality image datasets (for the quality gate)
 
-Truck/trailer *detection* sets (trailers-detection, 930 imgs; axle-classification, ~7.5k) identify presence and
-type, not defects. No use for condition.
+| Dataset | Size | What it captures | Notes |
+|---|---|---|---|
+| **KonIQ-10k** | 10,073 imgs, 1.2M ratings from 1,459 crowd workers | In-the-wild authentic distortions (brightness, colorfulness, contrast, sharpness, noise) | doi 10.18419/darus-2435; arxiv 1910.06180. Deep model KonCept512 reaches 0.921 SROCC. The standard NR-IQA training set. |
+| **SPAQ** | 11,125 imgs, 66 smartphones | Real smartphone distortions (noise, blur, exposure) + scene tags | Lab-collected MOS. Most representative of driver phone photos. |
+| **LIVE-in-the-Wild (CLIVE)** | 1,162 imgs | Authentic mobile-capture distortions | Classic cross-dataset benchmark. |
+| **KADID-10k** | 81 refs → 10,125 distorted | 25 synthetic distortion types × 5 levels | Controlled distortion taxonomy. |
+| **BID** | 586 imgs | Realistic blur (out-of-focus, simple/complex motion) | Blur-specific. |
+| **TID2013 / PIPAL / BIQ2021** | — | Synthetic & GAN distortions | For robustness/generalization eval. |
 
-#### 1b. Supporting heads
+**Synthetic degradation pipelines (manufacture imperfection from clean truck photos):** Real-ESRGAN high-order degradation (blur → resize → noise → JPEG, randomized order; generalized Gaussian + motion/defocus kernels, Poisson/Gaussian noise, DiffJPEG) — see Wang et al., ICCVW 2021; BSRGAN random-shuffle degradation; and KAIR. Use **Albumentations/imgaug** for controllable augmentations (motion blur, rain, glare, occlusion, over/under-exposure, compression). This is the recommended way to build a labeled "bad photo" training set cheaply, since Kamion's own clean truck photos can be degraded to order.
 
-| Head | Public data | Status |
-|---|---|---|
-| **Odometer OCR** | **TRODO** — 2,389 annotated odometer images, analog + digital, bounding boxes + digit labels, CC BY (Data in Brief 38 (2021) 107321). **Built in Türkiye** (Eskişehir Technical University, Marketyo delivery fleet) | ✅ Usable. Fine-tune a small detector + digit OCR, augment with Kamion dash photos. Turkish provenance means the capture conditions already match. |
-| **Photo-quality gate** | **KonIQ-10k** (10,073 imgs) + **SPAQ** (11,125 imgs, 66 smartphones) | ✅ Usable as-is for §2A. Not truck data and does not need to be — it only calibrates "is this photo technically usable". SPAQ mirrors driver phone captures. |
-| **Truck tyre tread / retread** | **None.** Public tyre sets are car and motorcycle service-bay images; tyre X-ray sets are factory QA | ❌ **Kamion must collect this.** Feasibility is established — vehicle-inspection patent US 12541840 reports ROC-AUC 0.76 uneven tread wear, 0.84 damaged wheels, 0.78 mismatched tyres, 0.76 rotted/cracked tyres. |
+#### 1d. Marketplace listing sources (photos + price + mileage + year + make/model)
 
-**Manufacture bad photos rather than hunting for them:** degrade Kamion's clean truck images with Real-ESRGAN
-high-order degradation (blur → resize → noise → JPEG in randomised order) or Albumentations for controllable
-motion blur, glare, rain, occlusion and exposure. The §9 Turkish set at 1440×1080 is a good clean source.
+| Source | Official API? | Scraping/ToS posture | Relevance |
+|---|---|---|---|
+| **Marketcheck** | ✅ Yes — Cars API (5B+ listings since 2015; ~40M+ active + 800M+ historical records), VIN decode, Price API (predicted price + comps), **used-heavy-equipment Inventory Search endpoint**, Cached Images endpoint | Licensed data product; subscription + usage billing ($1,000 usage threshold triggers early billing) | ★ Best turnkey source for a public-price prior (US/Canada/UK). Legally clean. |
+| **sahibinden.com** (TR) | Restricted account-only "API/veri indirme"; no open API | **Prohibited**; Cloudflare + login wall + captcha + IP bans | Turkish trucks; hardest. KVKK applies to seller PII. |
+| **arabam.com** (TR) | None public | Gray-area; check ToS; no sanctioned program | Turkish trucks; more accessible than sahibinden. |
+| **Mascus** | None public (3rd-party scrapers: Apify, Piloterr) | Unofficial only | ★ Largest EU heavy-truck/trailer pool — "more than 400,000 listings of used heavy machinery and trucks" with "over 3,500,000 visits from buyers every month" (Mascus official app listing). Pursue data partnership. |
+| **mobile.de** (commercial) | ✅ Official Seller-API + Search-API (dealer-scoped, own inventory; incl. in dealer package) | Market-wide scraping not sanctioned | Strong DE commercial-truck data via partnership. |
+| **Truck1** (.eu) | ✅ JSON/API dealer **import** feed (inbound) | Check ToS | EU trucks; partnership channel. |
+| **TruckPaper / Machinery Trader** | No open API | **ToS explicitly forbids** robots/scrapers/data-mining (TruckPaper Terms of Use) | US heavy trucks; scrape-prohibited. Apify actors exist but violate ToS. |
+| **Autoline (.info)** | Inbound dealer feeds only | No data-out API | EU commercial vehicles. |
+| **Ritchie Bros / IronPlanet** | Auction results (no open API) | 3rd-party scrapers | ★ Auction "sold" prices = real transaction ground truth (better than asking prices). |
+| **Kaggle used-vehicle sets** | e.g., US Used Cars (3M rows), Cars for Sale (20k w/ condition+accident+options), cars.com set (4,009) | Open (CC) | Tabular price/mileage/year; mostly **no images** or cars only. Good for pricing-model prototyping, not vision. |
 
-#### 1c. What to actually train on
+**Bottom line (1d):** Use **Marketcheck** as the legally-clean public-price prior (has a heavy-equipment endpoint + images), pursue **Mascus / mobile.de / Truck1** data partnerships for European commercial-truck comps, and treat **auction sold-prices (Ritchie Bros/IronPlanet)** as the gold transaction signal. Avoid scraping TruckPaper/Machinery Trader (ToS-prohibited) and sahibinden (prohibited + technically defended).
 
-1. **DS4E Truck Damage** (4,962, CC BY 4.0) — truck detector seed, Turkish/cab-over side only.
-2. **§9 harvested corpus** — ~7,600 Turkish photos at 1440×1080 (32–38 per vehicle) plus the US Cascadia set. **This is the bulk of the training data and it is collectable this week.**
-3. **TRODO** (2,389) — odometer head.
-4. **KonIQ-10k + SPAQ** (~21,000) — quality gate only.
-5. **Kamion's own guided-capture photos** — the only source for tyres per axle, cab interior, chassis corrosion and trailer-type defects.
+#### 1e. Tire / wheel / undercarriage datasets
 
-Normalise to a unified COCO schema; harmonise the damage taxonomy to {dent, scratch, crack, corrosion, glass,
-lamp, missing/torn part, deformation severity}. Hold out a golden set labelled by expert appraisers (§9f step 4).
+- **TyreNet** (Mendeley Data, 32b5vfj6tc): 1,698 tyre images (866 defective / 832 good), from six car/bike service stations + two showrooms, expert-annotated. Good real-world lighting variety.
+- **foduucom/Tyre-Quality-Classification-AI** (HF): defective vs good classifier + dataset.
+- **Roboflow tire-defect** use-case sets: classes crack, bulge, tread wear, cut, puncture (RF-DETR deployable).
+- **Tire X-ray defect sets** (academic, e.g., a Springer study with 120,000 images, 100k good/20k defective) — manufacturing QA, not roadside tread wear; limited relevance.
+- **Gap:** No public dataset for **truck tire tread-depth grading per axle** or **retread/recap detection** — Kamion must collect this. A vehicle-inspection patent (US 12541840) reports ML ROC-AUCs of 0.76 (uneven tread wear), 0.84 (damaged wheels), 0.94 (oversized tires), 0.78 (mismatched tires), 0.76 (rotted/cracked tires), 0.95 (aftermarket wheels), indicating feasibility of image-based tire condition models.
 
-> **What was cut, and when to put it back.** Passenger-car damage sets (CarDD, VehiDE, Sammy, hhxfj) were
-> removed as out of scope. Two are non-commercially licensed regardless (CarDD, VehiDE — Flickr/Shutterstock),
-> but **Sammy + hhxfj are ~11,500 images under CC BY 4.0 and are legitimate transfer-learning pretraining for
-> the generic dent/scratch/glass classes.** Reinstate them if the truck detector stalls on DS4E's 4,962 images
-> before the §9 harvest lands. EU marketplace sources (Mascus, mobile.de, Truck1, Autoline) were removed as out
-> of market — **§9e is the single source table for US and Turkish data, with tested access posture.**
+#### 1f. Odometer / dashboard OCR datasets
+
+- **TRODO** (Data in Brief 38 (2021) 107321, doi 10.1016/j.dib.2021.107321): 2,389 annotated odometer images (analog+digital; reduced from 2,613 raw), varied resolution/illumination/vehicle type, bounding boxes + digit labels, CVAT-annotated, CC BY. **Built in Turkey (Eskişehir Technical University), images from the Marketyo delivery network** — directly relevant to Kamion's market.
+- **Motorcycle Odometer dataset** (IEEE DataPort): 5,860 images, analog+digital, standardized 320×160, varied lighting/angles (Sept 2025).
+- **umutkavakli/odometer-mileage-extraction** (GitHub): 2,389 imgs, YOLOv8 + OCR pipeline (also Turkish author).
+- Industry benchmark: **Cognexa OdoCap** reports "a reading accuracy of 99.9%" on mixed-quality smartphone dash images plus "car make and model accuracy at 98% (trained on 25 different car makes and models – mostly European)"; American Family Insurance published an SSD/Faster-RCNN odometer pipeline (Frontiers).
+- **Recommendation:** Fine-tune a small detector (odometer localization) + digit OCR on TRODO, augment with Kamion's own dash photos. Add odometer-fraud heuristics (EXIF timestamp/GPS cross-check, digit-plausibility vs age).
+
+#### 1g. Concrete recommendation — which datasets to combine
+
+**Recommended training/eval corpus (~35–40k images before Kamion's own data):**
+1. **DS4E Truck Damage** (4,962, CC BY 4.0) — the only commercial-usable truck-damage seed; base for truck detectors.
+2. **Damaged Vehicle Images (Sammy)** + **hhxfj** (~11,500, CC BY 4.0) — commercial-usable car-damage for transfer learning of dent/scratch/deformation/glass classes.
+3. **KonIQ-10k + SPAQ** (~21,000) — train/calibrate the NR-IQA gate; SPAQ especially mirrors phone captures.
+4. **TyreNet + Roboflow tire-defect** (~2,500) — tire condition head.
+5. **TRODO** (2,389) — odometer OCR (Turkish origin).
+6. **CarDD / VehiDE** — **R&D and architecture benchmarking only** (non-commercial license); do NOT ship models trained on them in production.
+
+**Stitching:** Normalize all to a unified COCO schema; harmonize damage taxonomy to a canonical set (dent, scratch, crack, corrosion/rust, glass damage, lamp damage, missing/torn part, deformation-severity {slight/medium/severe}); use synthetic degradation (Real-ESRGAN/Albumentations) to create paired clean/degraded versions for the quality gate and for robustness. Reserve a **held-out golden set labeled by Kamion's expert appraisers** for final evaluation.
+
+> **For the narrowed, measured two-market demo corpus — the specific US and Turkish listing sources, live counts, per-listing fields, photo counts and image resolutions — see §9.** The public academic datasets above are for pretraining the detectors and the quality gate; §9 is the paired market data the valuation demo actually runs on.
+
+**Remaining gaps Kamion must fill with proprietary collection:** (a) commercial-truck & trailer damage at scale; (b) trailer-type-specific defects (reefer units, dry van floors, flatbed decks, tanker shells, tipper bodies); (c) truck tire tread-depth per axle + retread detection; (d) cab-interior wear; (e) chassis/undercarriage corrosion; (f) **Turkish market price+photo+mileage transaction records** (the pricing ground truth).
 
 ### 2. THE IMAGE-QUALITY GATE
 
@@ -209,7 +234,7 @@ worse than no appraisal**, and it is silent unless identity is explicitly scored
 - Currency normalization to a base (e.g., EUR) via daily FX; keep local currency as output.
 - Regional price-index features (country/region hedonic offsets) instead of hardcoded per-country models.
 - Log-price target stabilizes variance across price tiers and markets.
-- Transfer learning: **pretrain on the US**, which is the label-rich side (VIN + full configuration per listing, and an asking price that still carries ±22.6% of condition signal — §9c), then fine-tune Türkiye on realized transactions. Hierarchical pooling shares strength across markets.
+- Transfer learning: pretrain on high-volume markets (EU via Mascus/mobile.de), fine-tune with few samples per new market; hierarchical pooling shares strength across markets.
 
 **Heavily weighting internal Kamion data over public comps:**
 - **Bayesian hierarchical model:** public data forms the prior; Kamion's internal sales form the posterior. As internal N grows, posterior dominates automatically.
@@ -613,7 +638,7 @@ market-agnosticism rather than a coincidence.
 | **Mileage** | 41,173 – 605,000 km (**median 270,000 km**) |
 | **Per-listing fields** | year, brand, model, price ₺, km, **city**, transmission (Otomatik), colour, **drive type (4×2)**, **5th-wheel height (960 / 1100 / 1200 mm)**, **usage class (Yurt İçi / Yurt Dışı Lojistik = domestic / international logistics)**, warranty flag, authorisation-certificate number (yetki belgesi), ad number |
 | **Photos** | **32–38 per listing (mean 35.1, n=12)** — two sizes, `_Orta` and `_Buyuk`; `_Buyuk` measured at **1440×1080**, ~278 KB. CDN path `truckmarket.b2el.net/B2ELResim/AracResim2El/{stockId}/{uuid}_Buyuk.jpg`. **218 listings × ~35 ≈ 7,600 images available today** |
-| **Provenance check** | Listing cities are İstanbul, Denizli, Kayseri, Hatay — **all Turkish**, sold through Ford Trucks TR dealers. This resolves the "Turkish-language page may list a non-Turkish truck" risk *for this source*. It does **not** resolve it for sahibinden, arabam or any pan-EU aggregator, where a TR-language page routinely lists EU-located stock; for those, location must be verified per listing, not inferred from language or currency |
+| **Provenance check** | Listing cities are İstanbul, Denizli, Kayseri, Hatay — **all Turkish**, sold through Ford Trucks TR dealers. This resolves the "Turkish-language page may list a non-Turkish truck" risk *for this source*. It does **not** resolve it for sahibinden/arabam/Mascus, where a TR-language page routinely lists EU-located stock; for those, location must be verified per listing, not inferred from language or currency |
 | **Missing vs US** | **No VIN. No engine spec. No horsepower. No wheelbase.** And no free Turkish VIN/registration decoder exists — identity must be recovered from the ruhsat or from the photographs themselves |
 
 #### 9c. The measured asymmetry — the reason this pair is worth building
@@ -681,6 +706,7 @@ Regression rows use n=322 US / n=147 TR, a 3-parameter OLS of log price on age a
 | US | ~~Copart~~ | Incapsula challenge, HTTP 403 | Effectively closed |
 | TR | **Ford Trucks TR dealers / Kamion closed deals** | Requires a commercial agreement | **The only realistic path to Turkish realized prices.** Target 300–500 records with photos |
 | TR | Mercedes-Benz **TruckStore** TR, MAN **TopUsed** | Public listing pages; partnership needed for sale data | Second and third Turkish OEM channels — widen brand coverage beyond Ford |
+| TR | **Mascus** | `robots.txt` permissive (blocks only a few query patterns), publishes sitemaps | Pan-EU heavy-truck pool. **Location must be verified per listing** — a Turkish-language page is not evidence of a Turkish truck |
 | TR | ~~sahibinden.com~~ | Prohibited by ToS; login wall, Cloudflare, captcha, IP bans; blocked in testing | Do not use |
 | TR | ~~arabam.com~~ | Cloudflare managed challenge on every request incl. `robots.txt`; no sanctioned programme | Do not use |
 
@@ -707,19 +733,19 @@ single-model demo closes — that is the first test of whether the brand/model c
 3. **Adopt the hybrid architecture** (specialists → VLM) from the start; do not prototype on VLM-only, which will hallucinate and set false expectations.
 4. **Instrument observability on day one** with OTel GenAI conventions + self-hosted Langfuse; build the evidence-grounding (box→claim→delta→price) as a core schema, not an afterthought — it is an explicit user requirement and a liability shield.
 5. **Make the quality gate + refusal thresholds non-negotiable.** A confident price from a bad photo is the worst failure mode. Widen intervals, request re-shoots, refuse below threshold.
-6. **Pursue data partnerships in-market only.** Türkiye: Ford Trucks TR dealers (the §9b source), Mercedes-Benz TruckStore TR and MAN TopUsed — all three for realized sale prices, which do not exist publicly anywhere in Türkiye. US: Ritchie Bros / IronPlanet **sold** prices as transaction ground truth, GovDeals for public-agency realized hammer prices, Marketcheck for legally-clean listings. **Do not scrape** TruckPaper / Machinery Trader (ToS-prohibited) or sahibinden (prohibited and technically defended).
+6. **Pursue data partnerships** with Mascus (largest EU heavy-truck pool), mobile.de (official dealer API), and Truck1 (JSON import feed); use Ritchie Bros/IronPlanet **sold** prices as transaction ground truth. **Do not scrape** TruckPaper/Machinery Trader (ToS-prohibited) or sahibinden (prohibited + defended).
 7. **Handle plates/faces/GPS from the first upload** (auto-blur, GPS strip) to stay clean under GDPR/KVKK.
 8. **Resolve identity before you assess damage** (§3a). Build the cab-architecture + make/model classifier in Weeks 3–6, ahead of the damage specialists. Two vehicles that share no part geometry cannot share a part segmenter, and an appraisal of the wrong model is worse than no appraisal because it fails silently. **Guardrail metric:** if brand/model features absorb more price contribution than the vision condition delta on a typical appraisal, the model is pricing a catalogue, not a truck.
 9. **Run the two-market demo on Freightliner Cascadia (US, SelecTrucks) × Ford F-MAX (TR, TruckMarket), MY2020–2022, tractors only** (§9). Both sources are live, accessible and measured. **MY2020–2022, not 2019–2022** — the Turkish source has zero MY2019 listings, so a 2019 comparison would be US-only.
 10. **Get realized Turkish sale prices before making any Turkish price claim.** Turkish asking prices resolve to 20 distinct values across 147 listings with a ±5.0% residual after year and mileage; they encode a dealer pricing table, not vehicle condition. Target **300–500 closed sales with matching photos** from Ford Trucks TR dealers or Kamion's own transactions. Until they exist, publish only condition-grade agreement against appraisers for Türkiye — never a price accuracy number.
 11. **Deflate Turkish prices before fitting, and stamp every listing with a date.** Nominal TRY depreciation measures −10.9%/yr against −21.8%/yr in USD at ~31% CPI. Fit on real (CPI-deflated or FX-indexed) prices with an explicit as-of date; emit nominal TRY. Record first-seen/last-seen per listing and treat price age as both a feature and a filter.
-12. **Verify listing location per record, never by language or currency.** TruckMarket listings are confirmed Türkiye-domestic (İstanbul, Denizli, Kayseri, Hatay), but on sahibinden, arabam and any pan-EU aggregator a Turkish-language page routinely lists EU-located stock. A comparable is only Turkish if the record says so.
+12. **Verify listing location per record, never by language or currency.** TruckMarket listings are confirmed Türkiye-domestic (İstanbul, Denizli, Kayseri, Hatay), but on Mascus, sahibinden and arabam a Turkish-language page routinely lists EU-located stock. A comparable is only Turkish if the record says so.
 13. **Price the appraisal as a wedge, not as the product** (§8f). An assessment-only business in US+TR heavy trucks addresses ~$143M TAM and yields a ~$2M three-year SOM. Per assessed truck, a 1.5% take rate on a $40,000 sale is ~$600 against ~$45 for a report — **13×** — and ACV's auction+assurance ARPU of $554/unit says that is the right order of magnitude. **Validate assumptions A5/A6 and B4/B5 (fleet count × subscription ASP) first: they are the least-grounded inputs and they carry two-thirds of the TAM.**
 14. **Treat a fixed-site scanner incumbent as a non-threat in Türkiye and a real one in the US.** UVeye and ProovStation need the truck to drive through a booth. That is viable for US fleet yards and dealer lanes; it cannot serve a Turkish market where SME fleets hold ~95% share and the average heavy vehicle is 18.1 years old and nowhere near an inspection lane. **Smartphone-first is not a compromise in Türkiye — it is the only reachable form factor.**
 
 ## Caveats
 - **No commercial-truck damage dataset at scale exists publicly** — the biggest uncertainty; Kamion's success depends on its own data program, and timelines assume that program starts immediately.
-- **The only commercially-licensed truck-damage dataset is ~5,000 images by a single author** (DS4E, CC BY 4.0), it is European cab-over trucks, and its label quality has not been independently verified. It gives the Turkish side of the demo a head start and the US side none. If the §9 harvest slips, the CC BY 4.0 car sets noted in §1c are the fallback pretraining source — CarDD and VehiDE are not (non-commercial, Flickr/Shutterstock encumbered).
+- **CarDD and VehiDE are non-commercial-licensed** (Flickr/Shutterstock) — usable for R&D/benchmarking only, not shippable models. This is a hard legal constraint.
 - **Benchmark scores cited** (e.g., Qwen-VL 87.3% semantic; MANIQA SROCC; Cognexa 99.9% odometer) come from academic/vendor settings and different domains (cars, general images); real truck performance will differ and must be validated on Kamion's golden set.
 - **VLM cost estimates** are order-of-magnitude at current pricing and will shift with model choice, image count, and provider pricing.
 - **EU AI Act classification** for a valuation tool is not definitively settled here; obtain a formal legal classification before EU deployment.
