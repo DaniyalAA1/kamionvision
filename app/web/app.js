@@ -153,69 +153,84 @@ const svg = (tag, attrs) => {
 function drawGauge(price) {
   const g = $('gauge');
   g.replaceChildren();
-  const W = 1000, axisY = 108;
+  const W = 1000, axisY = 96;
   const comps = (price.comparables || [])
-    .map((c) => (price.currency === 'TRY' ? c.price_try : c.price_usd) ?? c.price)
-    .filter((v) => v != null);
+    .map((c) => ({ c, v: (price.currency === 'TRY' ? c.price_try : c.price_usd) ?? c.price }))
+    .filter((d) => d.v != null)
+    .sort((a, b) => a.v - b.v);
 
-  const lo = Math.min(price.low, ...comps), hi = Math.max(price.high, ...comps);
-  const pad = (hi - lo) * 0.12 || hi * 0.1;
+  const values = comps.map((d) => d.v);
+  const hasBaseline = price.baseline_low && price.baseline_high
+    && Math.abs(price.baseline_point - price.point) > 1;
+  const lo = Math.min(price.low, hasBaseline ? price.baseline_low : price.low, ...values);
+  const hi = Math.max(price.high, hasBaseline ? price.baseline_high : price.high, ...values);
+  const pad = (hi - lo) * 0.1 || hi * 0.1;
   const min = lo - pad, max = hi + pad;
-  const x = (v) => 40 + ((v - min) / (max - min)) * (W - 80);
+  const x = (v) => 55 + ((v - min) / (max - min)) * (W - 110);
 
-  g.append(svg('line', { x1: 40, y1: axisY, x2: W - 40, y2: axisY,
+  g.append(svg('line', { x1: 55, y1: axisY, x2: W - 55, y2: axisY,
                          stroke: 'var(--steel-700)', 'stroke-width': 1 }));
 
-  // the band
-  g.append(svg('rect', { x: x(price.low), y: axisY - 26, width: x(price.high) - x(price.low),
-                         height: 52, fill: 'var(--sodium)', opacity: .14 }));
+  // The comparables-only band, outlined. This is the band whose coverage was
+  // measured, so it stays on screen even once the condition adjustment has
+  // moved the filled band off it.
+  if (hasBaseline) {
+    g.append(svg('rect', { x: x(price.baseline_low), y: axisY - 38,
+                           width: x(price.baseline_high) - x(price.baseline_low),
+                           height: 76, fill: 'none', stroke: 'var(--haze-dim)',
+                           'stroke-width': 1, 'stroke-dasharray': '4 4' }));
+  }
+
+  // the condition-adjusted band
+  g.append(svg('rect', { x: x(price.low), y: axisY - 24, width: x(price.high) - x(price.low),
+                         height: 48, fill: 'var(--sodium)', opacity: .15 }));
   for (const v of [price.low, price.high]) {
-    g.append(svg('line', { x1: x(v), y1: axisY - 26, x2: x(v), y2: axisY + 26,
+    g.append(svg('line', { x1: x(v), y1: axisY - 24, x2: x(v), y2: axisY + 24,
                            stroke: 'var(--sodium)', 'stroke-width': 2 }));
-    const t = svg('text', { x: x(v), y: axisY - 36, fill: 'var(--sodium)',
-                            'text-anchor': 'middle', 'font-family': 'var(--cond)',
+  }
+  // Edge prices are anchored to the outside of the band so they cannot
+  // collide with each other on a narrow band.
+  const edge = (v, anchor) => {
+    const t = svg('text', { x: x(v), y: axisY - 50, fill: 'var(--sodium)',
+                            'text-anchor': anchor, 'font-family': 'var(--cond)',
                             'font-size': 30, 'font-weight': 600 });
     t.textContent = money(v, price.currency);
     g.append(t);
-  }
-
-  // the estimate before condition, as a ghost, so the adjustment is visible
-  if (price.baseline_point && Math.abs(price.baseline_point - price.point) > (max - min) / 200) {
-    g.append(svg('line', { x1: x(price.baseline_point), y1: axisY - 16,
-                           x2: x(price.baseline_point), y2: axisY + 16,
-                           stroke: 'var(--haze-dim)', 'stroke-width': 1.5,
-                           'stroke-dasharray': '3 3' }));
-    const t = svg('text', { x: x(price.baseline_point), y: axisY + 34,
-                            fill: 'var(--haze-dim)', 'text-anchor': 'middle',
-                            'font-family': 'var(--cond)', 'font-size': 17 });
-    t.textContent = 'before condition';
-    g.append(t);
-  }
+  };
+  edge(price.low, 'end');
+  edge(price.high, 'start');
 
   // the needle
   const nx = x(price.point);
-  const needle = svg('path', { d: `M ${nx} ${axisY - 34} L ${nx - 9} ${axisY - 50} L ${nx + 9} ${axisY - 50} Z`,
-                               fill: 'var(--paper)' });
-  g.append(needle);
-  g.append(svg('line', { x1: nx, y1: axisY - 34, x2: nx, y2: axisY + 34,
+  g.append(svg('path', { d: `M ${nx} ${axisY - 26} L ${nx - 8} ${axisY - 40} L ${nx + 8} ${axisY - 40} Z`,
+                         fill: 'var(--paper)' }));
+  g.append(svg('line', { x1: nx, y1: axisY - 26, x2: nx, y2: axisY + 26,
                          stroke: 'var(--paper)', 'stroke-width': 2 }));
 
-  // comparables as ticks on the same scale
-  (price.comparables || []).forEach((c) => {
-    const v = (price.currency === 'TRY' ? c.price_try : c.price_usd) ?? c.price;
-    if (v == null) return;
-    g.append(svg('line', { x1: x(v), y1: axisY + 30, x2: x(v), y2: axisY + 46,
+  // Comparables as ticks on the same scale. Labels alternate between two rows
+  // when neighbours are close enough to overlap - five 2020-2022 F-MAXes at
+  // similar mileage land almost on top of each other otherwise.
+  let lastX = -Infinity, row = 0;
+  comps.forEach(({ c, v }) => {
+    const px = x(v);
+    row = (px - lastX < 110) ? 1 - row : 0;
+    lastX = px;
+    const depth = row === 0 ? 42 : 60;
+    g.append(svg('line', { x1: px, y1: axisY + 26, x2: px, y2: axisY + depth - 4,
                            stroke: 'var(--signal)', 'stroke-width': 2 }));
-    const t = svg('text', { x: x(v), y: axisY + 66, fill: 'var(--signal)',
+    const t = svg('text', { x: px, y: axisY + depth + 14, fill: 'var(--signal)',
                             'text-anchor': 'middle', 'font-family': 'var(--cond)',
                             'font-size': 18 });
     t.textContent = `${c.year} · ${Math.round(c.km / 1000)}k`;
     g.append(t);
   });
-  const legend = svg('text', { x: 40, y: axisY + 86, fill: 'var(--haze-dim)',
-                               'font-family': 'var(--cond)', 'font-size': 17 });
-  legend.textContent = 'teal ticks are the real listings this was priced against';
-  g.append(legend);
+
+  const caption = svg('text', { x: 55, y: axisY + 92, fill: 'var(--haze-dim)',
+                                'font-family': 'var(--cond)', 'font-size': 17 });
+  caption.textContent = hasBaseline
+    ? 'dashed outline: what comparable trucks are asking   ·   teal ticks: the listings priced against'
+    : 'teal ticks: the real listings this was priced against';
+  g.append(caption);
 
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     g.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
@@ -307,11 +322,17 @@ function render(a) {
     $('gauge-wrap').hidden = false;
     drawGauge(price);
     const card = price.model_card;
+    const adjusted = Math.abs(price.point - price.baseline_point) > 1;
     $('gauge-note').innerHTML =
-      `This is an ${Math.round(price.interval_level * 100)}% band. On held-out listings it `
-      + `contained the real asking price <b>${(card.coverage * 100).toFixed(1)}%</b> of the time `
-      + `(${card.coverage_n} evaluations). Fit R² ${card.r2}, median error ${card.mae_pct}% `
-      + `across ${card.n_listings} listings collapsing to ${card.n_groups} distinct specs.`;
+      (adjusted
+        ? `The dashed outline is what comparable trucks are asking; the filled band is that `
+          + `estimate moved <b>${price.adjustment.pct.toFixed(1)}%</b> by what the photos show. `
+        : '')
+      + `The asking band is an ${Math.round(price.interval_level * 100)}% interval — on held-out `
+      + `listings it contained the real asking price <b>${(card.coverage * 100).toFixed(1)}%</b> `
+      + `of the time (${card.coverage_n} evaluations). Fit R² ${card.r2}, median error `
+      + `${card.mae_pct}% across ${card.n_listings} listings collapsing to ${card.n_groups} `
+      + `distinct specs.`;
   } else if (price && !price.ok) {
     showRefusal(a.headline, price.reason, a.gate.truck_evidence);
   } else {

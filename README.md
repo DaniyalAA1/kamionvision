@@ -310,13 +310,38 @@ memorisation.
   ToS-prohibited, so degraded twins stand in for amateur capture.
 - **The Turkish comparables are 93% Ford** (78 of 84, the rest MAN). The price
   model prices an Actros, a Scania or a DAF off the market average with a 1.65×
-  wider band and says so on the card — but that is damage control, not coverage.
-  Widening the Turkish corpus across makes is the single highest-value thing left
-  to do, and `hackathon-plan.md` names the vetted sources for it.
+  wider band and says so on the card. That is not an oversight — see the source
+  vetting below. It is a property of what is reachable.
 - **No damage-history field.** Turkish listings state `hasar kaydı`, which would
   have let the condition adjustment be calibrated against a measured price effect
   instead of capped at the residual standard deviation. It is not in the harvested
   fields, so the cap is principled but the per-finding weights are not measured.
+
+## Source vetting: why the Turkish side is one brand
+
+The concentration above is the binding constraint, so the multi-brand sources
+`hackathon-plan.md` nominated were checked. All three turn out to carry **no
+Türkiye-located tractor units**, which is the same reason Mascus contributes
+only US vehicles:
+
+| Source | Verdict | Evidence |
+|---|---|---|
+| `autoline.com.tr` | rejected | Turkish-language interface over pan-European stock. 25 listings on the `cntTR` category page: Poland 5, Finland 3, Netherlands 3, Slovakia 3, Belgium 2, Norway 2, and one each from six more — **Türkiye 0**. Three different country-filter URL forms all returned the same pan-European set. |
+| Mercedes-Benz TruckStore Türkiye | rejected | The `.com.tr` domain does not resolve; the Turkish storefront is `truckstore.com/TR/`. Its search API (`proxyprod.tso-aws.com/tsoApp/widget/truck/search/en_TR`) accepts `{"country":"TR"}`, but that sets the storefront currency, not the vehicle location: the `center` facet offers exactly one option, **"Europe" (1,584 vehicles)**, and sampled results are located in Romania. |
+| MAN TopUsed | rejected | No Türkiye locale. `mantopused.com` and `man.com.tr` both redirect away; the TopUsed homepage contains no Turkey markers. |
+
+So the accessible Turkish sources reduce to Ford Trucks' own OEM channel, because
+the Turkish marketplaces that would carry the other makes (sahibinden.com,
+arabam.com) are ToS-prohibited and technically defended. The brand concentration
+is a property of what is legitimately reachable, not a collection shortcut — and
+the 1.65× unseen-brand widening exists precisely because of it.
+
+Worth noting for anyone continuing this: TruckStore's European stock *is* freely
+reachable through that API and carries year, kilometres, Euro norm, engine, body
+and price for 1,584 multi-brand tractor units. It was not pooled in because the
+TR+US pooling experiment already measured what mixing markets costs — R² on
+Turkish trucks fell from 0.84 to 0.67 — and a Romanian asking price is not a
+Turkish one. It is the obvious next experiment, not an obvious next import.
 
 ## Provenance and ethics
 

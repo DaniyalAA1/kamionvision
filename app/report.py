@@ -51,17 +51,25 @@ def price_lines(price: PriceEstimate) -> list[str]:
     if not price.ok:
         return ["  NO PRICE  " + price.reason]
     card = price.model_card
-    out = [
-        f"  {money(price.low, price.currency)}  –  {money(price.high, price.currency)}"
-        f"     (point estimate {money(price.point, price.currency)})",
-        f"  {money(price.low_usd, 'USD')} – {money(price.high_usd, 'USD')} at "
-        f"{card['fx']['usd_try']} TRY/USD as of {card['fx']['as_of']}",
-    ]
+    cur = price.currency
+    out = []
+    adjusted = abs(price.point - price.baseline_point) > 1
+    if adjusted:
+        out.append(f"  What comparable trucks are asking   "
+                   f"{money(price.baseline_low, cur)} – {money(price.baseline_high, cur)}")
+        out.append(f"  Adjusted for what the photos show   "
+                   f"{money(price.low, cur)} – {money(price.high, cur)}"
+                   f"   (midpoint {money(price.point, cur)})")
+    else:
+        out.append(f"  {money(price.low, cur)}  –  {money(price.high, cur)}"
+                   f"     (point estimate {money(price.point, cur)})")
+    out.append(f"  {money(price.low_usd, 'USD')} – {money(price.high_usd, 'USD')} at "
+               f"{card['fx']['usd_try']} TRY/USD as of {card['fx']['as_of']}")
     cov, n = card.get("coverage"), card.get("coverage_n")
     if cov is not None:
-        out.append(f"  This is an {int(price.interval_level * 100)}% band. On held-out "
-                   f"listings it contained the real asking price {cov * 100:.1f}% of the "
-                   f"time ({n} evaluations).")
+        out.append(f"  The asking band is an {int(price.interval_level * 100)}% interval. On "
+                   f"held-out listings it contained the real asking price {cov * 100:.1f}% "
+                   f"of the time ({n} evaluations).")
     if card.get("r2") is not None:
         out.append(f"  Fit: R² {card['r2']:.2f}, median error {card['mae_pct']:.1f}% "
                    f"across {card['n_listings']} listings ({card['n_groups']} distinct specs).")

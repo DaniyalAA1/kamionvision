@@ -212,11 +212,12 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     usd = math.exp(mu + adj_log)
     lo_usd = math.exp(mu + adj_log + lo_off * factor)
     hi_usd = math.exp(mu + adj_log + hi_off * factor)
-    base_usd = math.exp(mu)
 
     rate = USD_TRY if est.currency == "TRY" else 1.0
     est.point, est.low, est.high = round(usd * rate, -3), round(lo_usd * rate, -3), round(hi_usd * rate, -3)
-    est.baseline_point = round(base_usd * rate, -3)
+    est.baseline_point = round(math.exp(mu) * rate, -3)
+    est.baseline_low = round(math.exp(mu + lo_off * factor) * rate, -3)
+    est.baseline_high = round(math.exp(mu + hi_off * factor) * rate, -3)
     est.point_usd, est.low_usd, est.high_usd = round(usd, -2), round(lo_usd, -2), round(hi_usd, -2)
     est.adjustment = adj
     est.widened = widened
@@ -238,6 +239,10 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     est.caveats = [
         "Trained on ASKING prices, not realised sale prices - the honest caveat, "
         "not a hidden one. Expect realised prices to sit below the band.",
+        "The measured interval coverage belongs to the comparable-asking band. "
+        "The condition-adjusted band is that estimate moved by what the photos "
+        "show, which is a deliberate departure from what sellers ask and is not "
+        "covered by the same measurement.",
         f"Turkish prices converted at {USD_TRY} TRY/USD as of {FX_AS_OF}; at ~30% "
         "annual inflation this rate goes stale fast - refit rather than quote it later.",
     ]

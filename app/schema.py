@@ -204,7 +204,15 @@ class PriceEstimate(_Dict):
     point_usd: float = 0.0
     low_usd: float = 0.0
     high_usd: float = 0.0
-    baseline_point: float = 0.0          # before the condition adjustment
+    # The comparables-only estimate, before anything the photos said. Kept
+    # separate because the measured interval coverage belongs to THIS band:
+    # the model is fit on asking prices, so it predicts what this truck would
+    # be asked for. The condition adjustment then deliberately departs from
+    # that, and conflating the two would launder a measured number onto an
+    # unmeasured one.
+    baseline_point: float = 0.0
+    baseline_low: float = 0.0
+    baseline_high: float = 0.0
     adjustment: ConditionAdjustment = field(default_factory=ConditionAdjustment)
     comparables: list[Comparable] = field(default_factory=list)
     drivers: list[dict] = field(default_factory=list)   # feature contributions
