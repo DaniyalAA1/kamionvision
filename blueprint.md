@@ -1,7 +1,7 @@
 # Vision-First Multi-Agent Truck Appraisal System for Kamion: A Technical Blueprint
 
 ## TL;DR
-- **Build a hybrid architecture**: specialist vision models (YOLO/RT-DETR detectors, SAM 2 segmentation, DINOv2 embeddings, a dedicated no-reference image-quality gate) produce a structured, auditable **condition vector**, and a VLM (Claude/Gemini/Qwen-VL) reasons over that evidence — never a VLM alone, which hallucinates damage and cannot localize. A two-stage pricing engine (public-data prior + internal-transaction posterior via Bayesian hierarchical / residual-correction modeling) converts the condition vector into a price *range* with conformal-calibrated confidence tied to photo quality.
+- **Build a hybrid architecture**: specialist vision models (YOLO/RT-DETR detectors, SAM 2 segmentation, DINOv2 embeddings, a dedicated no-reference image-quality gate) produce a structured, auditable **condition vector**, and a VLM (GPT-5.6, accessed through the Cursor SDK) reasons over that evidence — never a VLM alone, which hallucinates damage and cannot localize. A two-stage pricing engine (public-data prior + internal-transaction posterior via Bayesian hierarchical / residual-correction modeling) converts the condition vector into a price *range* with conformal-calibrated confidence tied to photo quality.
 - **The single biggest constraint is data**: there is **no large, commercially-licensed public dataset of commercial-truck damage**. The only genuine one (DS4E "Truck Damage Detection," 4,962 images, CC BY 4.0) is small and single-author. Car-damage sets (CarDD 4,000 imgs; VehiDE 13,945 imgs) are non-commercial (Flickr/Shutterstock encumbered) and passenger-car only. Kamion **must bootstrap a proprietary truck/trailer/van dataset** and can only use public sets for transfer-learning R&D and the quality gate.
 - **"Perfect observability" is achievable** by combining OpenTelemetry GenAI semantic conventions + a self-hosted trace backend (Langfuse or Arize Phoenix) with a domain-specific **evidence-grounding layer**: every price delta chains back pixel → bounding-box/mask → detected defect → condition score → price adjustment, with per-claim confidence, exact model/prompt versions, and replayability.
 - **Make/model/configuration is a gate, not a covariate** (§3a, §4a). A US Cascadia is a 6×4 conventional with a hood; a Turkish F-MAX is a 4×2 cab-over without one. They share no part geometry, no damage priors and no repair-cost table. An identity stage must resolve make → model → generation → configuration *before* any damage model runs, and it must work from pixels alone in Türkiye, where no free VIN decoder exists.
@@ -322,10 +322,20 @@ rather than a truck — monitor this ratio explicitly as a guardrail metric.
 | **LangGraph** | Graph/state-machine, durable execution, human-in-the-loop, checkpointing, v1.0 (late 2025), OTel support (2026); precedent in vehicle-damage agentic pipelines | ★ **Primary orchestrator** |
 | **Temporal** | Durable, retryable long-running workflows | ★ Wrap the DAG for reliability at scale |
 | **Ray** | Parallel GPU vision inference | ★ Specialist inference layer |
-| Claude Agent SDK / OpenAI Agents SDK | Clean single-vendor agents, tool use | Use for the VLM reasoning nodes (model-swappable) |
+| **Cursor SDK** (`@cursor/sdk` TS / Python) | Runs the Cursor agent programmatically; accepts images (`images: [{data, mimeType}]`); local or Cursor-hosted cloud runtime; `Cursor.models.list()` for model discovery | ★ **VLM reasoning + agent nodes.** Default rate limit 20 req/min — batch the per-photo fan-out rather than one call per image |
 | CrewAI / AutoGen (AG2) | Role-based / debate loops | AutoGen-style debate optional for the critic loop |
 
-**Recommended stack:** LangGraph (orchestration) + Temporal (durability) + Ray (parallel inference) + model-agnostic VLM nodes (Claude/Gemini/Qwen-VL swappable).
+**Recommended stack:** LangGraph (orchestration) + Temporal (durability) + Ray (parallel inference) + **Cursor SDK running GPT-5.6 for the VLM reasoning nodes**.
+
+**Model tiering across the reasoning nodes** (GPT-5.6 family — Sol, Terra, Luna; all three are vision-capable; per-MTok in/out as of the 2026-07-30 price cuts):
+
+| Node | Tier | $/MTok | Why |
+|---|---|---|---|
+| Adjudicator/Critic (agent 11) | **Sol** | $5 / $30 | Only tier with `max` reasoning effort; this is the node that decides confidence and can refuse to quote |
+| Condition synthesis + Report (agents 5, 12) | **Terra** | $2.00 / $12.00 | Everyday default; 20% price cut on 2026-07-30 |
+| Per-photo triage, identity/coverage pre-pass (agents 3, 4) | **Luna** | $0.20 / $1.20 | 80% price cut on 2026-07-30 — cheap enough to run across all 32–38 Turkish photos per listing |
+
+Context window is up to 1.1M, so a full 35-photo Turkish listing fits in a single call.
 
 **Observability — first-class deliverable:**
 
@@ -356,7 +366,7 @@ rather than a truck — monitor this ratio explicitly as a guardrail metric.
 **End-to-end system:**
 - **Ingestion:** mobile app with **guided photo flow** (AR overlays for required angles, on-device blur/coverage pre-checks) + upload API.
 - **Storage:** object store (S3-compatible) for photos; metadata DB (Postgres) for appraisals/condition vectors; **vector store** (pgvector/Qdrant) for comparables (image + tabular embeddings).
-- **Inference layer:** Ray Serve for specialists (YOLO/RT-DETR, SAM 2, IQA, OCR, tire); VLM via API (Claude/Gemini) or self-hosted Qwen-VL/InternVL.
+- **Inference layer:** Ray Serve for specialists (YOLO/RT-DETR, SAM 2, IQA, OCR, tire) on owned GPUs; VLM reasoning nodes via **Cursor SDK → GPT-5.6 (Sol/Terra/Luna)**. The specialists are not LLM calls and do not route through Cursor.
 - **Orchestration:** LangGraph + Temporal.
 - **Observability:** Langfuse + OTel.
 - **Serving API + Reviewer dashboard.**
@@ -370,7 +380,20 @@ rather than a truck — monitor this ratio explicitly as a guardrail metric.
 
 **Build vs buy:** Off-the-shelf = NR-IQA (pyiqa), SAM 2, YOLO/RT-DETR backbones, OCR, Marketcheck comps, Langfuse. Train = coverage classifier, truck/trailer damage detectors, tire grading, condition→grade mapper, pricing residual model.
 
-**VLM inference cost per appraisal at scale:** with the hybrid design, the VLM runs a bounded number of reasoning calls (not per-pixel). Estimate ~5–15 VLM calls per appraisal (adjudication + report), each with a few images — on the order of low tens of US cents to ~US$1–2 per appraisal at current flagship-VLM multimodal pricing; specialists run on owned GPUs at near-zero marginal cost. Batching, caching (Helicone/gateway), and using smaller VLMs (Qwen-VL) for routine cases cut this further.
+**VLM inference cost per appraisal at scale:** with the hybrid design, the VLM runs a bounded number of reasoning calls (not per-pixel) — ~5–15 per appraisal (adjudication + report); specialists run on owned GPUs at near-zero marginal cost.
+
+Image input dominates the bill. A Turkish listing carries 32–38 photos at 1440×1080; a US listing ~15 at 2500×1875 (downscaled on ingest). Order-of-magnitude per full-set pass:
+
+| Market | Photos | Tier | Image input cost/appraisal |
+|---|---|---|---|
+| TR (F-MAX) | 35 @ 1440×1080 | Luna triage | **~$0.01–0.02** |
+| TR (F-MAX) | 35 @ 1440×1080 | Terra synthesis | **~$0.15** |
+| US (Cascadia) | 15 @ downscaled | Terra synthesis | **~$0.07** |
+| Either | selected evidence crops only | Sol adjudication | **~$0.05–0.15** |
+
+So roughly **$0.10–0.40 per appraisal** with Luna doing the per-photo pass and Sol reserved for contested cases — comfortably inside the §8b ASP assumptions (A3 $45 / B3 $18). Two levers cut it further: escalate only the photos Luna flags, and keep the (large, stable) condition rubric as a fixed prompt prefix.
+
+> **Throughput constraint — validate before committing the runtime.** Cursor’s default SDK rate limit is 20 requests/min. The §5 topology fans out ~12 agents over 32–38 photos, so one call per photo would exhaust the limit inside a single appraisal. Batch photos per call (the 1.1M context makes this easy) and cap concurrent appraisals accordingly. Check headroom against the §8e Year-2 volume (13,000 assessments/yr) before locking this in.
 
 **Key risks & failure modes:**
 - **Adversarial/fraudulent photos** (stock, AI-generated, tampered) → Fraud Agent + perceptual-hash/embedding checks.
