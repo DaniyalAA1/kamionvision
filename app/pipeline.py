@@ -127,16 +127,25 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     if not price.ok:
         result.status = "need_more_photos"
         result.headline = price.reason
-    elif gate.decision == GateDecision.ASK_MORE:
-        result.status = "ok_with_requests"
-        result.headline = (f"Priced, with gaps: {price.low:,.0f}–{price.high:,.0f} "
-                           f"{price.currency}. {gate.headline}")
     else:
-        result.status = "ok"
+        # The headline deliberately does not call this "the 80% band". The
+        # measured coverage belongs to the comparable-asking interval; this
+        # number is that interval moved by what the photos show, and labelling
+        # it with someone else's measurement is the exact conflation the two
+        # separate bands exist to prevent.
         grade = ev.condition_grade if ev else "unknown"
-        result.headline = (f"{price.low:,.0f}–{price.high:,.0f} {price.currency} "
-                           f"({int(price.interval_level * 100)}% band), condition {grade}, "
-                           f"from {len(gate.usable_photo_ids)} photos.")
+        band = (f"{price.low:,.0f}–{price.high:,.0f} {price.currency}")
+        if abs(price.point - price.baseline_point) > 1:
+            band += (f" after condition, against "
+                     f"{price.baseline_low:,.0f}–{price.baseline_high:,.0f} asked "
+                     f"for comparable trucks")
+        if gate.decision == GateDecision.ASK_MORE:
+            result.status = "ok_with_requests"
+            result.headline = f"{band}. {gate.headline}"
+        else:
+            result.status = "ok"
+            result.headline = (f"{band}. Condition {grade}, from "
+                               f"{len(gate.usable_photo_ids)} photos.")
 
     result.elapsed_s = round(time.time() - t0, 2)
     return result

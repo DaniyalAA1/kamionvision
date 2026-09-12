@@ -207,25 +207,29 @@ function drawGauge(price) {
   g.append(svg('line', { x1: nx, y1: axisY - 26, x2: nx, y2: axisY + 26,
                          stroke: 'var(--paper)', 'stroke-width': 2 }));
 
-  // Comparables as ticks on the same scale. Labels alternate between two rows
-  // when neighbours are close enough to overlap - five 2020-2022 F-MAXes at
-  // similar mileage land almost on top of each other otherwise.
-  let lastX = -Infinity, row = 0;
+  // Comparables as ticks on the same scale. Five 2020-2022 F-MAXes at similar
+  // mileage land almost on top of each other, so labels are placed greedily
+  // into the first row where they clear the previous label; a label with no
+  // room is dropped and its tick stays, which is better than an unreadable pile.
+  const rowEnds = [-Infinity, -Infinity, -Infinity];
   comps.forEach(({ c, v }) => {
     const px = x(v);
-    row = (px - lastX < 110) ? 1 - row : 0;
-    lastX = px;
-    const depth = row === 0 ? 42 : 60;
-    g.append(svg('line', { x1: px, y1: axisY + 26, x2: px, y2: axisY + depth - 4,
+    const label = `${c.year} · ${Math.round(c.km / 1000)}k`;
+    const half = label.length * 4.4 + 6;
+    const row = rowEnds.findIndex((end) => px - half > end);
+    const depth = 42 + (row < 0 ? 0 : row) * 19;
+    g.append(svg('line', { x1: px, y1: axisY + 26, x2: px, y2: axisY + depth - 6,
                            stroke: 'var(--signal)', 'stroke-width': 2 }));
-    const t = svg('text', { x: px, y: axisY + depth + 14, fill: 'var(--signal)',
+    if (row < 0) return;
+    rowEnds[row] = px + half;
+    const t = svg('text', { x: px, y: axisY + depth + 12, fill: 'var(--signal)',
                             'text-anchor': 'middle', 'font-family': 'var(--cond)',
-                            'font-size': 18 });
-    t.textContent = `${c.year} · ${Math.round(c.km / 1000)}k`;
+                            'font-size': 17 });
+    t.textContent = label;
     g.append(t);
   });
 
-  const caption = svg('text', { x: 55, y: axisY + 92, fill: 'var(--haze-dim)',
+  const caption = svg('text', { x: 55, y: axisY + 100, fill: 'var(--haze-dim)',
                                 'font-family': 'var(--cond)', 'font-size': 17 });
   caption.textContent = hasBaseline
     ? 'dashed outline: what comparable trucks are asking   ·   teal ticks: the listings priced against'
@@ -325,8 +329,8 @@ function render(a) {
     const adjusted = Math.abs(price.point - price.baseline_point) > 1;
     $('gauge-note').innerHTML =
       (adjusted
-        ? `The dashed outline is what comparable trucks are asking; the filled band is that `
-          + `estimate moved <b>${price.adjustment.pct.toFixed(1)}%</b> by what the photos show. `
+        ? `Condition moved the estimate <b>${price.adjustment.pct.toFixed(1)}%</b>, capped at `
+          + `±${price.adjustment.cap_pct.toFixed(1)}%. `
         : '')
       + `The asking band is an ${Math.round(price.interval_level * 100)}% interval — on held-out `
       + `listings it contained the real asking price <b>${(card.coverage * 100).toFixed(1)}%</b> `
