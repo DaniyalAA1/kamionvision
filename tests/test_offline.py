@@ -1752,9 +1752,24 @@ class PagesAreConnected(unittest.TestCase):
             self.assertIn(markup, self.landing, markup)
             self.assertIn(markup, self.app, markup)
 
-    def test_the_landing_assets_the_app_page_borrows_exist(self):
-        for name in ("assets/kip.svg", "assets/demo-truck.jpg"):
-            self.assertTrue((self.web / name).is_file(), name)
+    def test_every_asset_either_page_references_exists(self):
+        # `demo-truck.jpg` went with the hotspot playground the scroll story
+        # replaced. Pinning a named file by hand is how that orphan survived the
+        # section that used it; walking the references instead cannot.
+        for page, src in (("landing.html", self.landing), ("index.html", self.app)):
+            refs = set(re.findall(r'(?:src|href)="(/static/[^"]+)"', src))
+            self.assertTrue(refs, page)
+            for ref in refs:
+                self.assertTrue((self.web / ref.removeprefix("/static/")).is_file(),
+                                f"{page} -> {ref}")
+
+    def test_the_app_page_does_not_link_to_anchors_the_landing_dropped(self):
+        # `/#how` and `/#playground` outlived the sections they pointed at: the
+        # app page's own nav went on offering them after the scroll story
+        # replaced both, and nothing here noticed.
+        ids = set(re.findall(r'id="([^"]+)"', self.landing))
+        for target in re.findall(r'href="/#([^"]+)"', self.app):
+            self.assertIn(target, ids, f'index.html links to /#{target}')
 
 
 class SubjectDrawContract(unittest.TestCase):

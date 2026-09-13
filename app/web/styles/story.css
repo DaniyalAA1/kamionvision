@@ -126,6 +126,9 @@
   font-size: .95rem;
   margin: 1.4rem 0 0;
 }
+/* Act 1's side column carries the facts, three witnesses, the year evidence
+   and the subject basis. At this density its prose is a caption. */
+.gate-side .act-note { font-size: .87rem; line-height: 1.5; margin-top: 1rem; }
 .act-timing {
   font: 400 9px/1.7 var(--mono);
   letter-spacing: 1px;
@@ -201,6 +204,57 @@
   margin: 0;
   font: 500 1.02rem/1.3 'Barlow', sans-serif;
   text-align: right;
+}
+
+/* The independent reads that agreed on what the truck is. Each row is a
+   separate measurement, which is why they are listed rather than summed into a
+   single confidence. */
+.witnesses { margin-top: 1rem; }
+.witnesses ul { list-style: none; margin: 0 0 .75rem; padding: 0; }
+.witnesses li {
+  display: flex;
+  align-items: baseline;
+  gap: .7rem;
+  padding: .42rem 0;
+  border-bottom: 1px solid var(--stage-rule);
+}
+.witnesses li:last-child { border-bottom: 0; }
+.witnesses span { flex: 1; font-size: .88rem; color: var(--stage-haze); }
+.witnesses b { font-weight: 600; font-size: .95rem; letter-spacing: .01em; }
+.witnesses em {
+  font: 400 8px/1.6 var(--mono);
+  font-style: normal;
+  letter-spacing: 1px;
+  color: var(--stage-haze);
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.witness-verdict {
+  margin: 0 0 .6rem;
+  font-size: .89rem;
+  line-height: 1.5;
+  color: var(--stage-haze);
+}
+.witness-verdict::before {
+  content: '';
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: .5rem;
+  vertical-align: middle;
+}
+.witness-verdict.agree::before  { background: var(--verified-lit); }
+.witness-verdict.differ::before { background: var(--caution-lit); }
+/* The model's reason for the year it gave, read off the bodywork. Set apart
+   because it is a quotation of the run rather than a fact about it. */
+.witness-year {
+  margin: 0;
+  padding-left: .9rem;
+  border-left: 2px solid var(--stage-rule);
+  font-size: .85rem;
+  line-height: 1.5;
+  color: var(--stage-haze);
 }
 
 /* --- act 2: the deck ------------------------------------------------------ */

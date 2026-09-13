@@ -40,6 +40,15 @@ sys.path.insert(0, str(REPO))
 
 from app.config import USD_TRY, WEB                             # noqa: E402
 
+# Act 4 states the tolerance the two odometer readings are allowed to differ by
+# and what the band does when they do not. Both are `reconcile`'s to define, and
+# a page that retyped them would keep asserting the old ones after they moved.
+try:
+    from app.reconcile import (ODOMETER_CONFLICT_WIDENING,      # noqa: E402
+                               ODOMETER_TOLERANCE_FRAC)
+except ImportError:                                             # pragma: no cover
+    ODOMETER_TOLERANCE_FRAC, ODOMETER_CONFLICT_WIDENING = None, None
+
 OUT = WEB / "assets" / "story"
 LANDING = WEB / "landing.html"
 START, END = "<!-- story:start -->", "<!-- story:end -->"
@@ -232,6 +241,30 @@ def build(appraisal: dict, folder: Path) -> dict:
     corroborated = max((i for i in ev["issues"]),
                        key=lambda i: len(i["also_seen_in"]), default=None)
 
+    # What the run concluded the truck IS, and which independent reads said so.
+    # Act 1 is the identification act, so the witnesses belong in it: "two
+    # independent reads agree this is a Ford" is a checkable claim in a way
+    # that a confidence decimal is not.
+    verdict = ev.get("identity") or {}
+    identity = {
+        "status": verdict.get("status", "unknown"),
+        "make": verdict.get("make"), "model": verdict.get("model"),
+        "reason": verdict.get("reason", ""),
+        "witnesses": [{"name": w[0], "said": w[1], "confidence": round(float(w[2]), 3)}
+                      for w in (verdict.get("witnesses") or []) if len(w) >= 3],
+        "agreed": verdict.get("agreed") or [],
+        "disagreed": verdict.get("disagreed") or [],
+        "widening": verdict.get("widening", 1.0),
+        # The identity pass is sampled; the agreement rate across those samples
+        # is measured, unlike the model's own confidence in itself.
+        "samples": veh.get("identity_samples", 1),
+        "agreement": round(veh.get("identity_agreement", 0.0), 3),
+        "year_evidence": veh.get("year_evidence", ""),
+        "badge_text": veh.get("badge_text") or [],
+        "wmi": veh.get("wmi"), "wmi_brand": veh.get("wmi_brand"),
+        "generation": veh.get("generation"),
+    }
+
     anchor = price.get("anchor") or {}
     routes = None
     if anchor.get("ok") and anchor.get("point"):
@@ -279,6 +312,7 @@ def build(appraisal: dict, folder: Path) -> dict:
             "elapsed_s": round(gate.get("elapsed_s", 0), 1),
             "lot": lot_frame(gate),
         },
+        "identity": identity,
         "photos": photos,
         "merge": {
             "raw": raw_issues, "merged": len(ev["issues"]),
@@ -341,6 +375,25 @@ def build(appraisal: dict, folder: Path) -> dict:
 
 
 # --- the markup -----------------------------------------------------------
+
+# `IdentityVerdict.witnesses` names its sources in the pipeline's own
+# vocabulary. Each is a genuinely separate measurement, and saying which is the
+# whole point of printing them - "the badge" and "the chassis plate" are things
+# a reader can go and look at, "identity_pass" is not.
+WITNESS = {
+    "identity_pass": "The vision model, over every photo",
+    "head": "The trained brand head",
+    "badge": "The badge, read off a full-resolution crop",
+    "wmi": "The chassis-plate VIN",
+}
+
+
+def pct(v: float) -> str:
+    """A rate, with a decimal only when rounding would hide something. 0.998
+    and 1.0 both print as 100% at zero places, which is the one difference
+    between two witness rows."""
+    return f"{v:.0%}" if v >= 0.9995 or v == 0 else f"{v:.1%}"
+
 
 def esc(s) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
@@ -428,6 +481,24 @@ def render(story: dict) -> str:
         f'<div><dt>Identified as</dt><dd>{esc(name)}, {esc(t["axle_config"])} '
         f'{esc((t["body_type"] or "").replace("_", " "))}</dd></div>'
         '</dl>')
+    ident = story.get("identity") or {}
+    if ident.get("witnesses"):
+        out.append('<div class="witnesses"><h4>How it knows</h4><ul>')
+        for w in ident["witnesses"]:
+            out.append(f'<li><span>{esc(WITNESS[w["name"]] if w["name"] in WITNESS else w["name"].replace("_", " "))}</span>'
+                       f'<b>{esc(w["said"])}</b>'
+                       f'<em>{pct(w["confidence"])}</em></li>')
+        out.append('</ul>')
+        if ident.get("reason"):
+            reason = re.sub(r"\s*\([^)]*\)\s*$", "", ident["reason"])
+            out.append(f'<p class="witness-verdict {"agree" if not ident["disagreed"] else "differ"}">'
+                       f'{esc(reason)}. The identity pass is asked '
+                       f'{ident["samples"]} times and agreed with itself '
+                       f'{ident["agreement"]:.0%} of the time &mdash; a measured rate, '
+                       f'not the model&rsquo;s opinion of itself.</p>')
+        if ident.get("year_evidence"):
+            out.append(f'<p class="witness-year">{esc(ident["year_evidence"])}</p>')
+        out.append('</div>')
     out.append(f'<p class="act-note">{esc(g["subject_evidence"]).capitalize()}. '
                f'Truck detection is decided across the set, never frame by frame: '
                f'a tire close-up contains no truck-shaped object and is still a photo '
@@ -520,8 +591,10 @@ def render(story: dict) -> str:
             f'<em>confidence {odo["ocr"]["confidence"]:.2f}</em></li>'
             '</ul>'
             + (f'<p class="check-verdict agree">All three agree, so the band does not '
-               f'widen. Had they disagreed past 2%, both figures would be shown and the '
-               f'range would widen 1.25&times; rather than the number quietly moving.</p>'
+               f'widen. Had they disagreed past {ODOMETER_TOLERANCE_FRAC:.0%}, both '
+               f'figures would be shown and the range would widen '
+               f'{ODOMETER_CONFLICT_WIDENING:g}&times; rather than the number quietly '
+               f'moving.</p>'
                if odo["agree"] else
                '<p class="check-verdict differ">The readings differ, so both are shown '
                'and the band widens.</p>')

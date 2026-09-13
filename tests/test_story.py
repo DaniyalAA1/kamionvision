@@ -133,6 +133,36 @@ class EveryClaimComesFromTheRun(StoryFixture):
                         f"grade_reason no longer opens with the grade: {reason!r}")
         self.assertIn(reason.split(": ", 1)[1], blob, reason)
 
+    def test_the_identity_witnesses_are_listed_rather_than_summed(self):
+        """Act 1 names each independent read, or it names none of them.
+
+        "Two independent reads agree this is a Ford" is checkable; a single
+        confidence decimal is not, and collapsing the witnesses into one would
+        throw away the only part a reader can verify. The verdict line is also
+        the third claim `render()` reshapes: `IdentityVerdict.reason` ends with
+        the witness ids it used, which the list directly above has just named
+        properly, so the trailing parenthetical is dropped.
+        """
+        ident = self.story.get("identity") or {}
+        if not ident.get("witnesses"):
+            self.skipTest("this run produced no identity verdict")
+        blob = " ".join(self.text.chunks)
+        for w in ident["witnesses"]:
+            self.assertIn(w["said"], blob, w["name"])
+        reason = re.sub(r"\s*\([^)]*\)\s*$", "", ident["reason"])
+        self.assertIn(reason, blob)
+        # Dropping the parenthetical may not drop a word of the claim itself.
+        self.assertEqual(reason, ident["reason"].split(" (")[0])
+        if ident.get("year_evidence"):
+            self.assertIn(ident["year_evidence"], blob)
+
+    def test_a_disputed_identity_would_not_be_drawn_as_agreement(self):
+        ident = self.story.get("identity") or {}
+        if not ident.get("witnesses"):
+            self.skipTest("this run produced no identity verdict")
+        expected = "agree" if not ident["disagreed"] else "differ"
+        self.assertIn(f'class="witness-verdict {expected}"', self.region)
+
     def test_no_photo_verdict_cites_a_photo_that_is_not_shipped(self):
         shipped = {p["photo_id"] for p in self.story["photos"]}
         for photo in self.story["photos"]:
