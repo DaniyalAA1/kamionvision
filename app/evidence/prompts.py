@@ -17,11 +17,26 @@ the model look properly; it did nothing to calibrate what it called what it
 saw. `SEVERITIES` was four bare words with no threshold, no anchor and not one
 worked example behind them, assigned by a model that sees one photograph and
 has never been told how far the truck has run.
+
+What is newest is that two of these prompts know WHICH truck they are looking
+at, and a third deliberately does not. `app.modelspec` reads
+`data/reference/models_tr.json` and hands the identity pass a closed model list
+and a generation's visual markers, and the close-up pass that model's spec and
+its known weak points; all of it degrades to nothing when the card is absent,
+and a test pins that both prompts are then byte-identical to what they were
+before the file existed. The weak points are the delicate half - a model told a
+component is a known weak point will report it whether or not the frame shows
+one, so they travel with the wording that makes them a prior about the model
+rather than an observation about this truck. The third prompt is the badge
+read, and it is told nothing: it is a second witness to make and model, and a
+witness who has been handed the answer corroborates nothing.
 """
 from __future__ import annotations
 
 import json
 import textwrap
+
+from .. import modelspec
 
 # Closed vocabulary. The model is told to use these ids and nothing else, so
 # downstream severity weighting and the report's grouping are both stable.
@@ -303,6 +318,18 @@ VIEW_FAMILIES = {
 }
 
 ANCHOR_COMPONENTS = {family: ids for family, (_, ids, _) in _FAMILY_ANCHORS.items()}
+
+
+def view_components(view: str) -> tuple[str, ...]:
+    """The component ids a photograph tagged `view` could actually show.
+
+    The families partition `COMPONENTS`, so between them the views cover the
+    whole enum - a test asserts both. This is what a model's known weak points
+    are filtered through before they reach a close-up call: a tire close-up has
+    no business being told about this model's AdBlue tank, because it cannot
+    see one and a prior it cannot check is a prior it can only report on faith.
+    """
+    return tuple(c for f in VIEW_FAMILIES.get(view, ()) for c in ANCHOR_COMPONENTS[f])
 
 
 def _anchor_block(family: str) -> str:
@@ -650,26 +677,80 @@ def questions_for(view: str) -> list[str]:
 
 
 # --- pass A: identity ------------------------------------------------------
+# Two things changed here and both are about making an answer checkable.
+#
+# `model` was free text, so "F Max", "FMAX" and "F-MAX 500" were three answers
+# to one question and only one of them joined against the anchor row.
+# `modelspec.vocabulary` closes the list. It ends in "other" deliberately: a
+# judge's truck may be a model this repo has never heard of, and forcing a pick
+# from a closed list is a worse answer than an honest "other". With no card the
+# enum disappears and the field is free text exactly as it was.
+#
+# `approx_year_range` was free text nothing could check either - a range with
+# no stated basis, read next to a declared year it was probably derived from.
+# `generation` is picked from the card's closed list using visual markers and
+# `year_evidence` says what in the photographs supports the range. The rule
+# that makes them worth anything is in the prompt in as many words: the
+# generation is read off the grille, NEVER off the year the seller typed. A
+# year-derived generation agrees with the year by construction, and a
+# cross-check that can only agree catches nothing.
 
-IDENTITY_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["make", "model", "body_type", "cab_type", "axle_config",
-                 "approx_year_range", "badges_seen", "confidence",
-                 "same_vehicle", "vehicle_mismatch"],
-    "properties": {
-        "make": {"type": ["string", "null"]},
-        "model": {"type": ["string", "null"]},
-        "body_type": {"type": ["string", "null"]},
-        "cab_type": {"type": ["string", "null"]},
-        "axle_config": {"type": ["string", "null"]},
-        "approx_year_range": {"type": ["string", "null"]},
-        "badges_seen": {"type": "array", "items": {"type": "string"}},
-        "confidence": {"type": "number"},
-        "same_vehicle": {"type": "boolean"},
-        "vehicle_mismatch": {"type": "string"},
-    },
-}
+
+def identity_schema(make: str | None = None) -> dict:
+    """Pass A's schema, closed over the model card when there is one.
+
+    `make` narrows the list: once the brand is settled, offering a model from
+    another brand is offering a wrong answer. It is optional because pass A is
+    the call that settles the brand - with nothing passed the enum is every
+    model the card knows, which is the shape the first sample is sent in.
+    """
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["make", "model", "body_type", "cab_type", "axle_config",
+                     "approx_year_range", "generation", "generation_conf",
+                     "year_evidence", "badges_seen", "confidence",
+                     "same_vehicle", "vehicle_mismatch"],
+        "properties": {
+            "make": {"type": ["string", "null"]},
+            "model": {"type": ["string", "null"]},
+            "body_type": {"type": ["string", "null"]},
+            "cab_type": {"type": ["string", "null"]},
+            "axle_config": {"type": ["string", "null"]},
+            "approx_year_range": {"type": ["string", "null"]},
+            # Not an enum. A generation list belongs to a (brand, model) pair
+            # and this schema is built before the model is known - that is the
+            # question pass A answers. The closed list travels in the prompt
+            # instead, where the caller can condition it on a model it has.
+            "generation": {"type": ["string", "null"]},
+            "generation_conf": {"type": "number"},
+            "year_evidence": {"type": "string"},
+            "badges_seen": {"type": "array", "items": {"type": "string"}},
+            "confidence": {"type": "number"},
+            "same_vehicle": {"type": "boolean"},
+            "vehicle_mismatch": {"type": "string"},
+        },
+    }
+    vocabulary = modelspec.vocabulary(make)
+    if vocabulary:
+        schema["properties"]["model"] = {"type": ["string", "null"],
+                                         "enum": vocabulary + [None]}
+    return schema
+
+
+def __getattr__(name: str):
+    """`prompts.IDENTITY_SCHEMA`, resolved when it is read rather than at import.
+
+    Importing this module must not read a file off disk. A malformed card
+    would otherwise take down `app.cli doctor`, which is the command you run
+    to find out that the card is malformed. Not cached either, so it tracks
+    `modelspec._reset()`; this is read a couple of times in a run and building
+    it is a dict literal over an already-parsed card.
+    """
+    if name == "IDENTITY_SCHEMA":
+        return identity_schema()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 IDENTITY_PROMPT = """\
 Return ONE JSON object and nothing else. No markdown fence, no commentary.
@@ -681,6 +762,14 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
   "cab_type": string|null,          // e.g. "high sleeper", "day cab"
   "axle_config": string|null,       // e.g. "4x2", "6x4"
   "approx_year_range": string|null, // e.g. "2018-2022", from the generation you can see
+  "generation": string|null,        // which generation of this model, by id, from the
+                                    // closed list below when one is given; null when
+                                    // no list is given and the markers are all you have
+  "generation_conf": 0.0-1.0,       // how far the markers you can actually see get you.
+                                    // 0 when you had nothing to read it off
+  "year_evidence": string,          // one sentence: what IN THE PHOTOGRAPHS puts this
+                                    // truck in that range - the marker you read it off.
+                                    // "" when nothing in them supports it
   "badges_seen": [string],          // literal text visible on the truck
   "confidence": 0.0-1.0,
   "same_vehicle": boolean,          // are ALL these photos the same vehicle?
@@ -689,6 +778,16 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
 
 This pass is about IDENTITY ONLY. Do not report condition, defects or wear -
 each photo is being examined in detail separately.
+
+On "generation", "approx_year_range" and "year_evidence": read the generation
+off what is VISIBLE - the grille, the lamp signature, the mirror housings, the
+door script, the bumper and the trim - and NEVER off the year the seller typed.
+That year is the thing this read is used to check: a generation derived from it
+would agree with it by construction, and a cross-check that can only agree
+catches nothing. If the markers and the declared year disagree, answer with
+what you can see and say so in "year_evidence". If nothing in these photographs
+settles it, leave the generation unsettled and set "generation_conf" to 0 - an
+honest null is a useful answer here and a guess is not.
 
 On "same_vehicle": only call a mismatch on IDENTIFYING evidence - a different
 number plate, a different cab generation or model, a different colour,
@@ -703,6 +802,195 @@ valuation entirely.
 {context}
 
 Return the JSON object now."""
+
+
+# The three card blocks. Each one is empty when the card cannot answer, and
+# `identity_prompt` joins what survives onto the end of the context - so the
+# order a reader gets is: these photographs, what the seller claims, what these
+# models look like, answer. With no card at all the composition is the identity
+# and the prompt is byte-identical to the template's; a test pins that, because
+# a block that leaves an empty heading or a dangling "one of:" behind is a
+# regression nobody would catch by eye.
+
+_MODEL_LIST = """\
+"model" is a closed list. Answer with exactly one of:
+{models}
+Use "other" for a truck that is none of them. That name is joined against a
+reference card downstream, so a wrong pick from the list describes a different
+vehicle; "other" costs the join and nothing else."""
+
+_GENERATIONS = """\
+The {model} has these generations, and these are what separate them by eye. If
+that is what you are looking at, answer "generation" with one of these ids and
+nothing else:
+{rows}
+  unknown
+Read it off those markers. The year the seller typed is not one of them, and
+"unknown" is a better answer than a generation you reasoned back from it."""
+
+_TELLS = """\
+Tells that separate the {model} from the models it is most often taken for:
+{rows}"""
+
+
+def _model_list_block(make: str | None) -> str:
+    vocabulary = modelspec.vocabulary(make)
+    if not vocabulary:
+        return ""
+    return _MODEL_LIST.format(models=textwrap.fill(
+        ", ".join(vocabulary), width=76, initial_indent="  ",
+        subsequent_indent="  "))
+
+
+def _generation_block(make: str | None, model: str | None) -> str:
+    """Only ever for a model that has already been named.
+
+    With the make alone there is nothing to list: generations belong to a
+    (brand, model) pair, and reciting every Ford generation would be telling
+    the call what to look for on a truck it has not identified yet.
+    """
+    generations = modelspec.generations(make, model) if model else []
+    rows = []
+    for gen in generations:
+        if not gen.get("id"):
+            continue
+        head = f"  {gen['id']}"
+        if gen.get("years"):
+            head += f" ({gen['years']})"
+        rows.append(head + ":")
+        # One marker per line, unwrapped. A filled paragraph would break a
+        # marker across a line boundary, and these are read as a checklist.
+        rows += [f"    - {marker}" for marker in (gen.get("visual_markers") or [])]
+    if not rows:
+        return ""
+    return _GENERATIONS.format(model=_canonical(make, model), rows="\n".join(rows))
+
+
+def _tells_block(make: str | None, model: str | None) -> str:
+    tells = modelspec.identity_tells(make, model) if model else []
+    if not tells:
+        return ""
+    return _TELLS.format(model=_canonical(make, model),
+                         rows="\n".join(f"  - {tell}" for tell in tells))
+
+
+def _canonical(make: str | None, model: str | None) -> str:
+    """The name the card matched on, not the one the caller typed.
+
+    Both blocks only ever run when `modelspec.card` found a row, and it finds
+    one through the aliases - so a caller holding the raw vision answer "F Max"
+    would otherwise print a heading naming a model the reference does not have.
+    """
+    return modelspec.normalise_model(make, model) or str(model).upper()
+
+
+def identity_prompt(*, context: str, make: str | None = None,
+                    model: str | None = None) -> str:
+    """The template, plus whatever the model card can say about this vehicle."""
+    blocks = [context, _model_list_block(make), _generation_block(make, model),
+              _tells_block(make, model)]
+    return IDENTITY_PROMPT.format(context="\n\n".join(b for b in blocks if b))
+
+
+# --- pass A2: the badge, read on its own ----------------------------------
+# A second and INDEPENDENT reading of what the truck says it is, in the same
+# posture as the odometer OCR and the chassis-plate VIN: one call on a
+# full-resolution crop of the grille and door band, rather than a badge read
+# off a downscaled eight-photo montage by the same call that is also deciding
+# body type, axle count and whether the photos are one vehicle.
+#
+# Independent is the whole value, and it is fragile. `badge_prompt` takes
+# `make` and `model` so it COULD name a brand's badge conventions, and it
+# deliberately uses neither: those two fields are the answers this call exists
+# to witness, and a witness who has been told the answer corroborates nothing -
+# `reconcile` would be comparing pass A against a paraphrase of pass A. The
+# parameters stay in the signature so the call site does not have to care, and
+# a test pins that the prompt is the same string with them and without them.
+#
+# The second reason this prompt is written the way it is: the crop is the upper
+# band of the cab, and on a dealer lot that band includes the windscreen. A
+# windscreen carries an asking figure and a telephone number. A transcription
+# pass pointed at it is the one place in this system where a currency figure
+# could walk back IN through the model's own answer, and `badge_text` is
+# displayed - hence rule 4, which is also the no-seller-PII rule the dataset
+# scripts have always enforced.
+
+BADGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["badge_text", "make", "model", "trim_or_power", "legible",
+                 "confidence"],
+    "properties": {
+        "badge_text": {"type": "array", "items": {"type": "string"}},
+        # Free strings, not the identity enum. A transcription has to be able
+        # to disagree with the vocabulary: if this pass answered from the same
+        # closed list pass A does, the two would agree on a truck neither had
+        # read properly, which is the failure the second reading exists to
+        # catch.
+        "make": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]},
+        "trim_or_power": {"type": ["string", "null"]},
+        "legible": {"type": "boolean"},
+        "confidence": {"type": "number"},
+    },
+}
+
+BADGE_PROMPT = """\
+You are looking at a CROP taken from a larger photograph of a used tractor
+unit - the band across the front and the upper side of the cab where the
+maker's badge, the grille lettering and the model script on the door sit.
+Everything outside that band has been cut away.
+
+Your job is to TRANSCRIBE, and only to transcribe. Read the lettering off the
+metal and the plastic and write down the characters that are actually there.
+
+Return ONE JSON object and nothing else. No markdown fence, no commentary.
+
+{
+  "badge_text": [string],       // every piece of lettering you can read, verbatim,
+                                // one entry per badge. Nothing interpreted, nothing
+                                // expanded, nothing tidied up
+  "make": string|null,          // the manufacturer, ONLY if its name or its emblem
+                                // is legible in this crop
+  "model": string|null,         // the model, ONLY if the model script itself is
+                                // legible. Null otherwise - see rule 2
+  "trim_or_power": string|null, // a trim or power figure carried on its own badge,
+                                // e.g. the "500" on a door. Null if there is none
+  "legible": boolean,           // is there readable lettering in this crop at all?
+  "confidence": 0.0-1.0
+}
+
+Rules, in order of importance:
+1. Transcribe, do not interpret. Keep the spelling, the spacing, the hyphens
+   and the digits exactly as they appear. A badge you can only half read goes
+   into "badge_text" as the characters you are sure of - it does not get
+   completed from what you expect the rest of it to say.
+2. Do NOT identify the model from the shape of the cab, the grille pattern, the
+   lamp signature or anything else about the styling. Another call reads this
+   truck's styling, with every photograph of it in front of that call. This one
+   is here to say what the truck has WRITTEN on it, and a styling guess made
+   here agrees with that other call by construction and confirms nothing.
+3. If there is no legible lettering, set "legible" false, return an empty
+   "badge_text" and leave "make" and "model" null. That is a useful answer: it
+   says the badge could not be read rather than pretending it was.
+4. Read only what is moulded, pressed, welded or scripted onto the truck
+   itself. A windscreen sticker, a dealer board, a registration plate and a
+   telephone number are not badges and none of them belongs in "badge_text".
+5. Do not describe condition, damage or wear. Another call is doing that, one
+   photograph at a time.
+
+Return the JSON object now."""
+
+
+def badge_prompt(*, make: str | None = None, model: str | None = None) -> str:
+    """The badge read. `make` and `model` are accepted and deliberately unused.
+
+    See the block comment above: naming either one hands this call the answer
+    it is here to provide independently. The parameters exist so that the wiring
+    reads the same as every other pass and so that a later maintainer who finds
+    a way to use them without biasing the read has somewhere to put it.
+    """
+    return BADGE_PROMPT
 
 
 # --- pass B: one photo, in depth -------------------------------------------
@@ -864,11 +1152,55 @@ CLOSEUP_INVARIANT = _CLOSEUP_INVARIANT.format(
     states=json.dumps(STATES), blocks=json.dumps(BLOCKS_USE))
 
 
+# The known weak points of a MODEL, as opposed to observations about a truck.
+# This is the one piece of model awareness that can make the report worse: a
+# call told that the AdBlue tank is a known weak point will report a weeping
+# AdBlue tank, because it has been handed a plausible finding and asked to look
+# for it. That is the over-reporting `SEVERITY_RUBRIC` was written against, now
+# with a reference card behind it, which reads to a buyer like corroboration.
+# So the block says three things in order - it is a prior about the model, it
+# is not an observation about this truck, report it ONLY if it is in this
+# frame - and the list is filtered to the components the view can show, so
+# there is nothing in it the call could not check.
+_WEAK_POINTS = ('Known weak points on this model, from a reference card. This is a '
+                'prior about the model and not an observation about this truck. '
+                'Check them specifically and report them ONLY if you can see them '
+                'in THIS frame; if the shot is what stops you seeing one, that is '
+                'a "cannot_tell" and not a finding. One that is present and no '
+                "worse than this truck's age and distance predict is on schedule "
+                'like any other wear, and belongs in "strengths":\n')
+
+
+def _weak_point_rows(weak_points, view: str) -> list[str]:
+    allowed = set(view_components(view))
+    rows = []
+    for entry in weak_points or ():
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            continue
+        component, note = str(entry[0] or "").strip(), str(entry[1] or "").strip()
+        if note and component in allowed:
+            rows.append(f"  - {component}: {note}")
+    return rows
+
+
 def closeup_prompt(*, view: str, view_pretty: str, vehicle: str,
                    cropped: bool, soft: bool, expectation: str = "",
-                   band: str | None = None) -> str:
-    """The three zones, joined. Invariant, then per-appraisal, then per-photo."""
-    appraisal = "\n".join(x for x in (vehicle, expectation) if x)
+                   band: str | None = None, spec_lines: list[str] | tuple = (),
+                   weak_points: list | tuple = ()) -> str:
+    """The three zones, joined. Invariant, then per-appraisal, then per-photo.
+
+    `spec_lines` and `weak_points` are what `app.modelspec` knows about the
+    model the identity pass named, and they land in the two zones for the same
+    reason everything else does: the spec is the same for all sixteen photos of
+    one truck, the weak points are filtered per view and so change per frame.
+    Both default to empty, and empty is byte-identical to the prompt as it was
+    before either existed - the card is optional and a missing one has to leave
+    this call exactly as it ran.
+    """
+    # `or ()` on both: a caller reading them off a card row gets None when the
+    # row has no entry, and an optional input that raises is not optional.
+    spec = (str(line).strip() for line in spec_lines or ())
+    appraisal = "\n".join(x for x in (vehicle, *spec, expectation) if x)
 
     photo = [f'This frame was tagged "{view_pretty}" by a zero-shot classifier. '
              f'That tag is a hint and is sometimes wrong; trust the pixels.']
@@ -890,6 +1222,9 @@ def closeup_prompt(*, view: str, view_pretty: str, vehicle: str,
                      "like for those parts. A component in this state is not a "
                      "finding at any level:\n"
                      + "\n".join(f"  - {row}" for row in rows))
+    weak = _weak_point_rows(weak_points, view)
+    if weak:
+        photo.append(_WEAK_POINTS + "\n".join(weak))
     photo.append("Work through each of these for this photo, and report what you "
                  "can actually see:\n\n"
                  + "\n".join(f"  - {q}" for q in questions_for(view)))
