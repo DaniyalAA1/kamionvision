@@ -133,6 +133,7 @@ const normalise = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' 
 function showRefusal(headline, detail) {
   $('result').hidden = false;
   $('price').textContent = '';
+  $('estimate-label').hidden = true;
   $('price-sub').textContent = '';
   $('price-usd').hidden = true;
   $('verdict-kicker').textContent = '';
@@ -146,10 +147,11 @@ function showRefusal(headline, detail) {
 
 function priceLine(price) {
   const wrap = $('price');
+  $('estimate-label').hidden = false;
   wrap.replaceChildren(
-    document.createTextNode(money(price.low, price.currency)),
+    el('span', 'price-bound', money(price.low, price.currency)),
     el('span', 'dash', '–'),
-    document.createTextNode(money(price.high, price.currency)));
+    el('span', 'price-bound', money(price.high, price.currency)));
 }
 
 function render(a) {
@@ -160,6 +162,9 @@ function render(a) {
   $('price-usd').hidden = true;
 
   run.onResult(a);
+  frames.showFrame(frames.checkFor(frames.currentPhotoId())
+    || (a.gate.decision === 'refuse_not_a_truck' && frames.smokingGun())
+    || a.gate.photos.find((photo) => photo.usable) || a.gate.photos[0]);
   frames.renderGrid(a.gate, frames.openLightbox);
 
   const ev = a.evidence, price = a.price;
@@ -215,7 +220,10 @@ function render(a) {
   }
 
   renderPanels(a, run.elevationRoot());
-  $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
+  // A reader inspecting an earlier photo keeps their place when the answer lands.
+  if (run.isFollowing()) {
+    $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
+  }
 }
 
 /* The same band a second time, in US dollars. The price and the bar are in

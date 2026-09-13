@@ -211,3 +211,11 @@
   .thought.settled { opacity: .88; }
   .thought-pending .part-icon { animation: none; }
 }
+
+.thought.resolve { animation: resolve .48s cubic-bezier(.22,1,.36,1) backwards; }
+.thought.settled { opacity: .92; }
+.thoughts { align-content: start; }
+@media (prefers-reduced-motion: reduce) {
+  .thought.resolve { animation: none; }
+  .thought { transition: none; }
+}

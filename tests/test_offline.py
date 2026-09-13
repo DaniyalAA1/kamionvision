@@ -1022,7 +1022,7 @@ class PartIcons(unittest.TestCase):
 class ScreenChrome(unittest.TestCase):
     """The live screen's motion and corners have a habit of drifting back
     into a second look. These pin the current ones: no defocus on the rail,
-    a wave of dots instead of a green sweep, and one corner radius."""
+    a lightweight inspection sweep, and one corner radius."""
 
     STYLES = Path("app/web/styles")
 
@@ -1031,15 +1031,25 @@ class ScreenChrome(unittest.TestCase):
         self.assertNotIn("filter: blur", css)
         self.assertNotIn("blur(", css)
 
-    def test_the_scan_is_a_dot_wave_not_a_green_sweep(self):
+    def test_scan_is_lightweight_and_respects_reduced_motion(self):
         css = (self.STYLES / "run.css").read_text(encoding="utf-8")
         js = Path("app/web/js/run.js").read_text(encoding="utf-8")
-        self.assertIn("@keyframes dot-wave", css)
-        self.assertIn("fillScanGrid", js)
-        self.assertNotIn("@keyframes sweep", css)
-        self.assertNotIn("78, 207, 164", css)
+        self.assertIn("@keyframes optical-sweep", css)
+        self.assertIn("prefers-reduced-motion: reduce", css)
+        self.assertIn(".scan.on::before { animation: none; }", css)
+        self.assertNotIn("fillScanGrid", js)
         html = Path("app/web/index.html").read_text(encoding="utf-8")
         self.assertIn('id="scan"', html)
+        self.assertIn('id="scan-status" role="status"', html)
+
+    def test_price_ranges_are_separate_and_directly_labelled(self):
+        js = Path("app/web/js/band.js").read_text(encoding="utf-8")
+        self.assertIn("Photo-adjusted estimate", js)
+        self.assertIn("Comparable-market baseline", js)
+        self.assertIn("Both rows use the same price scale", js)
+        self.assertIn("not confirmed sale prices", js)
+        self.assertIn("above chart scale", js)
+        self.assertIn("below chart scale", js)
 
     def test_appraisal_surfaces_share_one_corner_radius(self):
         for name in ("base.css", "gallery.css", "run.css",

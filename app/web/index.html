@@ -101,6 +101,7 @@
           <svg class="frame-boxes" id="frame-boxes" aria-hidden="true"></svg>
           <div class="frame-chips" id="frame-chips" aria-hidden="true"></div>
           <span class="scan" id="scan" aria-hidden="true"></span>
+          <span class="scan-status" id="scan-status" role="status">Preparing inspection</span>
         </div>
         <figcaption class="frame-meta" id="frame-meta"></figcaption>
       </figure>
@@ -113,6 +114,7 @@
           <span class="progress-rule"><i id="progress-fill"></i></span>
         </div>
         <div class="stage-actions">
+          <a class="ghost-btn" id="view-result" href="#result" hidden>View result ↓</a>
           <button class="ghost-btn" id="follow-live" type="button" aria-pressed="true">Following live</button>
           <button class="ghost-btn" id="show-all" type="button" aria-pressed="false"
                   hidden>Show everything it detected</button>
@@ -139,12 +141,14 @@
 
   <div class="verdict">
     <p class="verdict-kicker" id="verdict-kicker"></p>
+    <p class="estimate-label" id="estimate-label" hidden>Estimated asking-price range</p>
     <p class="price" id="price"></p>
     <p class="price-sub" id="price-sub"></p>
     <p class="price-usd" id="price-usd" hidden></p>
 
     <div class="band-wrap" id="band-wrap">
-      <svg class="band" id="band" viewBox="0 0 1000 140" role="img"></svg>
+      <h2 class="band-title">Understanding the estimate</h2>
+      <div class="band" id="band"></div>
       <p class="band-note" id="band-note"></p>
     </div>
 

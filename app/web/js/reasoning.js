@@ -59,6 +59,8 @@ export function add(finding) {
   const rail = $('thoughts');
   const atTop = rail.scrollTop < 12;
   const previousHeight = rail.scrollHeight;
+  const previousCards = atTop && !reduced()
+    ? [...rail.querySelectorAll('.thought')].map((node) => [node, node.getBoundingClientRect().top]) : [];
   const pending = rail.querySelector('.thought-pending');
   if (pending) pending.remove();
 
@@ -124,7 +126,15 @@ export function add(finding) {
 
   rail.prepend(card);
   if (!atTop) rail.scrollTop += rail.scrollHeight - previousHeight;
-  if (!reduced()) card.classList.add('resolve');
+  if (!reduced()) {
+    card.classList.add('resolve');
+    for (const [node, top] of previousCards) {
+      const delta = top - node.getBoundingClientRect().top;
+      node.getAnimations().forEach((animation) => animation.cancel());
+      node.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }],
+        { duration: 480, easing: 'cubic-bezier(.22,1,.36,1)' });
+    }
+  }
 
   landed += 1;
   $('rail-sub').textContent = expected

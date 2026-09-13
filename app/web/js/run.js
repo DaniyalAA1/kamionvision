@@ -33,26 +33,6 @@ let latest = null;
 
 function liveBtn() { return $('follow-live'); }
 
-const SCAN_COLS = 18;
-const SCAN_ROWS = 13;
-
-function fillScanGrid() {
-  const scan = $('scan');
-  if (!scan || scan.dataset.ready === '1') return;
-  scan.style.setProperty('--cols', String(SCAN_COLS));
-  scan.style.setProperty('--rows', String(SCAN_ROWS));
-  const frag = document.createDocumentFragment();
-  for (let y = 0; y < SCAN_ROWS; y += 1) {
-    for (let x = 0; x < SCAN_COLS; x += 1) {
-      const dot = document.createElement('i');
-      dot.style.setProperty('--delay', `${x * 55 + y * 22}ms`);
-      frag.append(dot);
-    }
-  }
-  scan.append(frag);
-  scan.dataset.ready = '1';
-}
-
 function setStep(step) {
   const order = ['gate', 'evidence', 'price'];
   const here = order.indexOf(step);
@@ -121,6 +101,7 @@ export async function mount() {
   return runElev;
 }
 export const elevationRoot = () => runElev;
+export const isFollowing = () => following;
 
 function progress(label, fraction) {
   $('progress-label').textContent = label;
@@ -131,7 +112,6 @@ function progress(label, fraction) {
 
 export function begin() {
   stop();
-  fillScanGrid();
   gate = null;
   evidenceIds = [];
   read = 0;
@@ -140,7 +120,11 @@ export function begin() {
   setStep('gate');
   if (liveBtn()) liveBtn().hidden = false;
   $('run').hidden = false;
+  $('progress').hidden = false;
+  $('scan-status').textContent = 'Checking photo quality';
+  $('scan-status').hidden = false;
   $('result').hidden = true;
+  $('view-result').hidden = true;
   $('strip').replaceChildren();
   $('frame-boxes').replaceChildren();
   $('frame-chips').replaceChildren();
@@ -149,6 +133,7 @@ export function begin() {
   $('frame-img').classList.remove('in');
   $('show-all').hidden = true;
   $('show-all').setAttribute('aria-pressed', 'false');
+  frames.setSource({}, [], null);
   frames.setShowAll(false);
   elevation.reset(runElev);
   reasoning.clear();
@@ -161,6 +146,8 @@ export function begin() {
 export function stop() {
   t.clear();
   $('scan').classList.remove('on');
+  frames.cancelPendingFrame();
+  document.querySelectorAll('.strip-cell.reading').forEach((cell) => cell.classList.remove('reading'));
 }
 
 /* ---------- act 1: the gate has landed ---------- */
@@ -200,11 +187,12 @@ export function onStage(msg) {
       const c = $(`cell-${id}`);
       if (c) c.classList.add('reading');
     });
-    fillScanGrid();
     $('scan').classList.add('on');
+    $('scan-status').textContent = 'Inspecting photos · findings appear as they return';
     progress(`reading ${evidenceIds.length} photos`, 0.12);
   }
   if (msg.step === 'price') {
+    $('scan-status').textContent = 'Inspection complete · comparing market prices';
     $('scan').classList.remove('on');
     $('rail-title').textContent = 'Matching it against real listings';
     $('rail-sub').textContent = 'the photos are read';
@@ -217,6 +205,7 @@ export function onPhoto(msg) {
   const finding = msg.finding;
   reasoning.add(finding);
   read += 1;
+  $('scan-status').textContent = `${read} of ${evidenceIds.length || read} photos read`;
 
   const check = frames.checkFor(finding.photo_id);
   if (check) {
@@ -239,6 +228,8 @@ export function onPhoto(msg) {
 
 export function onResult(a) {
   stop();
+  $('view-result').hidden = false;
+  $('scan-status').textContent = a.evidence ? 'Inspection complete' : 'Photo checks complete';
   progress(read ? `${read} photos read` : 'the checks finished', 1);
   closeSteps(a);
   if (liveBtn()) liveBtn().hidden = true;
@@ -284,6 +275,7 @@ export function showFrozen(a) {
 
 export function onError(message) {
   stop();
+  $('scan-status').textContent = 'Inspection interrupted';
   reasoning.note(message);
   if (liveBtn()) liveBtn().hidden = true;
   progress(message, 0);

@@ -401,3 +401,50 @@
 .work-note.assumed b  { color: var(--caution); font-weight: 600; }
 
 .result-foot { padding-top: var(--s-4); }
+
+/* The valuation reads as a short report, not an unlabeled chart. */
+.verdict { padding: clamp(1.2rem, 3vw, 2.5rem); background: var(--card);
+  border: 1px solid var(--edge); border-radius: var(--radius); border-top: 4px solid var(--signal); }
+.estimate-label { color: var(--signal-ink); font: 600 var(--t-xs)/1.4 var(--sans);
+  letter-spacing: .1em; text-transform: uppercase; margin: 1.3rem 0 .6rem; }
+.price { font-size: clamp(2.6rem, 6.3vw, 5.1rem); }
+.price-bound { white-space: nowrap; }
+.band-wrap { max-width: none; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--edge); }
+.band-title { font: 600 1.4rem/1.2 var(--cond); margin-bottom: 1.4rem; }
+.range-row + .range-row { margin-top: 1.6rem; }
+.range-heading { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem 1rem; flex-wrap: wrap; }
+.range-heading strong { font-size: 1rem; }
+.range-values { font-weight: 600; font-variant-numeric: tabular-nums; }
+.adjusted .range-values { color: var(--signal-ink); }
+.range-description { font-size: var(--t-sm); color: var(--steel); margin-top: .2rem; }
+.range-track { position: relative; height: 14px; margin: 1rem 8px .7rem; border-radius: var(--radius);
+  background: var(--lot-deep); box-shadow: inset 0 0 0 1px var(--edge-soft); }
+.range-interval { position: absolute; height: 100%; border-radius: var(--radius); background: var(--signal); }
+.baseline .range-interval { background: #87978c; }
+.range-point { position: absolute; top: -4px; height: 22px; border-left: 2px solid var(--ink); }
+.range-seller { position: absolute; top: 2px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg);
+  background: var(--card); border: 2px solid var(--ink); box-shadow: 0 0 0 2px var(--card); }
+.range-seller.off-left, .range-seller.off-right { background: var(--ink); }
+.range-foot { display: flex; justify-content: space-between; gap: .4rem; font-size: var(--t-xs); color: var(--steel); }
+.range-foot span:nth-child(2) { color: var(--ink); font-weight: 500; }
+.range-legend { display: flex; flex-wrap: wrap; gap: .6rem 1.5rem; margin-top: 1.5rem; font-size: var(--t-xs); }
+.range-legend span { display: inline-flex; gap: .5rem; align-items: center; }
+.midpoint-key::before { content: ''; height: 13px; border-left: 2px solid var(--ink); }
+.seller-key::before { content: ''; width: 8px; height: 8px; border: 2px solid var(--ink); transform: rotate(45deg); }
+.range-disclaimer { font-size: var(--t-xs); color: var(--steel); margin-top: .75rem; max-width: 85ch; }
+.band-note { background: var(--lot); border-left: 2px solid var(--signal); padding: .8rem 1rem; max-width: none; }
+.result-body > .block { animation: report-reveal .6s var(--ease-out) both; }
+.result-body > .block:nth-child(2) { animation-delay: .06s; }
+.result-body > .block:nth-child(3) { animation-delay: .12s; }
+@keyframes report-reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (max-width: 560px) {
+  .range-heading { display: grid; }
+  .range-values { font-size: 1.1rem; }
+  .range-foot { font-size: .7rem; }
+  .range-foot span:nth-child(2) { text-align: center; }
+  .price { display: flex; flex-wrap: wrap; align-items: center; gap: .1em; }
+  .verdict { border-radius: var(--radius); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .result, .result-body > .block { animation: none; }
+}

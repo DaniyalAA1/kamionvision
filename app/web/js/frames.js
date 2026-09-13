@@ -32,8 +32,11 @@ let checks = [];
 let refusedAsNotATruck = false;
 let showAll = false;
 let current = null;
+let frameVersion = 0;
 
 export function setSource(photoUrls, photoChecks, decision) {
+  frameVersion += 1;
+  if (!current || urls[current.photo_id] !== photoUrls?.[current.photo_id]) current = null;
   urls = photoUrls || {};
   checks = photoChecks || [];
   /* Truck detection is a set-level rule, never per-photo: a tire close-up
@@ -43,7 +46,13 @@ export function setSource(photoUrls, photoChecks, decision) {
   refusedAsNotATruck = decision === 'refuse_not_a_truck';
 }
 
+export function cancelPendingFrame() {
+  frameVersion += 1;
+  $('frame-stage').querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
+}
+
 export const urlFor = (id) => urls[id] || '';
+export const currentPhotoId = () => current?.photo_id;
 export const checkFor = (id) => checks.find((c) => c.photo_id === id);
 
 /* Where this photo sits in the set the person actually sent, 1-based. */
@@ -76,24 +85,57 @@ export const hasHiddenBoxes = (check) =>
 
 export function showFrame(check) {
   if (!check) return;
-  current = check;
-  const stage = $('frame-stage');
-  const img = $('frame-img');
-
-  if (check.width && check.height) {
-    stage.style.aspectRatio = `${check.width} / ${check.height}`;
-    $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
-  }
-  img.classList.remove('in');
-  img.alt = check.usable ? viewName(check.view) : 'frame the gate dropped';
-  img.src = urlFor(check.photo_id);
-  img.onload = () => img.classList.add('in');
-  drawBoxes($('frame-boxes'), check);
-  writeMeta(check);
-
-  const toggle = $('show-all');
-  if (toggle) toggle.hidden = !hasHiddenBoxes(check);
+  const version = ++frameVersion;
+  const source = urlFor(check.photo_id);
+  const preload = new Image();
+  preload.onload = () => {
+    if (version !== frameVersion) return;
+    const img = $('frame-img');
+    const stage = $('frame-stage');
+    stage.querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
+    if (img.getAttribute('src') && !reduced()) {
+      const previous = img.cloneNode();
+      previous.removeAttribute('id');
+      previous.alt = '';
+      previous.setAttribute('aria-hidden', 'true');
+      previous.className = 'frame-outgoing in';
+      stage.insertBefore(previous, img);
+      previous.addEventListener('animationend', () => previous.remove(), { once: true });
+    }
+    current = check;
+    img.alt = check.usable ? viewName(check.view) : 'frame the gate dropped';
+    img.src = source;
+    img.classList.add('in');
+    if (check.width && check.height) {
+      $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
+    }
+    fitChips();
+    drawBoxes($('frame-boxes'), check);
+    writeMeta(check);
+    const toggle = $('show-all');
+    if (toggle) toggle.hidden = !hasHiddenBoxes(check);
+  };
+  preload.onerror = () => {
+    if (version !== frameVersion) return;
+    current = null;
+    $('show-all').hidden = true;
+    $('frame-img').removeAttribute('src');
+    $('frame-img').alt = 'Photo could not be loaded';
+    $('frame-boxes').replaceChildren();
+    $('frame-chips').replaceChildren();
+    $('frame-meta').textContent = 'Photo could not be loaded. Select another photo to continue.';
+  };
+  preload.src = source;
 }
+
+// Keep HTML labels aligned with the contained image, including portrait photos.
+function fitChips() {
+  if (!current?.width || !current?.height) return;
+  const stage = $('frame-stage');
+  const scale = Math.min(stage.clientWidth / current.width, stage.clientHeight / current.height);
+  $('frame-chips').style.inset = `${(stage.clientHeight - current.height * scale) / 2}px ${(stage.clientWidth - current.width * scale) / 2}px`;
+}
+new ResizeObserver(fitChips).observe($('frame-stage'));
 
 /* Fallback only: a frozen export written before `is_subject` existed carries
    the subject as coordinates and nothing else. */

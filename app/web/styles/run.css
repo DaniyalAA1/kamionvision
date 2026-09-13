@@ -167,44 +167,31 @@
 .box-chip[data-subject="true"] { background: var(--verified); color: #fff; }
 .box-chip[data-disqualifying="true"] { background: var(--stop); color: #fff; }
 
-/* A lattice of dots, one per cell. While a photo is being read, each dot
-   lifts in sequence so a wave travels across the frame. The colour is the
-   stage text, not a second accent: the green sweep this replaced was doing
-   the looking for you. */
-.scan {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--cols, 18), 1fr);
-  grid-template-rows: repeat(var(--rows, 13), 1fr);
-  pointer-events: none;
-  opacity: 0;
-  overflow: hidden;
-}
+/* One quiet optical sweep, decorative rather than fabricated progress. */
+.scan { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  transition: opacity .5s; overflow: hidden; }
 .scan.on { opacity: 1; }
-.scan i {
-  width: .42rem;
-  height: .42rem;
-  border-radius: 50%;
-  background: var(--stage-text);
-  box-shadow: 0 0 0 1px rgba(28, 47, 39, .28);
-  place-self: center;
-  opacity: 0;
-  transform: scale(.4);
-}
-.scan.on i {
-  animation: dot-wave 2.6s var(--ease-draw) infinite;
-  animation-delay: var(--delay, 0ms);
-}
-@keyframes dot-wave {
-  0%, 38%, 100% { opacity: 0; transform: scale(.3) translateY(0); }
-  8%  { opacity: .45; transform: scale(.8) translateY(-3px); }
-  14% { opacity: .95; transform: scale(1.2) translateY(-6px); }
-  22% { opacity: .5;  transform: scale(.75) translateY(1px); }
-}
+.scan::before { content: ""; position: absolute; inset: -30% 0 auto;
+  height: 30%; border-bottom: 1px solid rgba(190,224,173,.75);
+  background: linear-gradient(transparent, rgba(143,196,122,.13));
+  box-shadow: 0 5px 22px -10px #8fc47a; }
+.scan.on::before { animation: optical-sweep 3.8s ease-in-out infinite; }
+@keyframes optical-sweep { 0% { transform: translateY(0); opacity: 0; }
+  15%, 75% { opacity: 1; } 100% { transform: translateY(440%); opacity: 0; } }
+.scan-status { position: absolute; bottom: 1rem; left: 1rem; right: 1rem;
+  width: fit-content; max-width: calc(100% - 2rem); border: 1px solid #536c5e;
+  background: rgba(20,35,28,.92); color: var(--stage-text); padding: .5rem .75rem;
+  border-radius: var(--radius); font-size: var(--t-xs); backdrop-filter: blur(12px); }
+.scan-status::before { content: ""; display: inline-block; width: 6px; height: 6px;
+  background: var(--verified-lit); border-radius: 50%; margin-right: .5rem; }
+.frame-stage img { position: absolute; inset: 0; }
+.frame-stage .frame-outgoing { z-index: 1; animation: photo-away .48s ease-out forwards; }
+@keyframes photo-away { to { opacity: 0; } }
+.frame-boxes, .frame-chips, .scan { z-index: 2; }
+.scan-status { z-index: 3; }
 @media (prefers-reduced-motion: reduce) {
   .scan.on { opacity: 0; }
-  .scan.on i { animation: none; }
+  .scan.on::before { animation: none; }
 }
 
 .frame-meta {
