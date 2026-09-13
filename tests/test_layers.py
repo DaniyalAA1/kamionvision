@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import math
 import unittest
+import unittest.mock
 
 import numpy as np
 
@@ -155,6 +156,64 @@ class Reconciliation(unittest.TestCase):
         rep = reconcile.apply(GateReport(), None, ev)
         self.assertEqual(rep.n, 0)
         self.assertEqual(ev.issues[0].confidence, 0.9)
+
+
+class Odometer(unittest.TestCase):
+    """The fourth rule: an OCR read reconciled against the VLM's odometer.
+
+    `odometer.read` is mocked so these need neither RapidOCR nor a real image -
+    what is under test is the reconciliation logic, not the OCR engine.
+    """
+
+    def _gate(self, view="dashboard_odometer", usable=True):
+        return GateReport(photos=[_photo(3, view=view, usable=usable,
+                                         capture_quality=0.9)])
+
+    def _ev(self, odometer_km=None):
+        return EvidenceReport(vehicle=VehicleRead(odometer_km=odometer_km,
+                                                  odometer_photo_id=None))
+
+    def _read(self, km, confidence=0.85):
+        from app.odometer import OdometerRead
+        return OdometerRead(km=km, confidence=confidence, text=f"{km}km")
+
+    def test_a_missing_odometer_is_recovered_and_fed_to_pricing(self):
+        ev = self._ev(odometer_km=None)
+        with unittest.mock.patch("app.odometer.read", return_value=self._read(305273)):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(len(rep.of_kind("odometer_recovered")), 1)
+        self.assertEqual(ev.vehicle.odometer_km, 305273)      # now available to price
+        self.assertEqual(ev.vehicle.odometer_photo_id, 3)
+
+    def test_an_agreeing_read_is_silent(self):
+        ev = self._ev(odometer_km=305000)
+        with unittest.mock.patch("app.odometer.read", return_value=self._read(305273)):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(rep.n, 0)
+        self.assertEqual(rep.widening, [])
+
+    def test_a_conflicting_read_widens_but_keeps_the_priced_figure(self):
+        ev = self._ev(odometer_km=500000)
+        with unittest.mock.patch("app.odometer.read", return_value=self._read(305273)):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(len(rep.of_kind("odometer_conflict")), 1)
+        self.assertEqual([w[1] for w in rep.widening],
+                         [reconcile.ODOMETER_CONFLICT_WIDENING])
+        self.assertEqual(ev.vehicle.odometer_km, 500000)      # vision figure unchanged
+
+    def test_an_abstaining_read_changes_nothing(self):
+        ev = self._ev(odometer_km=None)
+        with unittest.mock.patch("app.odometer.read", return_value=self._read(None)):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(rep.n, 0)
+        self.assertIsNone(ev.vehicle.odometer_km)
+
+    def test_the_rule_does_not_run_without_a_dashboard_frame(self):
+        ev = self._ev(odometer_km=None)
+        with unittest.mock.patch("app.odometer.read",
+                                 side_effect=AssertionError("must not OCR")) as m:
+            reconcile.apply(self._gate(view="exterior_side"), None, ev)
+        m.assert_not_called()
 
 
 class Anchor(unittest.TestCase):

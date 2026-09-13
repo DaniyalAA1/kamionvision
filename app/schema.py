@@ -162,7 +162,7 @@ class Correction(_Dict):
     `EvidenceReport.fell_back_from`: the system is allowed to change its mind,
     it is not allowed to do so where nobody can see it.
     """
-    kind: str = ""              # unsupported_detail | identity_conflict | view_conflict | coverage_restored
+    kind: str = ""              # unsupported_detail | identity_conflict | coverage_restored | odometer_recovered | odometer_conflict
     photo_id: int | None = None
     detail: str = ""
     before: str = ""

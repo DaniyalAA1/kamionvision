@@ -145,6 +145,7 @@ function start(session) {
 function showRefusal(headline, detail, evidence) {
   $('result').hidden = false;
   $('headline').textContent = headline;
+  $('headline-usd').hidden = true;
   $('gauge-wrap').hidden = true;
   const box = $('refusal');
   box.hidden = false;
@@ -157,6 +158,7 @@ function render(a) {
   $('result').hidden = false;
   $('refusal').hidden = true;
   $('gauge-wrap').hidden = true;
+  $('headline-usd').hidden = true;
   $('headline').textContent = a.headline;
 
   run.onResult(a);
@@ -196,6 +198,7 @@ function render(a) {
     $('gauge-wrap').hidden = false;
     drawGauge(price);
     writeGaugeNote(price);
+    writeUsdBand(price);
   } else if (price && !price.ok) {
     showRefusal(a.headline, price.reason, a.gate.truck_evidence);
   } else {
@@ -205,6 +208,31 @@ function render(a) {
   renderPanels(a, run.elevationRoot());
   stampTitleBlock(a);
   $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
+}
+
+/* The same band a second time, in US dollars. The gauge and the headline are
+   in Turkish lira - the market the model was fit on - but a used tractor is a
+   cross-border purchase and a buyer thinks in both. The dollar figures already
+   travel on the wire (price.*_usd, converted at the one stamped FX rate); this
+   only renders them, with the rate and its date shown so the conversion is
+   checkable rather than implied. A US-market appraisal is already in dollars,
+   so the line is suppressed there. */
+function writeUsdBand(price) {
+  const box = $('headline-usd');
+  if (price.currency !== 'TRY' || !price.low_usd || !price.high_usd) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const fx = (price.model_card && price.model_card.fx) || null;
+  const range = `${money(price.low_usd, 'USD')} – ${money(price.high_usd, 'USD')}`;
+  const parts = [
+    document.createTextNode('≈ '),
+    el('b', null, range),
+    el('span', 'usd-point', `  ·  ${money(price.point_usd, 'USD')} point`),
+  ];
+  if (fx) parts.push(el('span', 'usd-fx', `   ₺${fx.usd_try}/$ · ${fx.as_of}`));
+  box.replaceChildren(...parts);
 }
 
 /* The calibration figure is pinned to the band it was measured on, and says
