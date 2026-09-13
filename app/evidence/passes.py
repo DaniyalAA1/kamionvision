@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import tempfile
 import time
@@ -431,7 +432,8 @@ def merged_confidence(confidences: list[float]) -> float:
     the only stage allowed to move it down, and it records a `Correction` each
     time. Merge runs first, so the degradation head still gets the last word.
     """
-    ordered = sorted((c for c in confidences), reverse=True)
+    ordered = sorted((c for c in confidences
+                      if isinstance(c, (int, float)) and math.isfinite(c)), reverse=True)
     if not ordered:
         return 0.0
     miss = 1.0 - ordered[0]
