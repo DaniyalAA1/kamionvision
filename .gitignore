@@ -28,3 +28,7 @@ demo_reports/
 
 # Derived CLIP embedding cache (14 MB, rebuild: python scripts/cache_embeddings.py)
 data/metadata/embeddings.npz
+
+# graphify: commit the graph, report and viewer; keep caches and machine-local paths out
+graphify-out/cache/
+graphify-out/.graphify_*

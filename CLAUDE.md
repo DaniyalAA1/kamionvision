@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Read `docs/STATUS.md` first** — where the project stands and which branches carry unmerged work.
+Cold start: `docs/CONTINUITY.md` gives the full read order (decisions, playbook, brainstorm, graph).
+
 ## What this is
 
 A hackathon entry for the Kamion (YC) sponsor challenge: appraise a used semi-tractor **from photos

@@ -1,0 +1,11 @@
+# Graph the code and the docs, not the corpus: listing tables, fitted models and agent config
+# carry no architecture, and the images are already excluded by .gitignore.
+data/metadata/
+data/reference/
+models/
+.claude/
+graphify-out/
+app/web/assets/
+docs/decisions/TEMPLATE.md
+.pre-commit-config.yaml
+app/web/vendor/

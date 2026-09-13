@@ -1,0 +1,10 @@
+# Deterministic checks beat asking a model to remember. Run `pre-commit install` once.
+# Only checks that never rewrite files: whitespace fixers would churn a shared repo.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=5000]
+      - id: check-merge-conflict
+      - id: detect-private-key
