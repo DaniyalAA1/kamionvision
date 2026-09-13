@@ -278,12 +278,12 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
 def closeup(client, check: PhotoCheck, vehicle_line: str, *,
             tmpdir: Path, max_tokens: int) -> PhotoFinding:
     """One photo, one call. Raises VLMError; the caller decides what that costs."""
-    from ..vision import VIEW_PROMPTS
+    from ..vision import VIEW_LABELS
 
     t0 = time.time()
     cropped_path = write_subject_crop(check, tmpdir) if wants_crop(check) else None
     image = cropped_path or Path(check.path)
-    pretty = dict((k, k.replace("_", " ")) for k, _ in VIEW_PROMPTS).get(
+    pretty = {k: k.replace("_", " ") for k in VIEW_LABELS}.get(
         check.view, check.view.replace("_", " "))
     prompt = prompts.closeup_prompt(
         view=check.view, view_pretty=pretty, vehicle=vehicle_line,

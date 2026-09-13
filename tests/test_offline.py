@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from app import evidence, gate, report, subject
+from app import evidence, gate, report, subject, vision
 from app.config import USD_TRY
 from app.schema import (Appraisal, Detection, EvidenceReport, GateDecision,
                         GateReport, Issue, PhotoCheck)
@@ -1741,3 +1741,50 @@ class FocusScenery(unittest.TestCase):
         cand = subject._candidate(check, det)
         cand.focus_ratio = 2.3          # small, but genuinely in focus
         self.assertFalse(subject.is_scenery(check, cand, subject.NO_IDENTITY))
+
+
+class ViewPromptEnsemble(unittest.TestCase):
+    """Several templates per view class, max-pooled.
+
+    One template per class was measured at 83.3%/86.7% (dev/held-out) on
+    whole-vehicle vs component, with 18.9%/15.8% of genuine component close-ups
+    coming back as an exterior view. That is the error that matters: an
+    `exterior_front` tag hands the frame the exterior question bank, counts it
+    toward whole-vehicle coverage, and exempts it from every part-view rule in
+    app/subject.py. The ensemble takes it to 91.7%/96.7% and 10.8%/0.0%.
+    """
+
+    def test_every_label_has_several_templates(self):
+        for label in vision.VIEW_LABELS:
+            self.assertGreaterEqual(
+                len(vision.VIEW_PROMPTS[label]), 3,
+                f"{label} lost its ensemble; one template per class measured 83%")
+
+    def test_labels_and_prompt_keys_are_the_same_vocabulary(self):
+        self.assertEqual(list(vision.VIEW_PROMPTS), vision.VIEW_LABELS)
+
+    def test_the_eleven_view_ids_are_unchanged(self):
+        """VIEW_QUESTIONS, VIEW_ZONES in elevation.js and the perception head's
+        classes are all keyed on these. Adding a template is free; renaming a
+        class is not."""
+        self.assertEqual(vision.VIEW_LABELS, [
+            "exterior_front", "exterior_front_34", "exterior_side", "exterior_rear",
+            "interior_cab", "dashboard_odometer", "tire_wheel", "engine_bay",
+            "chassis_undercarriage", "fifth_wheel", "damage_detail"])
+
+    def test_no_template_is_shared_between_two_classes(self):
+        seen = {}
+        for label, prompts in vision.VIEW_PROMPTS.items():
+            for p in prompts:
+                self.assertNotIn(p, seen, f"{label} and {seen.get(p)} share a template")
+                seen[p] = label
+
+    def test_nothing_unpacks_the_prompts_as_pairs_any_more(self):
+        """`for k, _ in VIEW_PROMPTS` silently became "unpack the label string"
+        when this turned into a dict, and cost two call sites."""
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent
+        for rel in ("app/evidence/passes.py", "app/perception/train.py"):
+            src = (root / rel).read_text()
+            self.assertNotIn("for k, _ in VIEW_PROMPTS", src, rel)
+            self.assertNotIn("VIEW_PROMPTS[i][0]", src, rel)

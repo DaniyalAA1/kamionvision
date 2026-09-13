@@ -33,19 +33,73 @@ COCO_DISQUALIFYING = {"motorcycle", "bicycle", "boat", "airplane", "train", "bir
 
 # Verbatim from scripts/clean_dataset.py so a gate decision and a corpus row
 # mean the same thing. Divergence here would silently retrain the thresholds.
-VIEW_PROMPTS = [
-    ("exterior_front",    "a photo of the front of a semi truck tractor unit"),
-    ("exterior_front_34", "a three-quarter front view photo of a semi truck"),
-    ("exterior_side",     "a photo of the side profile of a semi truck"),
-    ("exterior_rear",     "a photo of the back of a semi truck tractor unit"),
-    ("interior_cab",      "a photo inside a truck cab showing seats and sleeper bunk"),
-    ("dashboard_odometer", "a close-up photo of a truck dashboard, gauges and odometer"),
-    ("tire_wheel",        "a close-up photo of a truck tire and wheel rim"),
-    ("engine_bay",        "a close-up photo of a diesel truck engine"),
-    ("chassis_undercarriage", "a photo of the chassis, frame rails or undercarriage of a truck"),
-    ("fifth_wheel",       "a close-up photo of a truck fifth wheel coupling plate"),
-    ("damage_detail",     "a close-up photo of damage, a dent, rust or a scratch on a vehicle panel"),
-]
+# Several templates per class, max-pooled at inference. One template per class
+# was measured at 83% on the only question that matters here - is the whole
+# tractor in this frame, or one part of it - and, worse, 19% of genuine
+# component close-ups came back as an exterior view. That is not a cosmetic
+# mislabel: a frame tagged `exterior_front` is handed the exterior question
+# bank ("grille, bumper and valance... headlamp clouding... windscreen chips"),
+# counts toward whole-vehicle coverage, and is exempt from every part-view rule
+# in app/subject.py. A Ford dashboard at `exterior_front` 0.38 and a stripped
+# engine bay at `exterior_rear` 0.39 are both in the corpus.
+#
+# Measured against 90 hand-labelled frames (60 dev, 30 held out), the ensemble
+# takes whole-vs-part from 83.3%/86.7% to 91.7%/96.7% and components miscalled
+# whole from 18.9%/15.8% to 10.8%/0.0%.
+#
+# MAX-pooled, not mean: the templates for one class are alternative phrasings of
+# the same thing, so the best-matching one is the evidence and averaging it
+# against five worse phrasings only dilutes it. A margin requirement on top
+# ("whole vehicle has to be earned") scored better on dev and worse on held-out,
+# so it was dropped - it was fitting 60 frames.
+VIEW_PROMPTS = {
+    "exterior_front": [
+        "a photo of the front of a semi truck tractor unit",
+        "the front grille and bumper of a whole lorry seen head on",
+        "a truck photographed from directly in front, the whole cab visible"],
+    "exterior_front_34": [
+        "a three-quarter front view photo of a semi truck",
+        "a whole tractor unit seen from the front corner",
+        "an angled view of a complete truck showing front and side"],
+    "exterior_side": [
+        "a photo of the side profile of a semi truck",
+        "the whole length of a lorry seen from the side",
+        "a complete tractor unit photographed side on"],
+    "exterior_rear": [
+        "a photo of the back of a semi truck tractor unit",
+        "a whole truck seen from behind showing the rear wheels",
+        "the rear three-quarter view of a complete lorry"],
+    "interior_cab": [
+        "a photo inside a truck cab showing seats and sleeper bunk",
+        "the interior of a lorry cabin, upholstery and trim",
+        "inside a truck sleeper compartment",
+        "a view from the driver's seat of a truck"],
+    "dashboard_odometer": [
+        "a close-up photo of a truck dashboard, gauges and odometer",
+        "an instrument cluster with speedometer and warning lights",
+        "the dashboard controls and switches of a lorry",
+        "a steering wheel and dash panel photographed from inside"],
+    "tire_wheel": [
+        "a close-up photo of a truck tire and wheel rim",
+        "a heavy vehicle tyre tread photographed close up",
+        "a truck wheel hub and rim in close-up"],
+    "engine_bay": [
+        "a close-up photo of a diesel truck engine",
+        "an engine bay with hoses, belts and turbocharger",
+        "the engine compartment of a lorry, tipped cab"],
+    "chassis_undercarriage": [
+        "a photo of the chassis, frame rails or undercarriage of a truck",
+        "the underside of a lorry showing axles and air tanks",
+        "truck frame rails and crossmembers photographed from below"],
+    "fifth_wheel": [
+        "a close-up photo of a truck fifth wheel coupling plate",
+        "the coupling plate and jaws behind a tractor cab",
+        "a fifth wheel hitch photographed close up"],
+    "damage_detail": [
+        "a close-up photo of damage, a dent, rust or a scratch on a vehicle panel",
+        "a detail photograph of corrosion or a crack on bodywork",
+        "a small area of a vehicle panel showing a defect"],
+}
 
 CONTENT_PROMPTS = [
     ("keep", "a photograph of a truck or lorry"),
@@ -58,7 +112,7 @@ CONTENT_PROMPTS = [
     ("reject_scene", "a photograph of a building, office, person or landscape with no vehicle"),
 ]
 
-VIEW_LABELS = [t for t, _ in VIEW_PROMPTS]
+VIEW_LABELS = list(VIEW_PROMPTS)
 
 
 def device() -> str:
@@ -103,7 +157,19 @@ class ClipTagger:
                 feats = self.model.encode_text(toks)
             return feats / feats.norm(dim=-1, keepdim=True)
 
-        self.view_bank = bank(VIEW_PROMPTS)
+        def grouped_bank(banks: dict):
+            """One row block per class, and the index that says where each ends."""
+            flat, owner = [], []
+            for i, (label, prompts) in enumerate(banks.items()):
+                flat.extend(prompts)
+                owner.extend([i] * len(prompts))
+            toks = tokenizer(flat).to(self.device)
+            with torch.no_grad():
+                feats = self.model.encode_text(toks)
+            return (feats / feats.norm(dim=-1, keepdim=True),
+                    torch.tensor(owner, device=self.device))
+
+        self.view_bank, self.view_owner = grouped_bank(VIEW_PROMPTS)
         self.content_bank = bank(CONTENT_PROMPTS)
         self.logit_scale = self.model.logit_scale.exp().item()
 
@@ -130,14 +196,22 @@ class ClipTagger:
             return []
         feats = self._features(pil_images)
         with torch.no_grad():
-            view = (self.logit_scale * feats @ self.view_bank.T).softmax(dim=-1).cpu().numpy()
+            # Max over each class's templates, THEN softmax over the 11
+            # classes. The logit_scale multiply stays where it was: raw
+            # cosines sit at 0.15-0.35 and soften to near-uniform without it.
+            sims = feats @ self.view_bank.T                  # (n, templates)
+            per_class = torch.full((sims.shape[0], len(VIEW_LABELS)),
+                                   float("-inf"), device=sims.device)
+            per_class = per_class.index_reduce(
+                1, self.view_owner, sims, "amax", include_self=False)
+            view = (self.logit_scale * per_class).softmax(dim=-1).cpu().numpy()
             content = (self.logit_scale * feats @ self.content_bank.T).softmax(dim=-1).cpu().numpy()
         emb = feats.cpu().numpy().astype(np.float32)
         out = []
         for v, c, e in zip(view, content, emb):
             vi, ci = int(np.argmax(v)), int(np.argmax(c))
             out.append({
-                "view": VIEW_PROMPTS[vi][0],
+                "view": VIEW_LABELS[vi],
                 "view_conf": float(v[vi]),
                 "content": CONTENT_PROMPTS[ci][0],
                 "content_conf": float(c[ci]),

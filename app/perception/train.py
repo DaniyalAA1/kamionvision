@@ -193,7 +193,7 @@ def zero_shot_views(emb: np.ndarray) -> np.ndarray:
     tagger = vision.clip()
     bank = tagger.view_bank.cpu().numpy()
     scores = emb @ bank.T
-    return np.array([vision.VIEW_PROMPTS[i][0] for i in scores.argmax(axis=1)])
+    return np.array([vision.VIEW_LABELS[i] for i in scores.argmax(axis=1)])
 
 
 def twin_pairs(df: pd.DataFrame) -> list[tuple[int, int]]:
