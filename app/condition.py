@@ -434,9 +434,16 @@ def grade_of(r: ConditionRollup, issues: list[Issue] | None = None, *,
                         f"{r.demerit:.1f} across "
                         f"{sum(1 for f in r.families if f.n_findings)} subsystems")
 
+    # Excellent means "nothing the model itself thinks affects the price". A
+    # finding graded `cosmetic` but rated `high` price impact contradicts
+    # itself, and letting it through left the grade sitting one restatement
+    # away from flipping: a second frame describing the same scuff pushed the
+    # demerit past the threshold and cost the truck its whole premium.
     above_cosmetic = [i for i in issues
                       if not getattr(i, "ungraded", False)
-                      and SEVERITY_RANK.get(i.severity, 0) > SEVERITY_RANK["cosmetic"]]
+                      and (SEVERITY_RANK.get(i.severity, 0) > SEVERITY_RANK["cosmetic"]
+                           or IMPACT_RANK.get(i.price_impact, 0)
+                           >= IMPACT_RANK["medium"])]
     gated_merit = r.merit * coverage_gate(r.coverage)
     if (r.coverage >= C_EXCELLENT and gated_merit >= M_EXCELLENT
             and r.demerit <= S_EXCELLENT and not above_cosmetic):
