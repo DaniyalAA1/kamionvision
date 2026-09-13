@@ -1202,6 +1202,121 @@ class ScreenChrome(unittest.TestCase):
             self.assertNotRegex(css, r"border-radius:\s*\d+px", name)
 
 
+class LiveBriefing(unittest.TestCase):
+    """The card under the featured frame while the photos are being read.
+
+    Every stylesheet the appraisal screen loads is in one global cascade, so a
+    bare class name is a name shared with every other screen. The briefing
+    shipped a column classed `gaps`, and `result.css` styles `.gaps li` as a
+    two-column icon row whose first track is 1.35rem - so each line of prose
+    collapsed to its longest word, one `<li>` became 440px tall, the card
+    became 3,637px, and `.stage-main` became 4,255px against a 768px viewport.
+    The photographs were all fetched and all decoded; they were pushed below
+    the fold, along with the contact strip and the progress bar. Hence the two
+    pins here: namespace the class, and cap the height so no future content
+    can push the frame off screen either.
+    """
+
+    WEB = Path("app/web")
+    STYLES = WEB / "styles"
+    # The two namespaces run.css defines for the briefing. A class outside them
+    # is a name some other screen is free to own.
+    NAMESPACES = ("intel-", "sev-")
+
+    @staticmethod
+    def _function_body(source: str, name: str) -> str:
+        start = source.index(f"function {name}(")
+        return source[start:source.index("\n}\n", start)]
+
+    @staticmethod
+    def _classes(js: str) -> set[str]:
+        """Class tokens this code puts on an element, `${...}` holes removed."""
+        found: set[str] = set()
+        literals = [m.group(1) or m.group(2) for m in re.finditer(
+            r"\bel\(\s*'[a-zA-Z0-9]+'\s*,\s*(?:'([^']*)'|`([^`]*)`)", js)]
+        literals += [m.group(1) or m.group(2) for m in re.finditer(
+            r"className\s*=\s*(?:'([^']*)'|`([^`]*)`)", js)]
+        for raw in literals:
+            found |= set(re.sub(r"\$\{[^}]*\}", " ", raw or "").split())
+        return found
+
+    @staticmethod
+    def _hinges_on(css: str, cls: str) -> list[str]:
+        """Selectors in `css` whose leading compound is exactly `.cls`.
+
+        That is the shape that leaks: `.gaps`, `.gaps li` and `.gaps li span`
+        all attach to an element for carrying one class and nothing else.
+        `.takeaway-pill.clean` does not - it needs its own element first.
+        """
+        body = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+        selectors: list[str] = []
+        for group in re.findall(r"([^{}]+)\{", body):
+            selectors += [s.strip() for s in group.split(",")]
+        return [s for s in selectors
+                if re.match(rf"\.{re.escape(cls)}(?![\w-])(?![.#:\[])", s)]
+
+    def test_the_briefing_never_borrows_another_screens_class(self):
+        js = (self.WEB / "js/frames.js").read_text(encoding="utf-8")
+        used = set().union(*(self._classes(self._function_body(js, name))
+                             for name in ("renderIntel", "column", "issueItem", "pill")))
+        self.assertIn("intel-card", used, "renderIntel body not found")
+        others = {name: (self.STYLES / name).read_text(encoding="utf-8")
+                  for name in ("result.css", "gallery.css", "reasoning.css",
+                               "base.css", "story.css")}
+        for cls in sorted(used):
+            if cls.startswith(self.NAMESPACES):
+                continue
+            for name, css in others.items():
+                self.assertEqual(
+                    [], self._hinges_on(css, cls),
+                    f"the briefing's .{cls} is also styled by {name}; "
+                    f"namespace it with one of {self.NAMESPACES}")
+
+    def test_the_briefing_cannot_push_the_photographs_off_screen(self):
+        css = (self.STYLES / "run.css").read_text(encoding="utf-8")
+        intel = re.search(r"\.frame-intel\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(intel, ".frame-intel rule missing")
+        self.assertRegex(intel.group(1), r"overflow-y:\s*auto")
+        self.assertRegex(intel.group(1), r"max-height:")
+        # The frame and the strip are the two things a viewer is watching, and
+        # `.stage-main` is sticky: taller than the viewport and it stops
+        # sticking, taking both of them below the fold with it.
+        main = re.search(r"\.stage-main\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(main, ".stage-main rule missing")
+        self.assertRegex(main.group(1), r"max-height:\s*calc\(100vh")
+
+    def test_following_a_photo_only_scrolls_the_strip(self):
+        js = (self.WEB / "js/frames.js").read_text(encoding="utf-8")
+        mark = self._function_body(js, "markCell")
+        self.assertNotIn("scrollIntoView", mark)
+        self.assertIn("strip.scrollTo", mark)
+
+    def test_the_briefing_is_keyboard_scrollable(self):
+        html = (self.WEB / "index.html").read_text(encoding="utf-8")
+        intel = re.search(r'<div[^>]+id="frame-intel"[^>]*>', html).group(0)
+        self.assertIn('tabindex="0"', intel)
+        self.assertIn('aria-label="Selected photo findings"', intel)
+
+    def test_the_screen_states_no_condition_it_was_not_told(self):
+        """A frame with an empty issue list means nothing was flagged.
+
+        It does not mean the component was confirmed sound, and the screen may
+        not say so on the model's behalf. Same rule the scroll story is held
+        to, on the surface where a judge reads it live.
+        """
+        invented = ("in sound working order",
+                    "expected operational condition",
+                    "integrity acceptable",
+                    "no significant angle blindspots",
+                    "no structural defects",
+                    "takeaway.textContent = 'Sound'")
+        for name in ("js/frames.js", "js/reasoning.js"):
+            js = (self.WEB / name).read_text(encoding="utf-8")
+            found = [p for p in invented if p in js]
+            self.assertEqual([], found, f"{name} asserts a condition the "
+                                        f"vision call never made")
+
+
 if __name__ == "__main__":
     unittest.main()
 

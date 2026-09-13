@@ -9,7 +9,7 @@
 
 .run {
   margin: var(--s-5) calc(var(--gut) * -1) 0;
-  padding: var(--s-6) var(--gut) var(--s-6);
+  padding: 0 var(--gut) var(--s-6);
   background: var(--stage);
   color: var(--stage-text);
   border-radius: var(--radius);
@@ -28,16 +28,26 @@
 }
 @media (max-width: 940px) { .stage { grid-template-columns: minmax(0, 1fr); } }
 
+/* Pinned, because the run takes minutes and "which of the three stages am I
+   in" is the question a viewer asks for the whole of it. It also fixes the
+   height budget below it: `.stage-main` is sticky under this, so the two
+   offsets have to agree or the column runs off the bottom of the screen. */
 .run-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-4);
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--stage);
+  padding-top: var(--s-3);
   padding-bottom: var(--s-5);
-  margin-bottom: var(--s-5);
+  margin-bottom: 0;
   border-bottom: 1px solid var(--stage-rule);
 }
+@media (max-width: 940px) { .run-head { position: static; } }
 .run-now {
   font: 500 1.55rem/1 var(--cond);
   letter-spacing: -.02em;
@@ -96,20 +106,55 @@
   border-color: var(--stage-text);
   box-shadow: 0 0 0 4px rgba(238, 241, 231, .14);
 }
-.stage-main { position: sticky; top: 1.25rem; }
-@media (max-width: 940px) { .stage-main { position: static; } }
+/* The column holds the photographs, and it is sticky. A sticky column taller
+   than the viewport stops sticking, so anything below the fold inside it
+   stays below the fold - which is how a briefing card that grew to 3,637px
+   took the featured frame, the contact strip and the progress bar off screen
+   while the photographs themselves were all fetched and decoded.
+
+   So the column is capped at the viewport and laid out as a flex column: the
+   frame and the briefing may shrink, the strip and the footer may not. What
+   the model has to say about a frame can change how much of the briefing is
+   scrolled; it can no longer change whether the photographs are visible.
+
+   `--run-head-room` is the pinned head above, plus the gap under it. It is a
+   fixed allowance rather than a measured height because the head is a single
+   row at every width where any of this is sticky - below 940px the stage is
+   one column and both offsets are switched off. */
+.stage-main {
+  --run-head-room: 6rem;
+  position: sticky;
+  top: var(--run-head-room);
+  max-height: calc(100vh - var(--run-head-room) - 1.25rem);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+@media (max-width: 940px) {
+  .stage-main { position: static; max-height: none; display: block; }
+}
 
 /* ---------- the featured frame ---------- */
 
-.frame { margin: 0; }
+.frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Shrinks last and least: the photograph is the subject of the screen, and
+     the briefing below it is the thing that can afford to scroll instead. */
+  flex: 0 .35 auto;
+}
 .frame-stage {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
+  min-height: 11rem;
   background: var(--stage-lift);
   border-radius: var(--radius);
   overflow: hidden;
 }
+.strip, .stage-foot { flex: 0 0 auto; }
 .frame-stage img {
   width: 100%;
   height: 100%;
@@ -330,6 +375,9 @@
   box-shadow: 0 0 4px rgba(0, 0, 0, .8);
   z-index: 2;
 }
+/* `cosmetic` is the fourth word in SEVERITY_RUBRIC, so a set whose worst
+   finding is cosmetic is a real state the strip has to have a dot for. */
+.strip-cell[data-state="cosmetic"]::before,
 .strip-cell[data-state="minor"]::before,
 .strip-cell[data-state="moderate"]::before {
   content: "";
@@ -431,11 +479,38 @@
 .rail-sub { color: var(--stage-haze); font-size: var(--t-sm); margin-top: .15rem; }
 .elev-slot { width: 100%; }
 
-/* ---------- Real-Time Live Intelligence Briefing ---------- */
+/* ---------- the briefing under the frame ---------- */
+
+/* Every selector below is `intel-`-prefixed and every variant is a `data-`
+   attribute. These stylesheets are one cascade: the column that listed the
+   model's blind spots was classed `gaps`, `result.css` owns `.gaps li`, and
+   the briefing grew to 3,637px inside a 768px viewport. See the note in
+   js/frames.js and `tests.test_offline.LiveBriefing`. */
+
 .frame-intel {
   margin-top: var(--s-3);
   width: 100%;
+  /* The cap is the whole point. `.stage-main` is sticky, and a sticky column
+     taller than the viewport stops sticking - it took the featured frame, the
+     contact strip and the progress bar below the fold with it, on the one
+     screen whose subject is the photographs. The briefing scrolls itself
+     instead, so how much the model has to say can never decide whether the
+     photographs are visible. */
+  flex: 0 1 auto;
+  min-height: 6.5rem;
+  max-height: clamp(8rem, 30vh, 19rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--stage-rule) transparent;
 }
+.frame-intel::-webkit-scrollbar { width: 6px; }
+.frame-intel::-webkit-scrollbar-track { background: transparent; }
+.frame-intel::-webkit-scrollbar-thumb {
+  background: var(--stage-rule);
+  border-radius: var(--radius);
+}
+
 .intel-card {
   background: var(--stage-lift);
   border: 1px solid var(--stage-rule);
@@ -443,17 +518,24 @@
   padding: var(--s-3) var(--s-4);
   display: grid;
   gap: var(--s-3);
+  align-content: start;
   animation: intel-fade .3s var(--ease-out);
 }
 @keyframes intel-fade {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .intel-card { animation: none; }
+}
+
+/* ---- status line ---- */
+
 .intel-top {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: .5rem;
+  gap: .4rem;
 }
 .intel-badge {
   font: 600 var(--t-xs)/1 var(--sans);
@@ -463,52 +545,53 @@
   align-items: center;
   text-transform: uppercase;
   letter-spacing: .03em;
+  border: 1px solid transparent;
 }
-.intel-badge.scanning {
+.intel-badge[data-level="scanning"] {
   background: rgba(143, 196, 122, .15);
   color: var(--verified-lit);
-  border: 1px solid rgba(143, 196, 122, .3);
+  border-color: rgba(143, 196, 122, .3);
 }
-.intel-badge.clean {
-  background: var(--verified);
-  color: #fff;
-}
-.intel-badge.minor {
+.intel-badge[data-level="clean"] { background: var(--verified); color: #fff; }
+.intel-badge[data-level="cosmetic"],
+.intel-badge[data-level="minor"] {
   background: rgba(143, 196, 122, .2);
   color: var(--verified-lit);
-  border: 1px solid var(--verified-lit);
+  border-color: var(--verified-lit);
 }
-.intel-badge.moderate {
+.intel-badge[data-level="moderate"] {
   background: rgba(232, 180, 92, .2);
   color: var(--caution-lit);
-  border: 1px solid var(--caution-lit);
+  border-color: var(--caution-lit);
 }
-.intel-badge.major {
+.intel-badge[data-level="major"] {
   background: rgba(242, 112, 92, .2);
   color: var(--stop-lit);
-  border: 1px solid var(--stop-lit);
+  border-color: var(--stop-lit);
 }
-.intel-badge.error {
-  background: var(--stop);
-  color: #fff;
+.intel-badge[data-level="error"] { background: var(--stop); color: #fff; }
+.intel-badge[data-level="dropped"] {
+  background: transparent;
+  color: var(--stage-haze);
+  border-color: var(--stage-rule);
 }
-.pulse-dot {
+.intel-pulse {
   display: inline-block;
   width: .45rem;
   height: .45rem;
   border-radius: 50%;
   background: var(--verified-lit);
   box-shadow: 0 0 0 0 rgba(143, 196, 122, .7);
-  animation: pulse-ring 1.8s infinite;
+  animation: intel-pulse-ring 1.8s infinite;
   margin-right: .35rem;
 }
-@keyframes pulse-ring {
+@keyframes intel-pulse-ring {
   0% { box-shadow: 0 0 0 0 rgba(143, 196, 122, .7); }
   70% { box-shadow: 0 0 0 6px rgba(143, 196, 122, 0); }
   100% { box-shadow: 0 0 0 0 rgba(143, 196, 122, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pulse-dot { animation: none; }
+  .intel-pulse { animation: none; }
 }
 .intel-pill {
   font-size: var(--t-xs);
@@ -517,35 +600,55 @@
   border-radius: var(--radius);
   background: rgba(0, 0, 0, .2);
   border: 1px solid rgba(255, 255, 255, .07);
+  white-space: nowrap;
 }
-.intel-pill.odo {
+.intel-pill[data-kind="odo"] {
   color: var(--caution-lit);
-  border-color: rgba(232, 180, 92, .3);
-  font-weight: 600;
+  border-color: rgba(232, 180, 92, .35);
 }
-.intel-pill.crop {
-  color: var(--verified-lit);
-}
-.intel-summary-text {
-  font: 500 var(--t-sm)/1.4 var(--sans);
-  color: var(--stage-text);
+.intel-pill[data-kind="crop"],
+.intel-pill[data-kind="backend"] { color: var(--stage-text); }
+
+/* ---- the one-line read ---- */
+
+.intel-headline {
   margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  color: var(--stage-text);
 }
-.intel-summary-text.pending {
+.intel-headline[data-state="pending"] {
   color: var(--stage-haze);
   font-style: italic;
 }
+
+/* ---- the lists ---- */
+
+/* Findings lead and get the wider track; what the frame vouches for and what
+   it cannot see stack beside them. Three equal columns at this width put
+   prose in a 170px gutter, which is how the collapsed-to-one-word layout went
+   unnoticed in the first place. */
 .intel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--s-3);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--s-4);
   padding-top: var(--s-2);
   border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.intel-aside {
+  display: grid;
+  gap: var(--s-3);
+  align-content: start;
+  min-width: 0;
+}
+@media (max-width: 1180px) {
+  .intel-grid { grid-template-columns: minmax(0, 1fr); }
 }
 .intel-col {
   display: grid;
   gap: .4rem;
   align-content: start;
+  min-width: 0;
 }
 .intel-col-title {
   font: 600 var(--t-xs)/1 var(--sans);
@@ -557,78 +660,91 @@
   gap: .35rem;
   margin: 0;
 }
-.intel-col-title svg {
-  width: .9rem;
-  height: .9rem;
+.intel-col-title svg { width: .9rem; height: .9rem; }
+.intel-col-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--stage-text);
 }
-.intel-col.sound .intel-col-title { color: var(--verified-lit); }
-.intel-col.issues .intel-col-title { color: var(--caution-lit); }
+.intel-col[data-kind="sound"] .intel-col-title { color: var(--verified-lit); }
+.intel-col[data-kind="issues"] .intel-col-title { color: var(--caution-lit); }
+
 .intel-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
   gap: .35rem;
+  min-width: 0;
 }
 .intel-list li {
   font-size: var(--t-xs);
   line-height: 1.35;
   color: var(--stage-text);
-  padding-left: .75rem;
   position: relative;
+  min-width: 0;
 }
-.intel-list li::before {
+/* The marker belongs to the two prose columns, not to every list item. It
+   used to be a blanket `.intel-list li::before` that the findings column had
+   to switch back off with `!important` - and a findings item is a titled
+   card, so the bullet was reappearing next to its component glyph whenever
+   the override lost on specificity. */
+.intel-col[data-kind="sound"] .intel-list li,
+.intel-col[data-kind="gaps"] .intel-list li { padding-left: .85rem; }
+.intel-col[data-kind="gaps"] .intel-list li::before {
   content: "•";
   position: absolute;
   left: 0;
   color: var(--stage-haze);
 }
-.sound-list li::before {
+.intel-col[data-kind="sound"] .intel-list li::before {
   content: "✓";
+  position: absolute;
+  left: 0;
   color: var(--verified-lit);
   font-size: .75rem;
 }
-.intel-issue-item {
+
+.intel-issue {
   background: rgba(0, 0, 0, .2);
   border-radius: var(--radius);
-  padding: .35rem .5rem !important;
+  padding: .35rem .5rem;
   border-left: 2px solid var(--caution-lit);
-  margin-bottom: .2rem;
 }
-.intel-issue-item::before { content: none !important; }
-.intel-issue-item[data-sev="major"] { border-left-color: var(--stop-lit); }
+.intel-issue[data-sev="major"] { border-left-color: var(--stop-lit); }
+.intel-issue[data-sev="cosmetic"],
+.intel-issue[data-sev="minor"] { border-left-color: var(--verified-lit); }
 .intel-issue-head {
   display: flex;
   align-items: center;
   gap: .35rem;
+  flex-wrap: wrap;
 }
-.intel-issue-head svg {
-  width: .85rem;
-  height: .85rem;
-  color: var(--stage-haze);
-}
+.intel-issue-head svg { width: .95rem; height: .95rem; color: var(--stage-haze); }
 .intel-issue-comp {
   font-size: var(--t-xs);
+  font-weight: 600;
   color: var(--stage-text);
 }
 .sev-tag {
   font-size: .65rem;
   text-transform: uppercase;
-  font-weight: 600;
-  padding: .05rem .25rem;
+  letter-spacing: .04em;
+  padding: .1rem .35rem;
   border-radius: var(--radius);
   margin-left: auto;
 }
-.sev-tag.minor { background: rgba(143, 196, 122, .2); color: var(--verified-lit); }
-.sev-tag.moderate { background: rgba(232, 180, 92, .2); color: var(--caution-lit); }
-.sev-tag.major { background: rgba(242, 112, 92, .2); color: var(--stop-lit); }
+.sev-tag[data-sev="cosmetic"],
+.sev-tag[data-sev="minor"] { background: rgba(143, 196, 122, .2); color: var(--verified-lit); }
+.sev-tag[data-sev="moderate"] { background: rgba(232, 180, 92, .2); color: var(--caution-lit); }
+.sev-tag[data-sev="major"] { background: rgba(242, 112, 92, .2); color: var(--stop-lit); }
 .intel-issue-obs {
   margin: .2rem 0 0;
   color: var(--stage-text);
   font-size: var(--t-xs);
-  line-height: 1.3;
+  line-height: 1.35;
 }
-.intel-mag, .intel-impact {
+.intel-mag {
   display: block;
   font-size: .7rem;
   color: var(--stage-haze);
@@ -640,3 +756,42 @@
   margin: 0;
   font-style: italic;
 }
+
+/* Inspection choreography: a subject outline, then one evidenced part at a time. */
+.scan-part rect {
+  fill: rgba(145, 208, 197, .035);
+  stroke: #9ed9cf;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: .25;
+  transition: fill .35s, opacity .35s;
+}
+.scan-part[data-active="true"] rect {
+  opacity: 1;
+  fill: rgba(145, 208, 197, .14);
+  stroke-width: 2.5;
+  stroke-dasharray: 1;
+  animation: part-trace .7s var(--ease-out) both;
+}
+.scan-part[data-kind="finding"] rect { stroke: var(--caution-lit); }
+@keyframes part-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.box-chip.scan-part-label {
+  opacity: 0;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+  border: 1px solid #9ed9cf;
+  background: #172d27;
+  color: #d6f6ef;
+  transition: opacity .25s;
+}
+.box-chip.scan-part-label[data-active="true"] { opacity: 1; }
+.intel-parts { display: flex; flex-wrap: wrap; gap: .35rem; }
+.intel-part {
+  color: var(--stage-haze); background: transparent; border: 1px solid var(--stage-rule);
+  border-radius: var(--radius); padding: .35rem .5rem; font: inherit; font-size: var(--t-xs);
+  cursor: pointer;
+}
+.intel-part[data-active="true"] { background: #27493f; color: #d6f6ef; border-color: #9ed9cf; }
+.intel-part:focus-visible { outline: 2px solid #9ed9cf; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .scan-part[data-active="true"] rect { animation: none; } }

@@ -31,17 +31,43 @@ const CAPTURE_WORD = { good: 'sharp', fair: 'usable', poor: 'soft' };
 let urls = {};
 let checks = [];
 let findings = {};
+let evidencePhotos = null;
 let refusedAsNotATruck = false;
 let showAll = false;
 let current = null;
 let frameVersion = 0;
+let partTimers = [];
+const partName = (id) => ({engine_bay:'Engine bay', windscreen_glass:'Windshield',
+  grille_headlights:'Grille & headlights', cab_exterior_panels:'Cab panels',
+  steer_tires:'Front tires', drive_tires:'Drive tires', dashboard_instruments:'Dashboard'}[id] || titleise(id));
 
-export function setSource(photoUrls, photoChecks, decision) {
+function clearPartTour() { partTimers.forEach(clearTimeout); partTimers = []; }
+
+function locatedParts(finding) {
+  if (!finding || finding.error) return [];
+  const items = [...(finding.issues || []).map(i => ({...i, kind:'finding'})),
+    ...(finding.component_regions || []).filter(r => !(finding.issues || []).some(i => i.component === r.component && i.box))
+      .map(r => ({...r, kind:'visible'}))];
+  return items.filter(p => Array.isArray(p.box) && p.box.length === 4 &&
+    p.box.every(Number.isFinite) && p.box[0] >= 0 && p.box[1] >= 0 &&
+    p.box[2] > 0 && p.box[3] > 0 && p.box[0]+p.box[2] <= 1.001 && p.box[1]+p.box[3] <= 1.001);
+}
+
+function focusPart(index) {
+  document.querySelectorAll('[data-part-index]').forEach(n => {
+    n.dataset.active = String(Number(n.dataset.partIndex) === index);
+    if (n.tagName === 'BUTTON') n.setAttribute('aria-pressed', n.dataset.active);
+  });
+}
+
+
+export function setSource(photoUrls, photoChecks, decision, evidenceIds = null) {
   frameVersion += 1;
   if (!current || urls[current.photo_id] !== photoUrls?.[current.photo_id]) current = null;
   urls = photoUrls || {};
   checks = photoChecks || [];
   findings = {};
+  evidencePhotos = evidenceIds === null ? null : new Set(evidenceIds);
   const intel = $('frame-intel');
   if (intel) intel.replaceChildren();
   /* Truck detection is a set-level rule, never per-photo: a tire close-up
@@ -64,6 +90,7 @@ export function setFinding(finding) {
 export const findingFor = (id) => findings[id] || null;
 
 export function cancelPendingFrame() {
+  clearPartTour();
   frameVersion += 1;
   $('frame-stage').querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
 }
@@ -102,6 +129,7 @@ export const hasHiddenBoxes = (check) =>
 
 export function showFrame(check) {
   if (!check) return;
+  clearPartTour();
   const version = ++frameVersion;
   const source = urlFor(check.photo_id);
   const preload = new Image();
@@ -241,36 +269,27 @@ function drawBoxes(root, check) {
     animate(chip, { opacity: [0, 1] }, { duration: 0.25, delay: 0.5 + i * 0.07 });
   });
 
-  /* Defect annotations from the vision analysis */
-  const finding = findings[check.photo_id];
-  if (finding && finding.issues && check.width && check.height) {
-    finding.issues.forEach((issue, idx) => {
-      if (issue.box && Array.isArray(issue.box) && issue.box.length === 4) {
-        const [bx, by, bw, bh] = issue.box;
-        const ix = bx * check.width, iy = by * check.height;
-        const iw = bw * check.width, ih = bh * check.height;
-        if (iw > 6 && ih > 6) {
-          const dg = svg('g', { class: 'defect-box-group' });
-          dg.dataset.sev = issue.severity || 'minor';
-          dg.dataset.issueId = `${check.photo_id}-${idx}`;
-          const dr = svg('rect', {
-            x: ix, y: iy, width: iw, height: ih,
-            class: `defect-rect ${issue.severity || 'minor'}`
-          });
-          dg.append(dr);
-          root.append(dg);
-
-          const dchip = el('span', `box-chip defect-chip ${issue.severity || 'minor'}`,
-                           `${titleise(issue.component)}: ${issue.severity}`);
-          dchip.dataset.issueId = `${check.photo_id}-${idx}`;
-          dchip.style.left = `${(ix / check.width) * 100}%`;
-          dchip.style.top = `${(iy / check.height) * 100}%`;
-          if (iy / check.height > 0.07) dchip.classList.add('above');
-          chips.append(dchip);
-        }
-      }
-    });
-  }
+  // Visible parts and defects are distinct: green/neutral means located,
+  // never "healthy". No geometry is inferred from a view name or truck diagram.
+  clearPartTour();
+  locatedParts(findings[check.photo_id]).forEach((part, index) => {
+    const [x,y,w,h] = part.box;
+    const g = svg('g', {class:'scan-part'});
+    g.dataset.partIndex = String(index);
+    g.dataset.kind = part.kind;
+    const rect = svg('rect', {x:x*check.width, y:y*check.height,
+      width:w*check.width, height:h*check.height, pathLength:1});
+    g.append(rect); root.append(g);
+    const chip = el('span', 'box-chip scan-part-label',
+      `${String(index+1).padStart(2,'0')} · ${partName(part.component)}${part.kind === 'finding' ? ' · '+part.severity : ' · visible'}`);
+    chip.dataset.partIndex = String(index);
+    chip.style.left = `${Math.min(x, .65)*100}%`;
+    chip.style.top = `${y*100}%`;
+    if (y > .07) chip.classList.add('above');
+    chips.append(chip);
+    if (index) partTimers.push(setTimeout(() => focusPart(index), index*1600));
+  });
+  focusPart(0);
 }
 
 function writeMeta(check) {
@@ -298,162 +317,203 @@ function writeMeta(check) {
   }
 }
 
+/* ---------- the briefing under the frame ---------- */
+
+/* What the model said about the frame on screen, while it is on screen.
+
+   Every class here is `intel-`-prefixed and every variant travels as a
+   `data-` attribute, because these stylesheets share one global cascade.
+   The column that read the model's blind spots was classed `gaps`, which
+   `result.css` styles as a two-column icon row with a 1.35rem first track -
+   so each line collapsed to its longest word, one item became 440px tall,
+   the card became 3,637px and `.stage-main` became 4,255px against a 768px
+   viewport. Every photograph loaded; all of them were below the fold, with
+   the contact strip and the progress bar. `tests.test_offline.LiveBriefing`
+   pins both halves of that: the namespace, and the height cap.
+
+   Nothing here states a condition the call did not state. An empty issue
+   list means nothing was flagged, which is a fact about the answer - it is
+   not a finding that the component is sound, and the screen does not get to
+   promote one into the other on the model's behalf. */
+
+const WORST = (issues) => issues.some((i) => i.severity === 'major') ? 'major'
+  : issues.some((i) => i.severity === 'moderate') ? 'moderate'
+  : issues.some((i) => i.severity === 'minor') ? 'minor' : 'cosmetic';
+
+function pill(kind, text) {
+  const node = el('span', 'intel-pill', text);
+  node.dataset.kind = kind;
+  return node;
+}
+
+/* A titled column. `body` is appended as-is; `empty` is the line shown when
+   there is nothing to list, and it says what the model did not say rather
+   than filling the space with a claim. */
+function column(kind, glyph, title, count, items, render, empty) {
+  const col = el('div', 'intel-col');
+  col.dataset.kind = kind;
+  const head = el('h4', 'intel-col-title');
+  head.append(partIcon(glyph), el('span', null, title));
+  if (count !== null) head.append(el('span', 'intel-col-count', String(count)));
+  col.append(head);
+  if (items.length) {
+    const list = el('ul', 'intel-list');
+    items.forEach((item, i) => list.append(render(item, i)));
+    col.append(list);
+  } else {
+    col.append(el('p', 'intel-quiet', empty));
+  }
+  return col;
+}
+
+function issueItem(check, issue, idx) {
+  const li = el('li', 'intel-issue');
+  li.dataset.sev = issue.severity || 'minor';
+  li.dataset.issueId = `${check.photo_id}-${idx}`;
+
+  const head = el('div', 'intel-issue-head');
+  const tag = el('span', 'sev-tag', issue.severity || 'minor');
+  tag.dataset.sev = issue.severity || 'minor';
+  head.append(partIcon(issue.component),
+              el('strong', 'intel-issue-comp', titleise(issue.component)), tag);
+  li.append(head, el('p', 'intel-issue-obs', issue.observation));
+
+  /* The structured half of the finding, in the model's own vocabulary. */
+  const bits = [];
+  if (issue.magnitude) {
+    if (issue.magnitude.state) bits.push(issue.magnitude.state.replace(/_/g, ' '));
+    if (issue.magnitude.extent) bits.push(issue.magnitude.extent.replace(/_/g, ' '));
+    if (issue.magnitude.consumable) bits.push('consumable');
+  }
+  if (issue.price_impact && issue.price_impact !== 'none') {
+    bits.push(`${issue.price_impact} price impact`);
+  }
+  /* Corroboration is a better signal than a confidence decimal, and it is the
+     same one the report uses. */
+  const also = (issue.also_seen_in || []).length;
+  if (also) bits.push(`also in ${also} other photo${also === 1 ? '' : 's'}`);
+  if (bits.length) li.append(el('span', 'intel-mag', bits.join(' · ')));
+
+  /* Hovering a finding lights its box on the frame above, when it has one. */
+  const mark = (on) => {
+    const box = $('frame-boxes')
+      ?.querySelector(`[data-issue-id="${check.photo_id}-${idx}"]`);
+    if (box) box.classList.toggle('highlight', on);
+  };
+  li.addEventListener('mouseenter', () => mark(true));
+  li.addEventListener('mouseleave', () => mark(false));
+  return li;
+}
+
 export function renderIntel(check, finding) {
   const container = $('frame-intel');
   if (!container) return;
+  if (container.dataset.photoId !== String(check?.photo_id)) container.scrollTop = 0;
+  container.dataset.photoId = String(check?.photo_id);
   container.replaceChildren();
   if (!check) return;
 
   const card = el('div', 'intel-card');
+  const issues = (finding && !finding.error && finding.issues) || [];
+  const notSelected = !finding && evidencePhotos !== null && !evidencePhotos.has(check.photo_id);
 
-  // Top bar with live status badge and telemetry
+  /* ---- the status line: where this frame is in the run ---- */
   const top = el('div', 'intel-top');
   const badge = el('span', 'intel-badge');
-  if (!finding) {
-    badge.className = 'intel-badge scanning';
-    const dot = el('span', 'pulse-dot');
-    badge.append(dot, document.createTextNode(check.usable ? 'Scanning in progress…' : 'Dropped by gate'));
+  if (!check.usable) {
+    badge.dataset.level = 'dropped';
+    badge.textContent = 'Not sent to the model';
+  } else if (notSelected) {
+    badge.dataset.level = 'dropped';
+    badge.textContent = 'Photo checked';
+  } else if (!finding) {
+    badge.dataset.level = 'scanning';
+    badge.append(el('span', 'intel-pulse'), document.createTextNode('Reading this frame'));
   } else if (finding.error) {
-    badge.className = 'intel-badge error';
-    badge.textContent = 'Unreadable frame';
-  } else if (!finding.issues || !finding.issues.length) {
-    badge.className = 'intel-badge clean';
-    badge.textContent = 'Verified Sound · Clear';
+    badge.dataset.level = 'error';
+    badge.textContent = 'This frame could not be read';
+  } else if (!issues.length) {
+    badge.dataset.level = 'clean';
+    badge.textContent = 'Nothing flagged';
   } else {
-    const worst = (finding.issues.some((i) => i.severity === 'major')) ? 'major'
-      : (finding.issues.some((i) => i.severity === 'moderate')) ? 'moderate' : 'minor';
-    badge.className = `intel-badge ${worst}`;
-    const n = finding.issues.length;
-    badge.textContent = `${n} ${worst} finding${n === 1 ? '' : 's'}`;
+    badge.dataset.level = WORST(issues);
+    badge.textContent = `${issues.length} finding${issues.length === 1 ? '' : 's'}`;
   }
-
-  const metaPill = el('span', 'intel-pill view',
-    `${viewName(check.view)} · Photo ${photoOrdinal(check.photo_id)} of ${checks.length || 1}`);
-  top.append(badge, metaPill);
+  top.append(badge, pill('view',
+    `${viewName(check.view)} · photo ${photoOrdinal(check.photo_id)} of ${checks.length || 1}`));
 
   if (finding?.odometer_km) {
-    const odo = el('span', 'intel-pill odo', `Odometer: ${Math.round(finding.odometer_km).toLocaleString('en-US')} km`);
-    top.append(odo);
+    top.append(pill('odo',
+      `${Math.round(finding.odometer_km).toLocaleString('en-US')} km on the dash`));
   }
-  if (finding?.cropped) {
-    const crop = el('span', 'intel-pill crop', 'Cropped to vehicle');
-    top.append(crop);
+  if (finding?.cropped) top.append(pill('crop', 'cropped to the subject'));
+  /* How the answer was obtained, not how good it is: the close-up is sampled
+     CLOSEUP_SAMPLES times and a fallback names the photo it happened on. */
+  if (finding?.backend) {
+    top.append(pill('backend', finding.samples > 1
+      ? `${finding.samples}× on ${finding.backend}` : finding.backend));
   }
-  if (check.usable && check.quality_bucket) {
-    const cap = el('span', 'intel-pill quality', `${CAPTURE_WORD[check.quality_bucket] || check.quality_bucket} photo`);
-    top.append(cap);
-  }
+  const word = CAPTURE_WORD[check.quality_bucket];
+  if (check.usable && word) top.append(pill('quality', `${word} photo`));
   card.append(top);
 
-  // Executive summary headline
-  const headlineWrap = el('div', 'intel-headline');
-  if (finding) {
-    const summary = finding.shows || (finding.issues && finding.issues.length
-      ? `${finding.issues.length} observation${finding.issues.length === 1 ? '' : 's'} flagged in this frame.`
-      : 'Visual inspection confirms this component is in sound working order with no structural defects.');
-    headlineWrap.append(el('p', 'intel-summary-text', summary));
-  } else {
-    headlineWrap.append(el('p', 'intel-summary-text pending',
-      check.usable
-        ? `Model examining ${viewName(check.view).toLowerCase()} for component wear, surface condition, and alignment.`
-        : `Frame dropped: ${(check.reasons || []).join('; ') || 'insufficient vehicle presence'}.`
-    ));
+  const parts = locatedParts(finding);
+  if (parts.length) {
+    const nav = el('div', 'intel-parts');
+    nav.setAttribute('aria-label', 'Located parts in this photo');
+    parts.forEach((part, index) => {
+      const button = el('button', 'intel-part', `${index+1} · ${partName(part.component)}`);
+      button.type = 'button'; button.dataset.partIndex = String(index);
+      button.setAttribute('aria-pressed', String(index === 0));
+      button.dataset.active = String(index === 0);
+      button.addEventListener('click', () => { clearPartTour(); focusPart(index); });
+      nav.append(button);
+    });
+    card.append(nav);
+  } else if (finding && !finding.error) {
+    card.append(el('p', 'intel-quiet', 'No reliable part locations returned for this photo. Findings below are not spatially marked.'));
   }
-  card.append(headlineWrap);
 
-  // Structured diagnostics grid
+
+  /* ---- one line: what the frame is of ---- */
+  const headline = el('p', 'intel-headline');
+  if (!check.usable) {
+    headline.dataset.state = 'pending';
+    headline.textContent = `Dropped by the gate: ${(check.reasons || []).join('; ')
+      || 'it did not pass the photo checks'}.`;
+  } else if (notSelected) {
+    headline.dataset.state = 'pending';
+    headline.textContent = 'Not selected for an individual close-up reading.';
+  } else if (!finding) {
+    headline.dataset.state = 'pending';
+    headline.textContent = 'Waiting for this photo’s inspection findings.';
+  } else if (finding.error) {
+    headline.dataset.state = 'pending';
+    headline.textContent = finding.error;
+  } else {
+    headline.textContent = finding.shows
+      || (issues.length ? `${issues.length} observation${issues.length === 1 ? '' : 's'} recorded on this frame.`
+                        : 'Nothing was flagged on this frame.');
+  }
+  card.append(headline);
+
+  /* ---- the three lists ---- */
   if (finding && !finding.error) {
     const grid = el('div', 'intel-grid');
+    grid.append(column('issues', 'warning', 'Flagged', issues.length, issues,
+                       (issue, i) => issueItem(check, issue, i),
+                       'Nothing flagged on this frame.'));
 
-    // Column 1: Verified Sound / Strengths
-    const colSound = el('div', 'intel-col sound');
-    const soundHead = el('h4', 'intel-col-title');
-    soundHead.append(partIcon('check'), el('span', null, 'Verified Sound'));
-    colSound.append(soundHead);
-
+    const aside = el('div', 'intel-aside');
     const strengths = finding.strengths || [];
-    if (strengths.length) {
-      const soundList = el('ul', 'intel-list sound-list');
-      strengths.forEach((st) => soundList.append(el('li', null, st)));
-      colSound.append(soundList);
-    } else if (!finding.issues || !finding.issues.length) {
-      colSound.append(el('p', 'intel-quiet', 'All visible surfaces, seals, and mountings appear in expected operational condition.'));
-    } else {
-      colSound.append(el('p', 'intel-quiet', 'Component integrity acceptable outside the specific items noted.'));
-    }
-    grid.append(colSound);
-
-    // Column 2: Observations / Issues
-    const colIssues = el('div', 'intel-col issues');
-    const issuesHead = el('h4', 'intel-col-title');
-    const issueCount = (finding.issues || []).length;
-    issuesHead.append(partIcon('warning'), el('span', null, `Findings (${issueCount})`));
-    colIssues.append(issuesHead);
-
-    if (issueCount) {
-      const issuesList = el('ul', 'intel-list issues-list');
-      finding.issues.forEach((issue, idx) => {
-        const li = el('li', 'intel-issue-item');
-        li.dataset.sev = issue.severity || 'minor';
-        li.dataset.issueId = `${check.photo_id}-${idx}`;
-
-        const headRow = el('div', 'intel-issue-head');
-        headRow.append(
-          partIcon(issue.component),
-          el('strong', 'intel-issue-comp', titleise(issue.component)),
-          el('span', `sev-tag ${issue.severity || 'minor'}`, issue.severity || 'minor')
-        );
-        li.append(headRow);
-
-        const desc = el('p', 'intel-issue-obs', issue.observation);
-        li.append(desc);
-
-        if (issue.magnitude) {
-          const magBits = [];
-          if (issue.magnitude.state) magBits.push(issue.magnitude.state.replace(/_/g, ' '));
-          if (issue.magnitude.extent) magBits.push(issue.magnitude.extent.replace(/_/g, ' '));
-          if (issue.magnitude.consumable) magBits.push('consumable');
-          if (magBits.length) {
-            li.append(el('span', 'intel-mag', magBits.join(' · ')));
-          }
-        }
-        if (issue.price_impact && issue.price_impact !== 'none') {
-          li.append(el('span', 'intel-impact', `Price impact: ${issue.price_impact}`));
-        }
-
-        li.addEventListener('mouseenter', () => {
-          const rect = $('frame-boxes')?.querySelector(`[data-issue-id="${check.photo_id}-${idx}"]`);
-          if (rect) rect.classList.add('highlight');
-        });
-        li.addEventListener('mouseleave', () => {
-          const rect = $('frame-boxes')?.querySelector(`[data-issue-id="${check.photo_id}-${idx}"]`);
-          if (rect) rect.classList.remove('highlight');
-        });
-
-        issuesList.append(li);
-      });
-      colIssues.append(issuesList);
-    } else {
-      colIssues.append(el('p', 'intel-quiet', 'No wear, damage, or degradation flagged in this frame.'));
-    }
-    grid.append(colIssues);
-
-    // Column 3: Angle Blindspots / Limits
-    const colGaps = el('div', 'intel-col gaps');
-    const gapsHead = el('h4', 'intel-col-title');
-    gapsHead.append(partIcon('search'), el('span', null, 'Inspection Limits'));
-    colGaps.append(gapsHead);
-
+    aside.append(column('sound', 'check', 'Named as sound', strengths.length,
+                        strengths, (s) => el('li', null, s),
+                        'Nothing named as sound on this frame.'));
     const gaps = finding.cannot_tell || [];
-    if (gaps.length) {
-      const gapsList = el('ul', 'intel-list gaps-list');
-      gaps.forEach((gap) => gapsList.append(el('li', null, gap)));
-      colGaps.append(gapsList);
-    } else {
-      colGaps.append(el('p', 'intel-quiet', 'Full component view visible; no significant angle blindspots.'));
-    }
-    grid.append(colGaps);
-
+    aside.append(column('gaps', 'search', "Can't tell from this angle",
+                        gaps.length, gaps, (g) => el('li', null, g),
+                        'Nothing recorded as out of view.'));
+    grid.append(aside);
     card.append(grid);
   }
 
@@ -494,7 +554,15 @@ export function markCell(id, cls) {
     .forEach((n) => n.classList.remove('current'));
   if (cls) c.classList.add(cls);
   c.classList.add('current');
-  c.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
+  // Follow horizontally inside the contact strip, never drag the page away
+  // from the photograph (especially on mobile) when a new finding arrives.
+  const strip = c.parentElement;
+  const cellBox = c.getBoundingClientRect();
+  const stripBox = strip.getBoundingClientRect();
+  strip.scrollTo({
+    left: strip.scrollLeft + cellBox.left - stripBox.left - (strip.clientWidth - cellBox.width) / 2,
+    behavior: reduced() ? 'auto' : 'smooth',
+  });
 }
 
 export function updateStripCellStatus(finding) {
@@ -505,9 +573,7 @@ export function updateStripCellStatus(finding) {
   if (finding.error) {
     c.dataset.state = 'error';
   } else if (finding.issues && finding.issues.length) {
-    const worst = (finding.issues.some((i) => i.severity === 'major')) ? 'major'
-      : (finding.issues.some((i) => i.severity === 'moderate')) ? 'moderate' : 'minor';
-    c.dataset.state = worst;
+    c.dataset.state = WORST(finding.issues);
   } else {
     c.dataset.state = 'clean';
   }

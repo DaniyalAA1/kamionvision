@@ -244,7 +244,7 @@ def _badge(chain, client, report: EvidenceReport, gate: GateReport,
 
 def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
              on_photo, report: EvidenceReport, *, expectation: str = "",
-             band: str | None = None, vehicle=None) -> list[PhotoFinding]:
+             band: str | None = None, vehicle=None, on_activity=None) -> list[PhotoFinding]:
     """One photo per task, read `CLOSEUP_SAMPLES` times, `EVIDENCE_CONCURRENCY`
     tasks at a time.
 
@@ -256,14 +256,17 @@ def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
     """
     findings: list[PhotoFinding] = []
     workers = max(1, min(EVIDENCE_CONCURRENCY, len(selected)))
+    def inspect(check):
+        if on_activity:
+            on_activity({"phase": "photo", "photo_id": check.photo_id, "view": check.view})
+        return sampling.closeup_consensus(chain, check, vehicle_line,
+            tmpdir=tmpdir, max_tokens=CLOSEUP_MAX_TOKENS,
+            expectation=expectation, band=band, repair=_repair,
+            weak_points=passes.weak_points_for_view(vehicle, check.view))
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(sampling.closeup_consensus, chain, check, vehicle_line,
-                        tmpdir=tmpdir, max_tokens=CLOSEUP_MAX_TOKENS,
-                        expectation=expectation, band=band, repair=_repair,
-                        # Filtered per view: what this model is known to go
-                        # wrong on, in the parts this frame can actually show.
-                        weak_points=passes.weak_points_for_view(vehicle, check.view)): check
+            pool.submit(inspect, check): check
             for check in selected
         }
         for future in as_completed(futures):
@@ -403,7 +406,7 @@ def _calibrate(chain, client, report: EvidenceReport, findings, *,
 
 def run(gate: GateReport, declared: dict | None = None, *,
         backend: str | None = None, limit: int = MAX_EVIDENCE_PHOTOS,
-        on_photo=None) -> EvidenceReport:
+        on_photo=None, on_activity=None) -> EvidenceReport:
     t0 = time.time()
     selected = select_photos(gate, limit)
     report = EvidenceReport()
@@ -424,6 +427,8 @@ def run(gate: GateReport, declared: dict | None = None, *,
     # `limit` is pass B's budget and IDENTITY_PHOTOS is pass A's; the smaller
     # wins, so a caller asking for a cheap four-frame run gets one.
     identity_photos = select_identity_photos(gate, min(IDENTITY_PHOTOS, limit))
+    if on_activity:
+        on_activity({"phase": "identity", "detail": "Identifying the truck and checking that the photos show the same vehicle"})
     read = sampling.identity_consensus(chain, identity_photos, declared,
                                        max_tokens=IDENTITY_MAX_TOKENS, repair=_repair)
     client = read.client
@@ -448,10 +453,12 @@ def run(gate: GateReport, declared: dict | None = None, *,
     # --- pass A2 and pass B, sharing one temp directory for their crops ----
     with passes.tempdir() as tmp:
         if BADGE_READ:
+            if on_activity:
+                on_activity({"phase": "badge", "detail": "Reading the make and model badges"})
             _badge(chain, client, report, gate, Path(tmp))
         findings = _fan_out(chain, selected, vehicle_line, Path(tmp), on_photo,
                             report, expectation=expectation, band=band,
-                            vehicle=report.vehicle)
+                            vehicle=report.vehicle, **({"on_activity": on_activity} if on_activity else {}))
     findings.sort(key=lambda f: f.photo_id)
     report.photo_findings = findings
     report.photos_read = sum(1 for f in findings if not f.error)
@@ -469,6 +476,9 @@ def run(gate: GateReport, declared: dict | None = None, *,
     if read_it:
         report.vehicle.odometer_km = read_it[0].odometer_km
         report.vehicle.odometer_photo_id = read_it[0].photo_id
+
+    if on_activity:
+        on_activity({"phase": "synthesis", "detail": "Cross-checking observations and combining the photo findings"})
 
     # --- pass C: roll it up -----------------------------------------------
     t = time.time()

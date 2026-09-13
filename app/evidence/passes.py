@@ -672,6 +672,13 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
         odometer_km=_odometer(data.get("odometer_km")),
         confidence=_confidence(data.get("confidence"), 0.0),
     )
+    regions = data.get("component_regions") or []
+    for region in (regions[:8] if isinstance(regions, list) else []):
+        if not isinstance(region, dict) or region.get("component") not in prompts.COMPONENTS:
+            continue
+        box = _observation_box(region.get("box"), check, cropped=cropped)
+        if box:
+            finding.component_regions.append({"component": region["component"], "box": box})
     for entry in data.get("observations") or []:
         component = str(entry.get("component") or "").strip()
         if component not in prompts.COMPONENTS:

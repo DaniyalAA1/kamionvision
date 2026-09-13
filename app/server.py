@@ -293,7 +293,8 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
 
             result = pipeline.appraise(photos, declared, market=market,
                                        backend=backend, on_step=note,
-                                       on_gate=gate_done, on_photo=photo_read)
+                                       on_gate=gate_done, on_photo=photo_read,
+                                       on_activity=lambda activity: events.put({"type": "activity", **activity}))
             payload = result.to_dict()
             payload["photo_urls"] = urls_for(result.gate.photos)
             payload["text_report"] = report.render_text(result)

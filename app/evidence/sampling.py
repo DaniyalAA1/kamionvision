@@ -132,6 +132,8 @@ def combine_samples(samples: list[PhotoFinding], *, quorum: int | None = None
         photo_id=base.photo_id, view=base.view, shows=base.shows,
         legible=sum(1 for s in samples if s.legible) * 2 >= k,
         cropped=base.cropped,
+        # Keep one sample's geometry; averaging rectangles invents locations.
+        component_regions=base.component_regions,
         strengths=_dedupe([g for s in samples for g in s.strengths], 8),
         cannot_tell=_dedupe([g for s in samples for g in s.cannot_tell], 6),
         confidence=round(sum(s.confidence for s in samples) / k, 3),

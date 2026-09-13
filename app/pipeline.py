@@ -192,7 +192,7 @@ def collect_photos(source: str | Path) -> list[Path]:
 
 def appraise(photos: list[Path], declared: dict | None = None, *,
              market: str = "TR", backend: str | None = None,
-             on_step=None, on_gate=None, on_photo=None) -> Appraisal:
+             on_step=None, on_gate=None, on_photo=None, on_activity=None) -> Appraisal:
     """`on_step(step, detail)` takes exactly two arguments and always will -
     `cli.py` and `demo.py` both pass two-parameter callbacks. Anything a caller
     needs beyond the string gets its own callback rather than widening that
@@ -266,7 +266,8 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # instead of a progress bar guessing at it.
     sent = evidence_stage.select_photos(gate)
     note("evidence", f"reading {len(sent)} of {len(gate.usable_photo_ids)} usable frames")
-    ev = evidence_stage.run(gate, declared, backend=backend, on_photo=on_photo)
+    ev = evidence_stage.run(gate, declared, backend=backend, on_photo=on_photo,
+                            **({"on_activity": on_activity} if on_activity else {}))
     result.evidence = ev
     detail = (f"{ev.photos_read} photo(s) read in depth, {len(ev.issues)} findings, "
               f"{len(ev.coverage_gaps)} gaps ({ev.backend}/{ev.model})")

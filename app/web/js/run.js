@@ -18,7 +18,7 @@
    because nothing knew when the single call would answer; sixteen calls know
    exactly how many of them are done. */
 
-import { $, timers, reduced } from './dom.js';
+import { $, timers, reduced, viewName } from './dom.js';
 import * as elevation from './elevation.js';
 import * as frames from './frames.js';
 import * as reasoning from './reasoning.js';
@@ -30,6 +30,68 @@ let evidenceIds = [];
 let read = 0;
 let following = true;
 let latest = null;
+let reviewQueue = [];
+let reviewTimer = null;
+let reviewed = 0;
+let finished = false;
+const received = new Set();
+const activePhotos = new Set();
+let activityTimer = null;
+let activityDetail = '';
+
+function showActivePhoto() {
+  if (!following || hasPendingReview() || !activePhotos.size) return;
+  const ids = [...activePhotos];
+  const index = ids.indexOf(frames.currentPhotoId());
+  const id = ids[(index+1) % ids.length];
+  const check = frames.checkFor(id);
+  if (check) {
+    frames.showFrame(check); frames.markCell(id);
+    $('scan').classList.add('on');
+    $('scan-status').textContent = `Analyzing photo ${frames.photoOrdinal(id)} · ${viewName(check.view)} · ${ids.length} active`;
+  }
+}
+
+export function onActivity(msg) {
+  if (msg.phase === 'photo') {
+    activePhotos.add(msg.photo_id);
+    if (activePhotos.size === 1) showActivePhoto();
+    if (!activityTimer) activityTimer = setInterval(showActivePhoto, 5000);
+  } else {
+    activityDetail = msg.detail || '';
+    if (msg.phase === 'synthesis') {
+      activePhotos.clear(); clearInterval(activityTimer); activityTimer = null;
+    }
+    if (!hasPendingReview()) $('scan-status').textContent = activityDetail;
+  }
+}
+
+
+export const hasPendingReview = () => reviewQueue.length > 0 || reviewTimer !== null;
+function presentNext() {
+  if (!following || reviewTimer !== null || !reviewQueue.length) return;
+  const finding = reviewQueue.shift();
+  const check = frames.checkFor(finding.photo_id);
+  if (!check) return presentNext();
+  reviewed += 1;
+  frames.showFrame(check);
+  frames.markCell(check.photo_id, 'read');
+  $('scan-status').textContent = `Review ${reviewed} · photo ${frames.photoOrdinal(check.photo_id)} · ${viewName(check.view)}`;
+  $('scan').classList.remove('on');
+  const parts = (finding.component_regions || []).length + (finding.issues || []).filter(i => i.box).length;
+  // A presentation queue, NOT fabricated inference progress. Results can land
+  // concurrently; each gets enough screen time to read and inspect its parts.
+  reviewTimer = setTimeout(() => {
+    reviewTimer = null;
+    if (reviewQueue.length) presentNext();
+    else {
+      $('scan-status').textContent = finished ? 'Review complete · result ready below'
+        : activityDetail || `${read} of ${evidenceIds.length} analyzed · waiting for more findings`;
+      showActivePhoto();
+    }
+  }, Math.max(3200, Math.min(8000, (parts+1)*1600)));
+}
+
 
 function liveBtn() { return $('follow-live'); }
 
@@ -82,7 +144,8 @@ function follow(value) {
   const button = liveBtn();
   if (!button) return;
   button.setAttribute('aria-pressed', String(value));
-  button.textContent = value ? 'Following live' : 'Resume live view';
+  button.textContent = value ? 'Pause walkthrough' : 'Resume walkthrough';
+  if (!value) { clearTimeout(reviewTimer); reviewTimer = null; }
 }
 function selectFrame(c) { follow(false); frames.showFrame(c); frames.markCell(c.photo_id); }
 
@@ -93,8 +156,8 @@ export async function mount() {
     live.addEventListener('click', () => {
       follow(!following);
       if (following && latest) {
-        frames.showFrame(latest);
-        frames.markCell(latest.photo_id);
+        if (reviewQueue.length) presentNext();
+        else { frames.showFrame(latest); frames.markCell(latest.photo_id); }
       }
     });
   }
@@ -116,6 +179,9 @@ export function begin() {
   evidenceIds = [];
   read = 0;
   latest = null;
+  reviewed = 0;
+  finished = false;
+  received.clear(); activePhotos.clear(); activityDetail = '';
   follow(true);
   setStep('gate');
   if (liveBtn()) liveBtn().hidden = false;
@@ -144,6 +210,8 @@ export function begin() {
 }
 
 export function stop() {
+  clearInterval(activityTimer); activityTimer = null; activePhotos.clear();
+  clearTimeout(reviewTimer); reviewTimer = null; reviewQueue = [];
   t.clear();
   $('scan').classList.remove('on');
   frames.cancelPendingFrame();
@@ -155,7 +223,7 @@ export function stop() {
 export function onGate(msg) {
   gate = msg.gate;
   evidenceIds = msg.evidence_photo_ids || [];
-  frames.setSource(msg.photo_urls, gate.photos, gate.decision);
+  frames.setSource(msg.photo_urls, gate.photos, gate.decision, evidenceIds);
 
   elevation.setCoverage(runElev, gate.views_present);
   frames.buildStrip(gate.photos, selectFrame);
@@ -188,11 +256,11 @@ export function onStage(msg) {
       if (c) c.classList.add('reading');
     });
     $('scan').classList.add('on');
-    $('scan-status').textContent = 'Inspecting photos · findings appear as they return';
+    $('scan-status').textContent = 'Preparing visual inspection · waiting for model activity';
     progress(`reading ${evidenceIds.length} photos`, 0.12);
   }
   if (msg.step === 'price') {
-    $('scan-status').textContent = 'Inspection complete · comparing market prices';
+    if (!hasPendingReview()) $('scan-status').textContent = 'Photos analyzed · comparing market prices';
     $('scan').classList.remove('on');
     $('rail-title').textContent = 'Matching it against real listings';
     $('rail-sub').textContent = 'the photos are read';
@@ -203,17 +271,21 @@ export function onStage(msg) {
 /* One photo's own vision call has returned. */
 export function onPhoto(msg) {
   const finding = msg.finding;
+  if (!finding || received.has(finding.photo_id)) return;
+  received.add(finding.photo_id);
+  activePhotos.delete(finding.photo_id);
   frames.setFinding(finding);
   reasoning.add(finding);
   read += 1;
-  $('scan-status').textContent = `${read} of ${evidenceIds.length || read} photos read`;
+  if (!hasPendingReview()) $('scan-status').textContent = `${read} of ${evidenceIds.length || read} photos analyzed`;
 
   const check = frames.checkFor(finding.photo_id);
   if (check) {
     latest = check;
     const cell = $(`cell-${finding.photo_id}`);
     if (cell) { cell.classList.add('read'); cell.classList.remove('reading'); }
-    if (following) { frames.showFrame(check); frames.markCell(finding.photo_id, 'read'); }
+    reviewQueue.push(finding);
+    presentNext();
   }
   elevation.setFindings(runElev, finding.issues || []);
 
@@ -228,12 +300,15 @@ export function onPhoto(msg) {
 /* ---------- act 3: it answered ---------- */
 
 export function onResult(a) {
-  stop();
+  finished = true;
+  clearInterval(activityTimer); activityTimer = null; activePhotos.clear();
+  t.clear();
+  $('scan').classList.remove('on');
   $('view-result').hidden = false;
-  $('scan-status').textContent = a.evidence ? 'Inspection complete' : 'Photo checks complete';
+  if (!hasPendingReview()) $('scan-status').textContent = a.evidence ? 'Inspection complete' : 'Photo checks complete';
   progress(read ? `${read} photos read` : 'the checks finished', 1);
   closeSteps(a);
-  if (liveBtn()) liveBtn().hidden = true;
+  if (liveBtn()) liveBtn().hidden = !a.evidence;
   const ev = a.evidence;
   if (ev) {
     elevation.setSummarised(runElev, ev.condition_summary);

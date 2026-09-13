@@ -956,6 +956,12 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
                                 // legible. Null otherwise - see rule 2
   "trim_or_power": string|null, // a trim or power figure carried on its own badge,
                                 // e.g. the "500" on a door. Null if there is none
+  "component_regions": [   // up to 8 clearly visible parts (healthy or damaged).
+    {{"component": one of {components}, "box": [x, y, w, h]}}
+  ],                       // normalised to THIS image. Tight visible-part bounds;
+                            // omit uncertain/hidden parts. A location is NOT a
+                            // claim of good condition. Never infer an engine
+                            // behind a closed cab or parts outside the image.
   "legible": boolean,           // is there readable lettering in this crop at all?
   "confidence": 0.0-1.0
 }
@@ -1000,8 +1006,17 @@ def closeup_schema() -> dict:
         "type": "object",
         "additionalProperties": False,
         "required": ["shows", "legible", "odometer_km", "observations", "strengths",
-                     "cannot_tell", "confidence"],
+                     "cannot_tell", "confidence", "component_regions"],
         "properties": {
+            "component_regions": {
+                "type": "array", "maxItems": 8,
+                "items": {"type": "object", "additionalProperties": False,
+                          "required": ["component", "box"],
+                          "properties": {
+                              "component": {"type": "string", "enum": COMPONENTS},
+                              "box": {"type": "array", "items": {"type": "number"},
+                                      "minItems": 4, "maxItems": 4}}},
+            },
             "shows": {"type": "string"},
             "legible": {"type": "boolean"},
             "odometer_km": {"type": ["integer", "null"]},

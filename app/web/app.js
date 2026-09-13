@@ -112,6 +112,7 @@ function start(session) {
     gate: (m) => run.onGate(m),
     stage: (m) => run.onStage(m),
     photo: (m) => run.onPhoto(m),
+    activity: (m) => run.onActivity(m),
     result: (m) => { stream.close(); render(m.appraisal); },
     error: (m) => {
       stream.close();
@@ -156,6 +157,7 @@ function priceLine(price) {
 
 function render(a) {
   frames.setSource(a.photo_urls, a.gate.photos, a.gate.decision);
+  (a.evidence?.photo_findings || []).forEach(frames.setFinding);
   $('result').hidden = false;
   $('refusal').hidden = true;
   $('band-wrap').hidden = true;
@@ -221,7 +223,7 @@ function render(a) {
 
   renderPanels(a, run.elevationRoot());
   // A reader inspecting an earlier photo keeps their place when the answer lands.
-  if (run.isFollowing()) {
+  if (run.isFollowing() && !run.hasPendingReview()) {
     $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
 }

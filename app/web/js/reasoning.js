@@ -143,7 +143,7 @@ export function add(finding) {
   } else if (finding.odometer_km) {
     takeaway.textContent = `${Math.round(finding.odometer_km).toLocaleString('en-US')} km`;
   } else if (worst === 'clean') {
-    takeaway.textContent = 'Sound';
+    takeaway.textContent = 'Nothing flagged';
   } else {
     takeaway.textContent = worst.toUpperCase();
   }
@@ -152,10 +152,12 @@ export function add(finding) {
   heading.append(titleRow);
   heading.append(el('span', 'thought-status', statusLine(finding, issues)));
 
-  // Executive preview line directly in the summary
+  /* The one line the card leads with. An empty issue list is a fact about the
+     answer, not a verdict on the component: "nothing flagged" is what the
+     model said, "sound working order" is what it did not. */
   const previewText = finding.shows || (issues.length
     ? issues[0].observation
-    : 'Visual inspection confirms component is in sound working order.');
+    : 'Nothing flagged on this frame.');
   heading.append(el('p', 'thought-preview', previewText));
 
   const tags = el('span', 'thought-parts');

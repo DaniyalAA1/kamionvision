@@ -318,6 +318,8 @@ class PhotoFinding(_Dict):
     # only name faults is not an appraisal, it is a complaint, and a buyer
     # deciding whether to drive six hours needs the other half.
     strengths: list[str] = field(default_factory=list)
+    # Visible part locations, not condition claims; normalised original-image xywh.
+    component_regions: list[dict] = field(default_factory=list)
     cannot_tell: list[str] = field(default_factory=list)
     # Set only by a frame that actually shows a legible odometer. The reading
     # moved here from the set-level pass when evidence became a fan-out: asking
