@@ -24,6 +24,24 @@ The two routes are combined by inverse variance, so each speaks in proportion to
 how well it has been shown to work. When the brand is unknown to the hedonic fit
 its variance is inflated by the measured unknown-brand factor, and the anchor
 takes over on its own merits rather than by a rule that says it should.
+
+**The two routes are no longer independent, and that is a stated cost.** The
+argument above - that a published price carries what three brand dummies cannot
+- was strong enough that `log(list_price)` is now a COLUMN in the hedonic
+design as well (`features.NEW_PRICE_COLUMNS`), where it takes out-of-fold R2
+from 0.842 to 0.951 and halves the 80% band at the same measured coverage. The
+hedonic fit with that column in it is a generalisation of this file: the
+retention curve is the same regression with the coefficient on log(new price)
+pinned at 1.0 and no brand or market terms, and the free coefficient comes out
+near +2.4. So the same reference figure now reaches the estimate twice, and an
+inverse-variance blend of two estimates that share an input is a blend that
+believes itself more than it should. Two things hold the line, and neither is
+optional: `estimate` floors the blended band factor at 1.0 so the blend can
+claw a widening back but never cut below the interval whose coverage was
+measured, and a row whose `source_type` is not `oem_official` now widens the
+band itself rather than only this route's variance - a mistranscribed figure
+used to be able to hurt only the anchor, and can now move the hedonic estimate
+by roughly 2.4x its own error.
 """
 from __future__ import annotations
 
@@ -40,6 +58,16 @@ NEW_PRICES = REPO / "data" / "reference" / "new_prices_tr.json"
 # The corpus records twelve pre-F-MAX Ford tractors under the model name
 # "TRUCKS". Their current equivalent is the Cargo-derived 1845T, not the F-MAX
 # that the brand default would otherwise pick - a ~9% difference in the anchor.
+#
+# This is NOT alias folding and the two must not be merged. `modelspec`
+# answers "what model is this, given a vision model's free text" - "F Max",
+# "FMAX" and "F-MAX 500" are all the F-MAX. This table answers a different
+# question: "which priced reference row is the current equivalent of a model
+# that is no longer sold". A 2014 Cargo tractor really is a TRUCKS; it is
+# simply not buyable new, so its anchor has to borrow the row of the truck that
+# replaced it. Folding runs first and this runs on the folded id, so every
+# spelling of the Cargo family - "CARGO", "1848T", "FORD TRUCKS" - reaches the
+# 1845T row, where before only the literal string "TRUCKS" did.
 MODEL_ALIASES = {("FORD", "TRUCKS"): "1845T"}
 
 # A trade-press figure is a real number from a real list, but nobody at the
@@ -63,7 +91,27 @@ def reference() -> dict:
 
 
 def lookup(make: str | None, model: str | None) -> dict | None:
-    """(brand, model) -> a priced reference row, or the brand default, or None."""
+    """(brand, model) -> a priced reference row, or the brand default, or None.
+
+    The model string arrives from three places that spell it three ways: the
+    corpus ("F-MAX", "TRUCKS"), a seller's form, and a vision model that has
+    just read a badge and may answer "F Max" or "F-MAX 500". This used to match
+    `str(model).strip().upper()` against the rows exactly, so two of those three
+    fell through to the brand default without saying so.
+
+    Two folds, in this order and not the other:
+
+      1. `modelspec.normalise_model` folds free text onto the canonical model
+         id the reference files agree on. Soft: with `models_tr.json` absent it
+         returns the input uppercased, which is byte-for-byte what this
+         function did before it existed.
+      2. `MODEL_ALIASES` maps a canonical id with no current equivalent onto
+         the row of the truck that replaced it.
+
+    Order matters because step 2's keys are canonical ids. Run it first and
+    "CARGO" never becomes "TRUCKS" and so never reaches the 1845T row; run it
+    second and every spelling of the family does.
+    """
     try:
         rows = [r for r in reference()["rows"] if r.get("list_price")]
     except FileNotFoundError:
@@ -71,7 +119,8 @@ def lookup(make: str | None, model: str | None) -> dict | None:
     brand = normalise_brand(make)
     if brand == "other":
         return None
-    wanted = str(model or "").strip().upper()
+    from .. import modelspec
+    wanted = modelspec.normalise_model(make, model) or str(model or "").strip().upper()
     wanted = MODEL_ALIASES.get((brand, wanted), wanted)
     for row in rows:
         if row["brand"] == brand and str(row["model"]).upper() == wanted:
@@ -140,6 +189,12 @@ def blend(mu_regression: float, sd_regression: float,
     quarter of the say, which is the whole reason the unknown-brand case works:
     inflating the hedonic variance by the measured 1.85x is what hands the
     decision to the anchor, rather than a rule that says to.
+
+    Inverse variance is the right combination for INDEPENDENT estimates, and
+    since the published new price became a column in the hedonic design these
+    two are not independent - see the module docstring. The consequence is a
+    `sd` that is too small, which is exactly why the caller floors the band
+    factor it derives from this at 1.0 rather than trusting it downwards.
     """
     wr, wa = 1.0 / max(sd_regression, 1e-6) ** 2, 1.0 / max(sd_anchor, 1e-6) ** 2
     total = wr + wa

@@ -13,10 +13,13 @@ Two things this deliberately is not:
 The condition adjustment is bounded by one out-of-fold residual standard
 deviation, and that split is three-way rather than two:
 
-  MEASURED   sigma itself, 0.0988 in log space, from 958 out-of-fold
-             evaluations over 84 listings collapsing to 24 distinct specs. It
-             is the variation in asking price that year, kilometres, brand and
-             market do NOT explain.
+  MEASURED   sigma itself, from 958 out-of-fold evaluations over 84 listings
+             collapsing to 24 distinct specs. It is the variation in asking
+             price that the fitted columns do NOT explain, and it is read off
+             the model file rather than quoted here, because the design gained
+             a column and the figure moved: 0.0988 without what the truck cost
+             new, 0.0551 with it. `condition_adjustment` takes the list of
+             columns as an argument for the same reason.
   ASSUMED    the decision to cap condition at EXACTLY one sigma. The reasoning
              - condition cannot be worth more than everything we cannot see -
              is sound and no experiment picks 1 sigma over 0.5 or 2.
@@ -90,13 +93,33 @@ class PriceModel:
     # and distance, plus its own out-of-fold error. Empty on a model fitted
     # before the reference table existed, which anchor.estimate handles.
     anchor: dict = field(default_factory=dict)
+    # The published-new-price COLUMN, which is a different thing from the
+    # anchor route above: the imputation mean, the fitted support the column is
+    # clipped to, and the gate it had to pass. Empty on a fit that does not
+    # carry the column, and `columns` is the authority on whether it does.
+    new_price: dict = field(default_factory=dict)
     meta: dict = field(default_factory=dict)
 
     # --- persistence ------------------------------------------------------
     def to_dict(self) -> dict:
         return {k: getattr(self, k) for k in
                 ("brands", "columns", "coef", "intercept", "mean", "scale",
-                 "residual_std", "offsets", "calibration", "widening", "anchor", "meta")}
+                 "residual_std", "offsets", "calibration", "widening", "anchor",
+                 "new_price", "meta")}
+
+    # --- the design this artifact was fitted with --------------------------
+    # `columns` is the contract, not a module constant: a model file written
+    # before the new-price block existed keeps loading and keeps predicting
+    # with the design it was actually fitted on.
+    @property
+    def uses_new_price(self) -> bool:
+        return "log_new_price" in self.columns
+
+    def vector(self, feats: dict) -> np.ndarray:
+        rng = self.new_price.get("log_range")
+        return F.to_vector(feats, self.brands, new_price=self.uses_new_price,
+                           log_mean=self.new_price.get("log_mean"),
+                           log_range=tuple(rng) if rng else None)
 
     def save(self, path: Path = PRICE_MODEL) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +180,11 @@ def rollup_for(evidence: EvidenceReport | None):
     return C.rollup(evidence.issues, evidence.photo_findings)
 
 
-def condition_adjustment(evidence: EvidenceReport | None, cap_log: float) -> ConditionAdjustment:
+DEFAULT_EXPLAINED = "year, kilometres, brand and market"
+
+
+def condition_adjustment(evidence: EvidenceReport | None, cap_log: float,
+                         explained: str = DEFAULT_EXPLAINED) -> ConditionAdjustment:
     """Move the comparable baseline by what the photographs actually showed.
 
     Two-sided, and bounded symmetrically IN PERCENT: the discount floor is
@@ -165,6 +192,14 @@ def condition_adjustment(evidence: EvidenceReport | None, cap_log: float) -> Con
     rather than `exp(+sigma)`, so the single cap figure printed on every
     surface is true in both directions and the newer, less defensible direction
     is the more conservative one.
+
+    `explained` names the columns the sigma is residual TO, and it is a
+    parameter rather than a sentence because the design changed underneath it:
+    adding what the model costs new took the out-of-fold sigma from 0.0988 to
+    0.0551, which halves this cap. That is the correct consequence and not a
+    regression - the cap is "everything the fit cannot see", and the fit can now
+    see which model it is looking at - but the sentence printed beside the
+    figure has to list the same columns the figure was measured against.
     """
     cap_frac = 1 - math.exp(-cap_log)
     cap_pct = round(cap_frac * 100, 1)
@@ -172,11 +207,11 @@ def condition_adjustment(evidence: EvidenceReport | None, cap_log: float) -> Con
         cap_pct=cap_pct,
         cap_basis=(f"measured: one out-of-fold residual standard deviation of the "
                    f"price model (+/-{cap_pct}%) - the variation in asking price "
-                   f"that year, kilometres, brand and market do not explain"),
+                   f"that {explained} do not explain"),
         weights_basis=SEVERITY_WEIGHT_BASIS,
         basis=(f"capped at one residual standard deviation of the price model "
-               f"(+/-{cap_pct}%) - the variation in asking price that year, "
-               f"kilometres, brand and market do not explain"),
+               f"(+/-{cap_pct}%) - the variation in asking price that {explained} "
+               f"do not explain"),
     )
     roll = rollup_for(evidence)
     if roll is None:
@@ -359,11 +394,13 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
                       "the photos supplied one, and age and mileage are most of the price")
         return est
 
-    feats = F.row_features(year, km, make, market)
-    vector = F.to_vector(feats, model.brands)
+    feats = F.row_features(year, km, make, market, vehicle_model=vehicle_model)
+    vector = model.vector(feats)
     mu = model.predict_log(vector)
 
-    adj = condition_adjustment(evidence, model.residual_std)
+    explained = (f"{DEFAULT_EXPLAINED} and what the model costs new"
+                 if model.uses_new_price else DEFAULT_EXPLAINED)
+    adj = condition_adjustment(evidence, model.residual_std, explained)
     adj_log = math.log(adj.multiplier) if adj.multiplier > 0 else 0.0
 
     lo_off, hi_off = model.offsets[str(level)]
@@ -401,6 +438,27 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
                            f"contributes {w_anchor:.0%} of the estimate")
         factor = blended_factor
     est.anchor = anchor_est
+
+    # --- the reference row now feeds BOTH routes, so its provenance widens both
+    # Before the new-price column existed, a shaky reference figure could only
+    # hurt the anchor, and `anchor.sigma` handled it by widening that route's
+    # variance - which shrinks its weight in the blend and no more. Now the
+    # same figure sits in the hedonic design at a coefficient of roughly +2.4
+    # per log unit, so a transcription that is 10% out moves the hedonic
+    # estimate about 24%, and shrinking the anchor's weight does nothing about
+    # that. The same stated assumption therefore has to reach the band itself.
+    if model.uses_new_price and str(market).upper() == "TR":
+        row = anchor.lookup(make, vehicle_model)
+        source_type = str(row.get("source_type", "")) if row else ""
+        f = anchor.SOURCE_WIDENING.get(source_type, 1.0) if row else 1.0
+        if f > 1.0:
+            factor *= f
+            widened.append(
+                f"the published new price this is priced against "
+                f"({row['brand']} {row['model']}) is a trade-press figure rather "
+                f"than a manufacturer list, and it now feeds the price model "
+                f"directly as well as the anchor, so the band widens {f:.2f}x "
+                f"(an assumption, not a measurement)")
 
     for label, f in (extra_widening or []):
         factor *= f
@@ -443,7 +501,11 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     est.widened = widened
     est.drivers = model.contributions(vector)
     est.inputs = {"year": int(year), "km": int(km), "make": make, "market": market,
+                  "model": vehicle_model or "",
                   "brand_used": feats["brand"] if feats["brand"] in model.brands else "other",
+                  "new_price_try": (round(math.exp(feats["log_new_price"]))
+                                    if model.uses_new_price and feats.get("log_new_price")
+                                    else None),
                   "euro_norm": euro_norm_for_year(int(year))}
     est.inputs_provenance = provenance or {}
     est.model_card = {

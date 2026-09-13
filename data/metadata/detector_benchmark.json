@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-09-13T11:09:04",
+  "objective": "same-listing retrieval P@1 on selected subject crops, subject to part_view_subject_rate, vehicles_with_no_truck_box and duplicate_vehicle_pairs_per_frame not rising above the incumbent",
+  "note": "Stage 1 only decides the shortlist. Per-photo truck-box rate is reported because it is the number in gate_thresholds.json and a reader will look for it, but it is not the objective: it rewards a model that finds more trucks, which is the direction of the bug.",
+  "predict_kwargs": {
+    "iou": 0.7,
+    "agnostic_nms": false,
+    "max_det": 50,
+    "half": false
+  },
+  "stage1_frac": 0.2,
+  "stage1_frames": 1510,
+  "incumbent": {
+    "weights": "yolov8n.pt",
+    "imgsz": 640
+  },
+  "stage1": [
+    {
+      "weights": "yolov8n.pt",
+      "imgsz": 640,
+      "photo_frac_truck_box_at_0.25": 0.344,
+      "vehicles_with_no_truck_box_at_0.25": 7,
+      "duplicate_vehicle_pairs_per_frame": 0.209,
+      "part_view_area_q90": 0.9366,
+      "wall_s": 26,
+      "passes_constraints": true
+    },
+    {
+      "weights": "yolov8n.pt",
+      "imgsz": 960,
+      "photo_frac_truck_box_at_0.25": 0.24,
+      "vehicles_with_no_truck_box_at_0.25": 30,
+      "duplicate_vehicle_pairs_per_frame": 0.268,
+      "part_view_area_q90": 0.6296,
+      "wall_s": 41,
+      "passes_constraints": false
+    },
+    {
+      "weights": "yolov8n.pt",
+      "imgsz": 1280,
+      "photo_frac_truck_box_at_0.25": 0.132,
+      "vehicles_with_no_truck_box_at_0.25": 76,
+      "duplicate_vehicle_pairs_per_frame": 0.211,
+      "part_view_area_q90": 0.3836,
+      "wall_s": 683,
+      "passes_constraints": false
+    },
+    {
+      "photos": 1510,
+      "vehicles": 200,
+      "seconds": 42.1,
+      "photo_frac_truck_box_at_0.25": 0.409,
+      "photo_frac_truck_box_at_0.50": 0.387,
+      "vehicles_with_no_truck_box_at_0.25": 5,
+      "vehicles_with_no_truck_box_at_0.50": 7,
+      "vehicle_conf_min": 0.0,
+      "vehicle_conf_q05": 0.837,
+      "part_view_frames": 394,
+      "part_view_frames_with_a_box": 186,
+      "part_view_area_q90": 0.9796,
+      "whole_vehicle_frames": 141,
+      "whole_vehicle_area_q05_of_boxed": 0.3827,
+      "duplicate_vehicle_pairs_per_frame": 0.1576,
+      "weights": "yolov8m.pt",
+      "imgsz": 640,
+      "wall_s": 42.1,
+      "passes_constraints": true
+    }
+  ],
+  "skipped": []
+}

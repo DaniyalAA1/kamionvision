@@ -179,6 +179,63 @@ class TheMeasuredNumberStaysWithItsBand(StoryFixture):
         self.assertIn("asking prices, not confirmed sale prices", self.region)
 
 
+class TheFrozenRunHasNotGoneStale(StoryFixture):
+    """The band on the front page has to be one the system would still produce.
+
+    A frozen run is a record, and a record is allowed to be dated - the page
+    says which run and when. What it is not allowed to be is a band the current
+    price model would no longer give, printed in the largest type on the site
+    next to the word "measured". Those two look identical from inside the JSON,
+    so the fit is stamped and compared.
+
+    Fixing a failure here means re-running the appraisal and re-freezing, which
+    costs vision calls. That is the correct price: the alternative is a landing
+    page that quietly disagrees with `models/price_model.json`.
+    """
+
+    @classmethod
+    def shipped(cls):
+        import json as _json
+        path = REPO / "models" / "price_model.json"
+        if not path.is_file():
+            return None
+        return _json.loads(path.read_text(encoding="utf-8"))
+
+    def test_the_band_came_from_the_price_model_on_disk(self):
+        model = self.shipped()
+        if not model:
+            self.skipTest("no price model is committed")
+        fitted = (model.get("meta") or {}).get("fitted_at")
+        self.assertEqual(
+            self.story["price"]["measured"]["fitted_at"], fitted,
+            "the price model has been refit since the story was frozen. Re-run\n"
+            "  .venv/bin/python -m app.cli appraise demo/tr_clean --year 2021 "
+            "--km 164374 --make Ford --asking 2550000 --market TR "
+            "--save data/reference/story_appraisal.json\n"
+            "and then scripts/freeze_story.py, or the page shows a band the "
+            "current model would not produce.")
+
+    def test_the_coverage_on_the_page_is_the_models_own(self):
+        model = self.shipped()
+        if not model:
+            self.skipTest("no price model is committed")
+        level = self.story["price"]["interval_level"]
+        measured = (model.get("calibration") or {}).get(f"coverage_{level}")
+        if measured is None:
+            self.skipTest(f"the model reports no coverage_{level}")
+        self.assertAlmostEqual(self.story["price"]["measured"]["coverage"],
+                               round(measured * 100, 1), places=1)
+
+    def test_the_page_stamps_the_fit_next_to_the_figure(self):
+        # Undated, "80.3% - measured" reads as a present-tense claim about the
+        # system rather than about one fit of one model.
+        stamp = (self.story["price"]["measured"]["fitted_at"] or "")[:10]
+        self.assertTrue(stamp, "the story records no price-model fit date")
+        baseline = re.search(r'data-band-row="baseline"(.*?)</div>', self.region, re.S)
+        self.assertIsNotNone(baseline)
+        self.assertIn(stamp, baseline.group(1))
+
+
 class TheStaticDocumentIsTheFallback(StoryFixture):
     """The choreography is an enhancement, never the content.
 

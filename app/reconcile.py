@@ -11,7 +11,7 @@ particular frame is too corrupted to read tread depth off. When the vision
 model reads tread depth off that frame anyway, this stage lowers the confidence
 of that claim and writes down that it did.
 
-Five rules, all of them one-directional:
+Seven rules, all of them one-directional:
 
   unsupported_detail  a fine-detail claim resting on a photo the degradation
                       head scores past its calibrated cutoff
@@ -22,6 +22,10 @@ Five rules, all of them one-directional:
                       or disputes the one it read (odometer_conflict)
   vin_*               OCR reads a chassis-plate VIN and either supplies its model
                       year or surfaces a conflict with the seller's declared year
+  wmi_conflict        the manufacturer stamped into that same VIN's first three
+                      characters is not the manufacturer on the badge
+  generation_conflict the generation read off the visual markers does not contain
+                      the year, according to the model card's own spans
 
 The odometer rule is the one that most changes the number. The condition
 adjustment is capped at one residual sigma by design, so a damage signal can
@@ -29,6 +33,21 @@ only nudge the price - but kilometres are a first-class term in the hedonic
 model, so a second, checkable reading of the odometer is worth more than any
 cosmetic finding. It is a pretrained scene-text model (RapidOCR), no training,
 fully offline, and a soft dependency: absent it, the rule simply no-ops.
+
+The WMI rule is the one that reaches furthest outside the corpus. `identity_
+conflict` may only dispute brands in the trained head's class list, and there
+is no Scania, no DAF and no Volvo in 200 vehicles - so on exactly the truck
+this system is likeliest to get wrong, the head has nothing to say. Three
+characters stamped into a chassis are not a model output, and a table of 32
+cited rows covers every European and North American heavy brand a judge is
+likely to arrive with. It shares `_check_vin`'s single OCR pass rather than
+opening a second one.
+
+Both of the new rules are governed by the same negative discipline, and it is
+the part worth defending in review: a WMI that is not in the table, and a model
+card with no generations for that model, mean UNKNOWN. Neither may be turned
+into a conflict. A witness with no opinion must not be allowed to contradict a
+badge or a year that something else read perfectly well.
 
 Nothing here deletes a finding. A downgraded claim is still shown, still cites
 its photo, and carries the reason it was downgraded - the point is to make the
@@ -39,6 +58,7 @@ from __future__ import annotations
 import re
 import time
 
+from .config import WMI_CONFLICT_WIDENING
 from .schema import Correction, ReconcileReport
 
 # Vocabulary of claims that need pixels a degraded frame does not have. Tread
@@ -77,6 +97,20 @@ ODOMETER_MAX_FRAMES = 4                  # cap OCR cost on a 40-photo set
 VIN_CONFLICT_WIDENING = 1.15
 VIN_MAX_FRAMES = 4
 
+# WMI_CONFLICT_WIDENING is imported from config rather than defined here,
+# unlike the four constants above it, because `identity.merge_widening` has to
+# reason about all three identity multipliers together and they are declared in
+# one place for that. It is ASSUMED, like them: this corpus has no
+# misidentification ground truth, so there is nothing to fit it against, and
+# the string the reader sees says so.
+
+# The generation read has to clear the same bar the identity head does. Two
+# different numbers for "confident enough to matter" would drift apart, and
+# `identity.MIN_WITNESS_CONFIDENCE` already matches IDENTITY_CONFIDENCE for the
+# same reason. A hedged generation guess is worth recording on the vehicle; it
+# is not worth telling a buyer their truck may be a different model year.
+GENERATION_CONFIDENCE = 0.60
+
 
 def apply(gate, perception, evidence, declared: dict | None = None) -> ReconcileReport:
     """Reconcile the tracks. Mutates issue confidences; records every change."""
@@ -90,6 +124,9 @@ def apply(gate, perception, evidence, declared: dict | None = None) -> Reconcile
     # dashboard frames and the VLM's own reading, not the trained heads.
     _check_odometer(gate, evidence, report)
     _check_vin(gate, evidence, report, declared or {})
+    # Strictly after _check_vin, which is what may supply the year this uses
+    # when the seller declared none.
+    _check_generation(evidence, report, declared or {})
 
     if perception is not None and perception.photos:
         _downgrade_unsupported(perception, evidence, report)
@@ -102,7 +139,31 @@ def apply(gate, perception, evidence, declared: dict | None = None) -> Reconcile
 
 
 def _check_vin(gate, evidence, report, declared: dict) -> None:
-    """Fifth rule: read a chassis-plate VIN and reconcile its model year."""
+    """Fifth and sixth rules: one OCR pass over the plate, two questions of it.
+
+    The plate answers two independent things and they are reconciled against
+    two different witnesses, so they are gated differently:
+
+      the manufacturer  characters 1-3, the WMI. Checked against the badge the
+                        vision model read. Always asked - see below on why the
+                        check digit does not gate this one.
+      the model year    character 10, checked against the seller's declaration.
+                        Only asked when the check digit validates.
+
+    That asymmetry is measured, not stylistic. Character 10 is a model-year
+    code under FMVSS 565, which is a North American rule; ISO 3779 does not
+    mandate it and European heavy trucks do not follow it. The DAF VINs
+    published with Australian recall REC-006624 - trucks built between 2019 and
+    2025 - fail the position-9 check digit and decode to 1994 under the North
+    American rule. Acting on that would hand `pricing/model.py` a 1994 year for
+    a 2023 truck through the `vin_year` fallback, and raise a confident, wrong
+    `vin_conflict` against a seller who declared the truth. The check digit is
+    the cheapest available test of "is this a VIN that plays by those rules",
+    so the year half waits for it and the manufacturer half does not: every
+    candidate in the WMI table is a distinct three-character prefix, so an OCR
+    slip that lands exactly on a different brand's registered WMI is a far less
+    likely failure than reading a field that was never a year.
+    """
     if gate is None or not gate.photos:
         return
     try:
@@ -129,17 +190,23 @@ def _check_vin(gate, evidence, report, declared: dict) -> None:
     photo, best = max(hits, key=lambda item: (item[1].check_ok is True,
                                               item[1].confidence))
     evidence.vehicle.vin = best.vin
-    evidence.vehicle.vin_year = best.year
-    if best.year is None:
-        return
+    evidence.vehicle.wmi = best.wmi
+    _check_wmi(evidence, report, photo, best)
 
-    check_note = "" if best.check_ok else " (the VIN check digit failed; verify the plate)"
+    # The year half, and only for a VIN that obeys the rule the year code
+    # belongs to. `vin_year` stays None otherwise: pricing reads it as a
+    # fallback year, so leaving it unset is the difference between "no VIN
+    # year" and "the VIN says 1994" on a truck built in 2023.
+    if best.year is None or not best.check_ok:
+        return
+    evidence.vehicle.vin_year = best.year
+
     stated_year = declared.get("year")
     if not stated_year:
         report.corrections.append(Correction(
             kind="vin_recovered", photo_id=photo.photo_id,
             detail=f"no model year was declared; chassis-plate VIN {best.vin} decodes "
-                   f"to {best.year}{check_note}",
+                   f"to {best.year}",
             before="year: not declared", after=f"{best.year} (VIN)"))
         return
 
@@ -152,13 +219,172 @@ def _check_vin(gate, evidence, report, declared: dict) -> None:
     report.corrections.append(Correction(
         kind="vin_conflict", photo_id=photo.photo_id,
         detail=f"the seller declares {stated_year}; chassis-plate VIN {best.vin} "
-               f"decodes to {best.year}{check_note} - priced on the declared year",
+               f"decodes to {best.year} - priced on the declared year",
         before=f"{stated_year} (declared)", after=f"{best.year} (VIN)"))
     report.widening.append([
         f"the declared year and chassis-plate VIN year disagree "
         f"({stated_year} vs {best.year}), so the band widens "
         f"{VIN_CONFLICT_WIDENING:.2f}x (a stated assumption)",
         VIN_CONFLICT_WIDENING])
+
+
+def _check_wmi(evidence, report, photo, best) -> None:
+    """Sixth rule: the manufacturer stamped in the plate against the badge.
+
+    Silent on agreement, exactly like `_check_identity` and `_check_odometer` -
+    every rule in this file speaks only when it has something to say. A
+    confirmation is not thrown away, though: it lands on `vehicle.wmi_brand`,
+    which is where `identity.collect` picks the plate up as a witness and
+    weights it above every read taken off bodywork. A `wmi_confirmed`
+    correction would say the same thing a second time, in the one list a reader
+    scans specifically to find out what went wrong.
+
+    Three ways this stays quiet, and all three are the point:
+
+      * the table has no verified row for those three characters. Unknown is
+        not conflict. The corpus is 78/84 Ford and the table is 32 rows; the
+        space of WMIs it does not cover is enormous and a judge's truck may
+        easily sit in it.
+      * the vision model named no make. There is nothing to dispute.
+      * the badge matches any brand the plant is allowed to wear, not just the
+        primary one - see `vin.wmi_brands` for why that list exists.
+
+    On a genuine disagreement the badge REMAINS the priced make. Same posture
+    as `odometer_conflict`, which keeps the vision figure and widens: the plate
+    is the better witness, but overwriting a read here would quietly change
+    which brand column the hedonic fit uses on the strength of an OCR pass over
+    a stamped plate. Record it, widen, show both, and let `identity.decide`
+    adjudicate in one place.
+    """
+    from . import vin
+    from .pricing.features import normalise_brand
+
+    accepted = vin.wmi_brands(best.wmi)
+    if not accepted:
+        return                                           # unknown, never a conflict
+
+    said = normalise_brand(getattr(evidence.vehicle, "make", None))
+    # First spelling wins where two fold to the same key, so a row that lists a
+    # spelling `normalise_brand` already handles keeps the readable one.
+    folded: dict[str, str] = {}
+    for brand in accepted:
+        folded.setdefault(normalise_brand(brand), brand)
+    # Write down the spelling that AGREED where one did, rather than the
+    # table's primary. `identity.collect` folds this through the same
+    # normaliser and compares it with the badge, so handing it "RENAULT" when
+    # the badge says "Renault Trucks" would manufacture a dispute downstream
+    # out of a gap in `normalise_brand` rather than a fact about the truck.
+    evidence.vehicle.wmi_brand = folded.get(said) or accepted[0]
+    if said == "other" or said in folded:
+        return                                           # agreement, or no badge read
+
+    report.corrections.append(Correction(
+        kind="wmi_conflict", photo_id=photo.photo_id,
+        detail=f"the badge reads {said}; the chassis-plate VIN {best.vin} begins "
+               f"{best.wmi}, which is {accepted[0]}'s world manufacturer "
+               f"identifier - priced on the badge, but the plate is the harder "
+               f"evidence and this needs resolving before anyone pays",
+        before=f"{said} (badge)", after=f"{accepted[0]} (VIN {best.wmi})"))
+    report.widening.append([
+        f"the badge and the chassis-plate WMI name different manufacturers "
+        f"({said} vs {accepted[0]}), so the band widens "
+        f"{WMI_CONFLICT_WIDENING:.2f}x (a stated assumption - this corpus has "
+        f"no misidentified vehicles to fit one against)",
+        WMI_CONFLICT_WIDENING])
+
+
+def _check_generation(evidence, report, declared: dict) -> None:
+    """Seventh rule: the generation read off the pixels against the year.
+
+    `identity` asks the vision model which generation it is looking at, from
+    visual markers and deliberately NOT from the declared year - a year-derived
+    generation would make this check circular. So there are two independent
+    statements about the same vehicle: a generation, read from a grille and a
+    light cluster, and a year, declared by the seller or stamped in the plate.
+    The model card holds the span that joins them.
+
+    It no-ops far more often than it fires, and every one of those exits is
+    deliberate. No generation was read; no year is available from any source;
+    the read was hedged below `GENERATION_CONFIDENCE`; the card knows no
+    generations for this model, or knows none by that id; or the year falls
+    outside every span the card lists, which means the card is incomplete
+    rather than the photographs wrong. An incomplete reference cannot
+    adjudicate, and the same discipline applies here as to an unknown WMI:
+    silence.
+
+    Agreement is tested against the READ generation's own span, never against
+    whichever generation the card happens to list first for that year.
+    Manufacturers sell an old and a new range alongside each other through a
+    changeover and the card records that honestly - Scania's R-series runs
+    2004-2017 and the next-generation cab starts in 2016, so a 2017 truck sits
+    in both. `generation_for_year` returns the first match by construction, so
+    using it for the agreement test would call a correctly-read next-gen 2017
+    Scania a conflict. It is used only to name the alternative once a real
+    disagreement is established.
+
+    When it does fire, the PHOTOGRAPH keeps its answer. `modelspec`'s own rule
+    is that a card never overrides the pixels - a spec card contradicting the
+    photographs is a spec card being read wrong - so this records the
+    disagreement and does not widen the band. The band belongs to the identity
+    verdict and to the year, and this rule changes neither.
+    """
+    vehicle = getattr(evidence, "vehicle", None)
+    if vehicle is None:
+        return
+    read = str(getattr(vehicle, "generation", "") or "").strip()
+    if not read or read.lower() == "unknown":
+        return
+    if float(getattr(vehicle, "generation_conf", 0.0) or 0.0) < GENERATION_CONFIDENCE:
+        return
+
+    # Declared first, then the plate - the same precedence `pricing/model.py`
+    # uses when it picks the year it prices on.
+    year = declared.get("year") or getattr(vehicle, "vin_year", None)
+    try:
+        year = int(year) if year else None
+    except (TypeError, ValueError):
+        return
+    if not year:
+        return
+
+    try:
+        from . import modelspec
+        # The span parser, borrowed rather than reimplemented so "2025-present"
+        # is read here exactly as the card's own accessor reads it. Inside the
+        # soft import for the same reason everything else in this file is: if
+        # it is ever renamed this rule goes quiet instead of taking the
+        # appraisal down with it.
+        from .modelspec import _year_span
+    except Exception:                                    # noqa: BLE001
+        return
+    make, model = getattr(vehicle, "make", None), getattr(vehicle, "model", None)
+    known = modelspec.generations(make, model)
+    if not known:
+        return                                           # the card has nothing to say
+
+    mine = next((g for g in known
+                 if str(g.get("id", "")).strip().lower() == read.lower()), None)
+    if mine is None:
+        return                             # a generation this card has not heard of
+    low, high = _year_span(mine.get("years"))
+    if low is not None and low <= year <= (high or 9999):
+        return                             # the read generation covers the year
+
+    expected = modelspec.generation_for_year(make, model, year)
+    if expected is None:
+        return                                           # the year is off the card
+
+    span = expected.get("years") or expected.get("id")
+    because = str(getattr(vehicle, "year_evidence", "") or "").strip()
+    report.corrections.append(Correction(
+        kind="generation_conflict",
+        detail=f"the photographs were read as the {read} generation"
+               + (f" ({because})" if because else "")
+               + f", but {year} falls in the {span} generation "
+                 f"({expected.get('id')}) on the model card - the photographs "
+                 f"keep the answer; the card is the thing being cross-checked",
+        before=f"{read} (read from the photographs)",
+        after=f"{expected.get('id')} ({span}, model card)"))
 
 
 def _check_odometer(gate, evidence, report) -> None:

@@ -244,6 +244,11 @@ def build(appraisal: dict, folder: Path) -> dict:
                   "basis": anchor["basis"]}
 
     card = price.get("model_card") or {}
+    # The measured figures belong to a specific fit, and the fit is refitted.
+    # Stamping it is what lets `tests/test_story.py` tell "this page is a record
+    # of a run" apart from "this page quotes a number the system no longer
+    # produces", which look identical without it.
+    fitted_at = card.get("fitted_at") or ""
     return {
         "frozen_at": date.today().isoformat(),
         "source": {
@@ -329,7 +334,8 @@ def build(appraisal: dict, folder: Path) -> dict:
                          "r2": round(card.get("r2", 0), 3),
                          "mae_pct": round(card.get("mae_pct", 0), 1),
                          "n_listings": card.get("n_listings"),
-                         "n_groups": card.get("n_groups")},
+                         "n_groups": card.get("n_groups"),
+                         "fitted_at": fitted_at},
         },
     }
 
@@ -552,7 +558,9 @@ def render(story: dict) -> str:
         f'{num(money(p["baseline_low"], cur))} &ndash; '
         f'{num(money(p["baseline_high"], cur))}</span>'
         f'<span class="band-sub">{p["measured"]["coverage"]}% of held-out listings fall '
-        f'inside this band &mdash; measured, and it belongs to this row only.</span></div>'
+        f'inside this band &mdash; measured on the price model fitted '
+        f'{esc((p["measured"]["fitted_at"] or "")[:10])}, and it belongs to this row '
+        f'only.</span></div>'
         '</div>')
     out.append(f'<p class="band-usd">About {money(p["low_usd"], "USD")} &ndash; '
                f'{money(p["high_usd"], "USD")} at {p["fx"]} TRY/USD.</p>')

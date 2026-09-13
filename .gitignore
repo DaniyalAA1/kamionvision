@@ -40,3 +40,10 @@ data/metadata/embeddings.npz
 # re-included past the blanket `runs/` rule above.
 eval/cache/
 !eval/runs/
+
+# Detector benchmark candidates. `scripts/benchmark_detector.py` re-downloads
+# these from ultralytics when they are absent, so 140 MB of reproducible
+# weights would be pure history. The gate's own yolov8n.pt is tracked
+# deliberately - it is what the app runs, not a benchmark candidate.
+/models/*.pt
+!/models/yolov8n.pt
