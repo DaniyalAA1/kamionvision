@@ -40,8 +40,15 @@ export function drawBoxes(figure, detections, className = 'lot-boxes') {
 /* The one box the gate picked, on one photograph.
 
    `stroke-dasharray` is set to the box's own perimeter so the outline draws
-   itself from nothing as `progress` runs 0 to 1. The perimeter is in the 0-1
-   user space of the viewBox, which is what the dash units are measured in. */
+   itself from nothing as `progress` runs 0 to 1.
+
+   The perimeter has to be measured in the SVG viewport's pixels, not in the
+   0-1 user space the rect is expressed in. `vector-effect: non-scaling-stroke`
+   takes the stroke out of the user-space transform, and it takes the dash
+   pattern with it: a dasharray of 2.6 user units then means 2.6 screen pixels,
+   which drew the subject box as a dotted line rather than drawing it at all.
+   `offsetWidth` is the untransformed layout size, so the deck scaling a card
+   does not change the dash. */
 export function drawSubject(figure, box, progress = 1) {
   const frame = figure.querySelector('.frame') || figure;
   let layer = frame.querySelector('.beat-box');
@@ -57,8 +64,8 @@ export function drawSubject(figure, box, progress = 1) {
     frame.append(layer);
   }
   const rect = layer.firstChild;
-  const perimeter = 2 * (w + h);
-  rect.setAttribute('stroke-dasharray', perimeter);
-  rect.setAttribute('stroke-dashoffset', perimeter * (1 - progress));
+  const perimeter = 2 * (w * frame.offsetWidth + h * frame.offsetHeight);
+  rect.setAttribute('stroke-dasharray', perimeter || 1);
+  rect.setAttribute('stroke-dashoffset', (perimeter || 1) * (1 - progress));
   return layer;
 }

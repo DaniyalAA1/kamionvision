@@ -441,8 +441,7 @@ def render(story: dict) -> str:
             f'<figure class="beat-figure"><span class="frame">'
             f'<img src="/static/assets/story/{ph["file"]}" '
             f'width="{ph["width"]}" height="{ph["height"]}" alt="{esc(ph["shows"])}" '
-            f'loading="lazy" decoding="async"></span>'
-            f'<figcaption>{esc(ph["shows"])}</figcaption></figure>')
+            f'loading="lazy" decoding="async"></span></figure>')
         out.append('<div class="beat-verdict">')
         out.append(f'<p class="beat-index">Photo {n + 1} of {len(story["photos"])}</p>')
         out.append(f'<p class="beat-shows">{esc(ph["shows"])}</p>')

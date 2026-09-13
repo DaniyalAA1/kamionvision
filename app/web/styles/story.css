@@ -162,8 +162,7 @@
   border-radius: 10px;
   background: var(--stage-lift);
 }
-.lot-figure figcaption,
-.beat-figure figcaption {
+.lot-figure figcaption {
   font: 400 9px/1.7 var(--mono);
   letter-spacing: .9px;
   color: var(--stage-haze);
@@ -226,9 +225,6 @@
   border-radius: 10px;
   background: var(--stage-lift);
 }
-/* The caption repeats `shows`, which the verdict rail also prints. It is the
-   accessible name of the image in the static document and is hidden once the
-   rail is on screen beside it, rather than being deleted from the markup. */
 .beat-index {
   font: 400 9px/1.7 var(--mono);
   letter-spacing: 1.2px;
@@ -458,6 +454,9 @@
   color: var(--stage-rule);
 }
 .act-limits .button {
+  /* The act is a grid so its content can centre on the pinned stage, which
+     makes a lone <a> stretch the full column. */
+  justify-self: start;
   min-height: 54px;
   padding: 0 24px;
   display: inline-flex;
@@ -549,9 +548,6 @@
   outline: 1px solid rgba(238, 241, 231, .12);
   outline-offset: -1px;
 }
-/* The caption duplicates the verdict rail's first line once the rail exists. */
-.story.is-driven .beat-figure figcaption { display: none; }
-
 .story.is-driven .beat-verdict {
   position: absolute;
   top: 50%;
@@ -639,6 +635,5 @@
   }
   .story.is-driven .act { padding-block: clamp(2.5rem, 6vw, 4.5rem); border-bottom: 1px solid var(--stage-rule); }
   .story.is-driven .beat { display: grid; padding-block: clamp(2rem, 5vw, 3.5rem); border-bottom: 1px solid var(--stage-rule); }
-  .story.is-driven .beat-figure figcaption { display: block; }
   .story.is-driven .stage-count { display: none; }
 }

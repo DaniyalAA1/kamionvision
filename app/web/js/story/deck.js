@@ -19,8 +19,8 @@
 import { drawSubject } from './boxes.js';
 
 const DEPTH = 3;          // how many queued cards stay visible behind the live one
-const STACK_X = 30;       // px right per card of depth
-const STACK_Y = -16;      // px up per card of depth
+const STACK_X = 40;       // px right per card of depth
+const STACK_Y = -22;      // px up per card of depth
 const STACK_SCALE = 0.07; // size lost per card of depth
 const STACK_TILT = -1.6;  // degrees per card of depth
 const FILED_SCALE = 0.17;
@@ -84,7 +84,7 @@ export class Deck {
       y = k * STACK_Y;
       scale = 1 - k * STACK_SCALE;
       tilt = k * STACK_TILT;
-      opacity = d > DEPTH + 0.25 ? 0 : clamp01(1 - k * 0.26);
+      opacity = d > DEPTH + 0.25 ? 0 : clamp01(1 - k * 0.2);
       z = 100 - Math.round(d * 10);
     } else {
       // Filing away. `t` runs 0 to 1 over one beat of travel, after which the
