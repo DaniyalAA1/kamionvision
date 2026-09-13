@@ -1,0 +1,31 @@
+{
+  "min_clusters_to_flag": 3,
+  "seed_frames_min": 2,
+  "false_positive_rate": 0.005,
+  "n_vehicles": 200,
+  "histogram": {
+    "0": 7,
+    "1": 184,
+    "2": 8,
+    "3": 1
+  },
+  "demo_rigid_truck_clusters": 1,
+  "demo_mixed_vehicles_clusters": null,
+  "body_tag": {
+    "histogram": {
+      "other": 17,
+      "rigid": 64,
+      "tractor_unit": 116,
+      "unknown": 3
+    },
+    "corpus_rigid_n": 64,
+    "corpus_max_rigid_conf": 0.796,
+    "demo_rigid_truck_tag": "rigid",
+    "demo_rigid_truck_conf": 0.704,
+    "block_conf": null,
+    "blocks": false,
+    "basis": "zero-shot CLIP on whole-vehicle frames; block only if 0 of 200 known tractors are tagged rigid at block_conf and demo/rigid_truck is a hit"
+  },
+  "basis": "measured on known-single corpus vehicles, whole-vehicle seeds only",
+  "fitted_at": "2026-09-13T15:35:29Z"
+}

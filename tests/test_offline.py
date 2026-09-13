@@ -655,18 +655,35 @@ class PricingBlockers(unittest.TestCase):
         gate_rep = GateReport(subject_clusters=9)
         self.assertIsNone(pricing_blocker(self.make(), gate=gate_rep, min_clusters=None))
 
+    def test_measured_artifact_blocks_at_three_clusters(self):
+        from app.pipeline import mixed_cluster_threshold, pricing_blocker
+        self.assertEqual(mixed_cluster_threshold(), 3)
+        blocked = pricing_blocker(self.make(), gate=GateReport(subject_clusters=3))
+        self.assertIsNotNone(blocked)
+        self.assertIsNone(pricing_blocker(
+            self.make(), gate=GateReport(subject_clusters=2)))
+
     def test_confident_rigid_tag_blocks_pricing(self):
-        from app.pipeline import pricing_blocker
+        from app.pipeline import BODY_TYPE_GATE_CONF, pricing_blocker
         gate_rep = GateReport(body_tag="rigid", body_tag_conf=0.80)
-        blocked = pricing_blocker(self.make(body_type=None, confidence=0.0), gate=gate_rep)
+        blocked = pricing_blocker(self.make(body_type=None, confidence=0.0),
+                                  gate=gate_rep, min_rigid_conf=BODY_TYPE_GATE_CONF)
         self.assertIsNotNone(blocked)
         self.assertIn("rigid", blocked[0].lower())
 
-    def test_low_confidence_rigid_tag_does_not_block(self):
+    def test_unmeasured_rigid_tag_does_not_block(self):
         from app.pipeline import pricing_blocker
+        gate_rep = GateReport(body_tag="rigid", body_tag_conf=0.99)
+        self.assertIsNone(pricing_blocker(
+            self.make(body_type=None, confidence=0.0),
+            gate=gate_rep, min_rigid_conf=None))
+
+    def test_low_confidence_rigid_tag_does_not_block(self):
+        from app.pipeline import BODY_TYPE_GATE_CONF, pricing_blocker
         gate_rep = GateReport(body_tag="rigid", body_tag_conf=0.20)
         self.assertIsNone(pricing_blocker(
-            self.make(body_type=None, confidence=0.0), gate=gate_rep))
+            self.make(body_type=None, confidence=0.0),
+            gate=gate_rep, min_rigid_conf=BODY_TYPE_GATE_CONF))
 
     def test_tractor_tag_does_not_block(self):
         from app.pipeline import pricing_blocker
@@ -719,6 +736,46 @@ class SeedClusters(unittest.TestCase):
             [self._check(1, "exterior_front"), self._check(2, "tire_wheel")],
             seeded_from=[1, 2])
         self.assertEqual(n, 1)
+
+
+class MixedVehicleCalibration(unittest.TestCase):
+    """Threshold arithmetic for the mixed-listing / rigid-tag artifacts."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        path = Path(__file__).resolve().parents[1] / "scripts" / "calibrate_mixed_vehicle.py"
+        spec = importlib.util.spec_from_file_location("calibrate_mixed_vehicle", path)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def test_smallest_k_inside_half_percent_budget(self):
+        # One known-single at 3 clusters is 0.5% of 200, so k=2 is admissible.
+        flag, fp = self.mod.choose_threshold([1] * 199 + [3])
+        self.assertEqual(flag, 2)
+        self.assertEqual(fp, 0.005)
+
+    def test_threshold_sits_above_the_highest_known_single_when_needed(self):
+        # Ten listings all split once: k=2 fails the budget, k=3 never fires.
+        flag, fp = self.mod.choose_threshold([2] * 10)
+        self.assertEqual(flag, 3)
+        self.assertEqual(fp, 0.0)
+
+    def test_body_tag_stays_display_only_when_corpus_overlaps_demo(self):
+        body = self.mod.summarise_body_tags(
+            [{"body_tag": "rigid", "body_tag_conf": 0.90}],
+            {"rigid_truck": {"body_tag": "rigid", "body_tag_conf": 0.80}})
+        self.assertFalse(body["blocks"])
+        self.assertIsNone(body["block_conf"])
+
+    def test_body_tag_blocks_only_above_every_corpus_rigid(self):
+        body = self.mod.summarise_body_tags(
+            [{"body_tag": "tractor_unit", "body_tag_conf": 0.70},
+             {"body_tag": "rigid", "body_tag_conf": 0.60}],
+            {"rigid_truck": {"body_tag": "rigid", "body_tag_conf": 0.85}})
+        self.assertTrue(body["blocks"])
+        self.assertGreater(body["block_conf"], 0.60)
+        self.assertLessEqual(body["block_conf"], 0.85)
 
 
 class BackendChain(unittest.TestCase):

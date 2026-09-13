@@ -26,11 +26,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import gate as gate_stage
 from app.config import DATA, IMAGES_CSV, MODELS, REPO
+from app.schema import GateDecision
 from app.subject import WHOLE_VEHICLE_VIEWS
 
 OUT = MODELS / "mixed_vehicle_thresholds.json"
+GATE_THRESHOLDS = MODELS / "gate_thresholds.json"
 # At most 1 of 200 known-single vehicles may sit at or above the threshold.
 FP_BUDGET = 0.005
+DEMO_CASES = ("rigid_truck", "mixed_vehicles")
 
 
 def vehicles(limit: int | None) -> list[tuple[str, str, list[Path]]]:
@@ -48,15 +51,18 @@ def vehicles(limit: int | None) -> list[tuple[str, str, list[Path]]]:
 
 
 def count_one(paths: list[Path]) -> dict:
-    checks, identity = gate_stage.inspect(paths)
-    whole = sum(1 for c in checks if c.usable and c.view in WHOLE_VEHICLE_VIEWS)
+    report = gate_stage.run(paths)
+    whole = sum(1 for c in report.photos
+                if c.usable and c.view in WHOLE_VEHICLE_VIEWS)
     return {
-        "clusters": int(identity.clusters),
-        "seeds": len(identity.seeded_from),
-        "method": identity.method,
+        "clusters": int(report.subject_clusters),
+        "seeds": int(report.subject_frames),
+        "method": report.subject_method,
         "whole_vehicle_frames": whole,
-        "body_tag": "",
-        "body_tag_conf": 0.0,
+        "body_tag": report.body_tag,
+        "body_tag_conf": float(report.body_tag_conf),
+        "decision": report.decision.value if isinstance(
+            report.decision, GateDecision) else str(report.decision),
     }
 
 
@@ -70,6 +76,51 @@ def choose_threshold(counts: list[int]) -> tuple[int | None, float]:
         if fp <= FP_BUDGET:
             return k, fp
     return None, sum(1 for c in counts if c >= 2) / n
+
+
+def summarise_body_tags(results: list[dict], demos: dict) -> dict:
+    """False-rigid budget: 0 of 200 known tractors at the blocking confidence."""
+    tags = Counter(r["body_tag"] or "unknown" for r in results)
+    rigids = [r for r in results if r["body_tag"] == "rigid"]
+    max_fp_conf = max((r["body_tag_conf"] for r in rigids), default=0.0)
+    demo = demos.get("rigid_truck") or {}
+    demo_hit = demo.get("body_tag") == "rigid"
+    demo_conf = float(demo.get("body_tag_conf") or 0.0)
+    block_conf = None
+    if demo_hit:
+        # Must sit strictly above every corpus rigid, and at or below the demo.
+        floor = round(max_fp_conf + 0.01, 2) if rigids else 0.55
+        if demo_conf >= floor:
+            block_conf = min(demo_conf, max(floor, 0.55))
+            block_conf = round(block_conf, 2)
+    blocks = bool(
+        block_conf is not None
+        and demo_hit
+        and demo_conf >= block_conf
+        and all(r["body_tag_conf"] < block_conf for r in rigids)
+    )
+    return {
+        "histogram": {k: int(v) for k, v in sorted(tags.items())},
+        "corpus_rigid_n": len(rigids),
+        "corpus_max_rigid_conf": round(max_fp_conf, 3),
+        "demo_rigid_truck_tag": demo.get("body_tag"),
+        "demo_rigid_truck_conf": round(demo_conf, 3) if demo else None,
+        "block_conf": block_conf if blocks else None,
+        "blocks": blocks,
+        "basis": ("zero-shot CLIP on whole-vehicle frames; block only if 0 of "
+                  "200 known tractors are tagged rigid at block_conf and "
+                  "demo/rigid_truck is a hit"),
+    }
+
+
+def write_body_tag_thresholds(body: dict) -> None:
+    if not GATE_THRESHOLDS.exists():
+        return
+    data = json.loads(GATE_THRESHOLDS.read_text(encoding="utf-8"))
+    data["body_tag"] = body
+    GATE_THRESHOLDS.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print(f"updated {GATE_THRESHOLDS} body_tag.blocks={body['blocks']} "
+          f"block_conf={body['block_conf']}")
 
 
 def main() -> None:
@@ -88,27 +139,37 @@ def main() -> None:
         results.append(rec)
         hist[rec["clusters"]] += 1
         print(f"  {i:3d}/{len(rows)} {src}/{lid}  clusters={rec['clusters']} "
-              f"seeds={rec['seeds']} whole={rec['whole_vehicle_frames']}")
+              f"seeds={rec['seeds']} whole={rec['whole_vehicle_frames']} "
+              f"body={rec['body_tag']}@{rec['body_tag_conf']:.2f}",
+              flush=True)
 
     counts = [r["clusters"] for r in results]
     flag, fp = choose_threshold(counts)
-    demo_clusters = None
-    mixed = REPO / "demo" / "rigid_truck"
-    if mixed.is_dir():
-        demo_paths = sorted(p for p in mixed.iterdir() if p.suffix.lower() in
+    demos = {}
+    for name in DEMO_CASES:
+        folder = REPO / "demo" / name
+        if not folder.is_dir():
+            continue
+        demo_paths = sorted(p for p in folder.iterdir() if p.suffix.lower() in
                             {".jpg", ".jpeg", ".png", ".webp"})
-        if demo_paths:
-            demo_clusters = count_one(demo_paths)["clusters"]
-            print(f"demo/rigid_truck (true-positive check, not training): "
-                  f"clusters={demo_clusters}")
+        if not demo_paths:
+            continue
+        rec = count_one(demo_paths)
+        demos[name] = rec
+        print(f"demo/{name} (true-positive check, not training): "
+              f"clusters={rec['clusters']} body={rec['body_tag']}"
+              f"@{rec['body_tag_conf']:.3f}")
 
+    body = summarise_body_tags(results, demos)
     artifact = {
         "min_clusters_to_flag": flag,
         "seed_frames_min": 2,
         "false_positive_rate": round(fp, 4),
         "n_vehicles": len(results),
         "histogram": {str(k): int(v) for k, v in sorted(hist.items())},
-        "demo_rigid_truck_clusters": demo_clusters,
+        "demo_rigid_truck_clusters": (demos.get("rigid_truck") or {}).get("clusters"),
+        "demo_mixed_vehicles_clusters": (demos.get("mixed_vehicles") or {}).get("clusters"),
+        "body_tag": body,
         "basis": ("measured on known-single corpus vehicles, whole-vehicle "
                   "seeds only" + ("" if not args.limit else
                                   f"; --limit {args.limit}, not enforceable")),
@@ -120,6 +181,8 @@ def main() -> None:
     if flag is None:
         print("no threshold meets the 0.5% false-positive budget; "
               "pricing_blocker will not use this artifact")
+    if len(results) == 200 and not args.limit:
+        write_body_tag_thresholds(body)
 
 
 if __name__ == "__main__":

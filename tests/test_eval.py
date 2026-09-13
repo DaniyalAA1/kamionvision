@@ -38,7 +38,6 @@ from eval import cases, replay, scorecard
 from eval.cases import TwinPair
 from eval.suites import DEFAULT_ORDER, SUITES, base as suite_base
 from eval.suites import demo_gate, distribution, monotonic, retest, twin_fp
-from eval.suites.base import NotImplementedSuite
 
 
 def _pair(index: int = 0, view: str = "tire_wheel", **kw) -> TwinPair:
@@ -734,13 +733,13 @@ class Budgets(unittest.TestCase):
         self.assertEqual(len({c.key for c in plan.calls}), len(plan.calls),
                          "two planned calls must never share a key")
 
-    def test_only_panel_remains_unimplemented(self):
-        for name in ("panel",):
-            plan = SUITES[name].plan("smoke", seed=7, model_id="m")
-            with self.assertRaises(NotImplementedSuite):
-                SUITES[name].run(plan, None)
-            with self.assertRaises(NotImplementedSuite):
-                SUITES[name].score([], plan, None, "m")
+    def test_panel_skips_until_reference_exists(self):
+        from eval.suites import panel
+        plan = SUITES["panel"].plan("smoke", seed=7, model_id="m")
+        if not panel.available():
+            self.assertEqual(SUITES["panel"].run(plan, None), [])
+            result = SUITES["panel"].score([], plan, None, "m")
+            self.assertEqual(result.status, "skipped")
 
     def test_implemented_suites_skip_empty_offline_inputs(self):
         for name in ("retest", "monotonic", "distribution"):
@@ -890,6 +889,56 @@ class RemainingSuiteScoring(unittest.TestCase):
         self.assertAlmostEqual(metrics["grade_instability"].value, 2 / 3, places=4)
         self.assertGreater(metrics["multiplier_sd_log"].value, 0)
         self.assertEqual(result.detail["matching"], "twin_fp.cluster_observations")
+
+    def test_panel_scores_pipeline_against_consensus_and_loo_ceiling(self):
+        from eval.suites import panel
+        records = [
+            {
+                "listing_id": "v0", "split": "test",
+                "panel": {
+                    "listing_id": "v0", "grade": "good",
+                    "grade_votes": ["good", "good", "fair"],
+                    "findings": [{
+                        "family": "drive_tires",
+                        "severity": "moderate",
+                        "impact": "medium",
+                        "observation": "shoulder wear across the outer ribs",
+                        "votes": 2, "n_panelists": 3,
+                    }],
+                },
+                "appraisal": {
+                    "evidence": {
+                        "condition_grade": "good",
+                        "issues": [{
+                            "component": "drive_tires",
+                            "family": "drive_tires",
+                            "severity": "minor",
+                            "observation": "shoulder wear across the outer ribs",
+                        }],
+                    }
+                },
+            },
+            {
+                "listing_id": "v1", "split": "test",
+                "panel": {
+                    "listing_id": "v1", "grade": "fair",
+                    "grade_votes": ["fair", "fair", "poor"],
+                    "findings": [],
+                },
+                "appraisal": {
+                    "evidence": {"condition_grade": "good", "issues": []},
+                },
+            },
+        ]
+        result = panel.score(records, panel.plan("smoke", model_id="m"), None, "m")
+        metrics = {m.name: m for m in result.metrics}
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(metrics["grade_exact"].value, 0.5)
+        self.assertEqual(metrics["grade_within_one"].value, 1.0)
+        self.assertEqual(metrics["grade_bias"].value, 0.5)
+        self.assertEqual(metrics["finding_recall"].value, 1.0)
+        self.assertEqual(metrics["severity_mae"].value, 1.0)
+        self.assertIsNotNone(result.detail["ceiling"]["grade_exact"])
 
 
 class ReplayAndSweep(unittest.TestCase):

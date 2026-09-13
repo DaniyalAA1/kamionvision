@@ -42,10 +42,10 @@ MISSING_VIEW_WIDENING = 1.12
 # the body type the vision model read off the vehicle.
 PRICEABLE_BODY_TYPES = {"tractor_unit", None, "", "unknown"}
 BODY_TYPE_CONFIDENCE = 0.55
-# Gate-time CLIP rigid tag. Only blocks at this confidence; below it the VLM
-# identity pass remains the body-type signal. Measured later against the 200
-# known tractors — until then a missing artifact means this path does not fire
-# unless a test passes min_clusters / uses the constant directly.
+# Gate-time CLIP rigid tag. Tests pass min_rigid_conf= this constant. Live
+# appraisals only use it when models/gate_thresholds.json body_tag.blocks is
+# true at a measured block_conf — cab-over çekici frames are often tagged
+# rigid at 0.5–0.75, so an unmeasured 0.80 would false-block honest listings.
 BODY_TYPE_GATE_CONF = 0.80
 
 
@@ -71,24 +71,56 @@ def mixed_cluster_threshold() -> int | None:
     return int(flag)
 
 
-def pricing_blocker(ev, gate=None, min_clusters=None) -> tuple[str, str] | None:
+def rigid_tag_block_conf() -> float | None:
+    """Measured CLIP rigid threshold, or None when the tag is display-only."""
+    from .config import MODELS
+    path = MODELS / "gate_thresholds.json"
+    if not path.exists():
+        return None
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    body = d.get("body_tag") or {}
+    if not body.get("blocks"):
+        return None
+    conf = body.get("block_conf")
+    if conf is None:
+        return None
+    try:
+        return float(conf)
+    except (TypeError, ValueError):
+        return None
+
+
+# Default means "read the calibration artifact". Explicit None means off —
+# that is how the tests pin the missing-artifact posture after a real
+# mixed_vehicle_thresholds.json is on disk.
+_LOAD = object()
+
+
+def pricing_blocker(ev, gate=None, min_clusters=_LOAD,
+                    min_rigid_conf=_LOAD) -> tuple[str, str] | None:
     """Reasons the comparables cannot honestly price what the photos show.
 
     Returns (headline, reason) or None. Kept pure and separate from `appraise`
     so both conditions can be tested without spending a vision call.
     """
-    if min_clusters is None and gate is not None:
-        min_clusters = mixed_cluster_threshold()
+    if min_clusters is _LOAD:
+        min_clusters = mixed_cluster_threshold() if gate is not None else None
     if gate is not None and min_clusters and gate.subject_clusters >= min_clusters:
         return (("These photos look like more than one truck. "
                  "Send one set of the vehicle you are selling.",
                  "CLIP appearance clusters among whole-vehicle frames split this "
                  "set, so there is nothing coherent to price."))
 
+    if min_rigid_conf is _LOAD:
+        min_rigid_conf = rigid_tag_block_conf() if gate is not None else None
     if gate is not None and (not ev or not getattr(ev, "vehicle", None)
                              or not ev.vehicle.body_type):
-        if (gate.body_tag == "rigid"
-                and gate.body_tag_conf >= BODY_TYPE_GATE_CONF):
+        if (min_rigid_conf
+                and gate.body_tag == "rigid"
+                and gate.body_tag_conf >= min_rigid_conf):
             return (f"This looks like a rigid. I can describe its condition, but I have "
                     f"no comparable rigids to price it against.",
                     "the photos show a rigid, not a tractor unit. Every comparable this "
