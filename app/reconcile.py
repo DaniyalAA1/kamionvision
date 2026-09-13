@@ -18,8 +18,9 @@ Seven rules, all of them one-directional:
   identity_conflict   the identity head disagrees with the badge the VLM read
   coverage_restored   the gate asked for a view the robust head can already see
   odometer_*          an OCR model reads the dashboard independently of the VLM
-                      and either supplies a mileage it missed (odometer_recovered)
-                      or disputes the one it read (odometer_conflict)
+                      and either supplies a mileage it missed (odometer_recovered),
+                      disputes a lone one it read (odometer_conflict), or overrides
+                      it when corroborated across frames (odometer_overridden)
   vin_*               OCR reads a chassis-plate VIN and either supplies its model
                       year or surfaces a conflict with the seller's declared year
   wmi_conflict        the manufacturer stamped into that same VIN's first three
@@ -94,6 +95,16 @@ ODOMETER_TOLERANCE_FRAC = 0.02
 ODOMETER_TOLERANCE_FLOOR = 1_000        # km
 ODOMETER_CONFLICT_WIDENING = 1.25
 ODOMETER_MAX_FRAMES = 4                  # cap OCR cost on a 40-photo set
+# Disputing a mileage the vision model already read is a stronger claim than
+# filling one it left blank: a misread digit on a smeared dashboard must not be
+# allowed to override a legible reading. So a conflict needs a confident OCR read,
+# above the module's own legibility floor, before it widens the band.
+ODOMETER_CONFLICT_CONFIDENCE = 0.80
+# ...and overriding the priced figure is stronger still. A confident read on one
+# frame could itself be the misread; a mileage read the same off this many
+# dashboards is what the odometer says, and it wins over a vision figure no frame
+# supports. Below this the disagreement is only flagged, never priced on.
+ODOMETER_CORROBORATION_MIN = 2
 VIN_CONFLICT_WIDENING = 1.15
 VIN_MAX_FRAMES = 4
 
@@ -390,18 +401,25 @@ def _check_generation(evidence, report, declared: dict) -> None:
 def _check_odometer(gate, evidence, report) -> None:
     """Fourth rule: read the odometer with OCR, reconcile it against the VLM.
 
-    Two outcomes produce a correction; agreement is deliberately silent, exactly
-    like the identity rule - this speaks only when it has something to say.
+    Three outcomes produce a correction; agreement is deliberately silent,
+    exactly like the identity rule - this speaks only when it has something to say.
 
       odometer_recovered  the VLM read no odometer, OCR does. The reading is
                           written onto the vehicle so the price model gets a
                           mileage it would otherwise lack; that in turn triggers
                           the existing "read off the dashboard" widening in
                           price_from_evidence, so nothing is double-counted here.
-      odometer_conflict   both read a number and they disagree past tolerance.
-                          The band widens and both figures are shown; the VLM's
-                          value stays the priced one, unchanged - same posture as
-                          identity_conflict, which keeps the badge and widens.
+      odometer_conflict   both read a number and they disagree past tolerance, but
+                          the OCR read stands on one frame only. The band widens
+                          and both figures are shown; the VLM's value stays the
+                          priced one - one frame could itself be the misread, same
+                          posture as identity_conflict, which keeps the badge.
+      odometer_overridden the OCR read disagrees, is confident, and is corroborated
+                          across two or more dashboards while the VLM's figure
+                          appears on none. A mileage read the same off several
+                          frames is what the odometer says: the priced figure
+                          becomes the OCR reading, and the vision figure it
+                          replaced is named. Nothing is swapped silently.
     """
     if gate is None or not gate.photos:
         return
@@ -422,17 +440,16 @@ def _check_odometer(gate, evidence, report) -> None:
     cands = sorted(cands, key=lambda c: -c.capture_quality)[:ODOMETER_MAX_FRAMES]
 
     try:                                                 # RapidOCR loads here
-        best_pid, best = None, None
+        reads = []
         for c in cands:
             r = odometer.read(c.path, subject_box=c.subject_box)
-            if r.km is None:
-                continue
-            if best is None or r.confidence > best.confidence:
-                best_pid, best = c.photo_id, r
+            if r.km is not None:                         # below the legibility floor abstains
+                reads.append((c.photo_id, r))
     except Exception:                                    # noqa: BLE001
         return                                           # OCR unavailable/failed
-    if best is None:
-        return
+    if not reads:
+        return                                           # nothing legible enough to read
+    best_pid, best = max(reads, key=lambda pr: pr[1].confidence)
 
     ocr_km, vlm_km = best.km, evidence.vehicle.odometer_km
 
@@ -450,12 +467,47 @@ def _check_odometer(gate, evidence, report) -> None:
     if abs(ocr_km - vlm_km) <= tol:
         return                                           # agreement: stay silent
 
+    # Disputing the vision figure is the strong claim. Do not raise it on a
+    # marginal read, and not when another legible dashboard frame backs the
+    # vision figure - a lone misread digit must not override a corroborated one.
+    if best.confidence < ODOMETER_CONFLICT_CONFIDENCE:
+        return
+    if any(abs(r.km - vlm_km) <= tol for _, r in reads):
+        return
+
+    # No legible frame supports the vision figure. Count the frames that agree
+    # with the OCR reading instead: read the same off several dashboards, it is
+    # what the odometer says, not a digit slip.
+    tol_ocr = max(ODOMETER_TOLERANCE_FLOOR, ODOMETER_TOLERANCE_FRAC * ocr_km)
+    corroborating = [pid for pid, r in reads if abs(r.km - ocr_km) <= tol_ocr]
     delta = abs(ocr_km - vlm_km) / vlm_km * 100
+
+    if len(corroborating) >= ODOMETER_CORROBORATION_MIN:
+        # The priced figure becomes the corroborated reading. The price model
+        # reads evidence.vehicle.odometer_km, so this also settles any stated-km
+        # conflict in pricing that rested on the vision misread. No widening: a
+        # mileage confirmed across frames is more certain, not less - the correction
+        # names what changed, which is the open-book part.
+        evidence.vehicle.odometer_km = ocr_km
+        evidence.vehicle.odometer_photo_id = best_pid
+        report.corrections.append(Correction(
+            kind="odometer_overridden", photo_id=best_pid,
+            detail=f"the vision model read {vlm_km:,} km, which appears on no dashboard "
+                   f"frame; OCR reads {ocr_km:,} km off {len(corroborating)} frames "
+                   f"(confidence {best.confidence:.2f}), so the price is built on the "
+                   f"corroborated odometer reading, not the vision figure",
+            before=f"{vlm_km:,} km (vision)",
+            after=f"{ocr_km:,} km (OCR, {len(corroborating)} frames)"))
+        return
+
+    # A lone confident OCR read that nothing corroborates: surface the conflict
+    # but keep the vision figure priced - one frame could itself be the misread.
     report.corrections.append(Correction(
         kind="odometer_conflict", photo_id=best_pid,
         detail=f"the vision model read {vlm_km:,} km; OCR reads {ocr_km:,} km off "
-               f"photo {best_pid} ({delta:.0f}% apart) - priced on the vision "
-               f"figure, but the odometer needs documentary support before anyone pays",
+               f"photo {best_pid} at confidence {best.confidence:.2f} ({delta:.0f}% apart) "
+               f"- priced on the vision figure, but the odometer needs documentary "
+               f"support before anyone pays",
         before=f"{vlm_km:,} km (vision)", after=f"{ocr_km:,} km (OCR)"))
     report.widening.append([
         f"the vision model and an OCR read of the odometer disagree "

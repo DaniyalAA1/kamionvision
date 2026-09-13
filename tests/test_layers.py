@@ -351,6 +351,78 @@ class Odometer(unittest.TestCase):
         self.assertEqual(rep.n, 0)
         self.assertIsNone(ev.vehicle.odometer_km)
 
+    def test_a_low_confidence_read_does_not_dispute_the_vision_figure(self):
+        # A smeared dashboard OCR is unsure of must not override a legible
+        # reading. Below the conflict-confidence bar the disagreement is dropped.
+        ev = self._ev(odometer_km=184113)
+        low = self._read(204113, confidence=reconcile.ODOMETER_CONFLICT_CONFIDENCE - 0.05)
+        with unittest.mock.patch("app.odometer.read", return_value=low):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(rep.n, 0)
+        self.assertEqual(rep.widening, [])
+        self.assertEqual(ev.vehicle.odometer_km, 184113)
+
+    def test_a_frame_backing_the_vision_figure_blocks_a_lone_misread(self):
+        # Two dashboard frames: one confidently agrees with the vision figure,
+        # the other confidently reads a number that never appears on any dash.
+        # The corroborated reading wins - no conflict is raised.
+        gate = GateReport(photos=[_photo(1, view="dashboard_odometer",
+                                         usable=True, capture_quality=0.9),
+                                  _photo(2, view="dashboard_odometer",
+                                         usable=True, capture_quality=0.9)])
+        ev = self._ev(odometer_km=184113)
+        reads = {"/tmp/1.jpg": self._read(204113, confidence=0.95),   # misread, highest conf
+                 "/tmp/2.jpg": self._read(184000, confidence=0.90)}   # backs the vision figure
+        with unittest.mock.patch("app.odometer.read",
+                                 side_effect=lambda path, **kw: reads[str(path)]):
+            rep = reconcile.apply(gate, None, ev)
+        self.assertEqual(len(rep.of_kind("odometer_conflict")), 0)
+        self.assertEqual(ev.vehicle.odometer_km, 184113)
+
+    def test_corroborated_ocr_overrides_an_unsupported_vision_misread(self):
+        # The reported bug: the vision model read 204,113 km, which appears on no
+        # dashboard, while two frames read the true 184,113. The priced figure
+        # must become the corroborated OCR reading, not the vision misread.
+        gate = GateReport(photos=[_photo(1, view="dashboard_odometer",
+                                         usable=True, capture_quality=0.9),
+                                  _photo(2, view="dashboard_odometer",
+                                         usable=True, capture_quality=0.9)])
+        ev = self._ev(odometer_km=204113)               # the vision misread
+        reads = {"/tmp/1.jpg": self._read(184113, confidence=0.90),
+                 "/tmp/2.jpg": self._read(184000, confidence=0.85)}
+        with unittest.mock.patch("app.odometer.read",
+                                 side_effect=lambda path, **kw: reads[str(path)]):
+            rep = reconcile.apply(gate, None, ev)
+        self.assertEqual(len(rep.of_kind("odometer_overridden")), 1)
+        self.assertEqual(len(rep.of_kind("odometer_conflict")), 0)
+        self.assertEqual(ev.vehicle.odometer_km, 184113)   # priced figure corrected
+        self.assertEqual(rep.widening, [])                 # corroborated, so no widening
+
+    def test_a_lone_confident_read_still_only_flags_and_keeps_the_vision_figure(self):
+        # One dashboard frame, no corroboration: the read could itself be the
+        # misread, so the conflict is surfaced but the vision figure stays priced.
+        ev = self._ev(odometer_km=500000)
+        with unittest.mock.patch("app.odometer.read",
+                                 return_value=self._read(305273, confidence=0.9)):
+            rep = reconcile.apply(self._gate(), None, ev)
+        self.assertEqual(len(rep.of_kind("odometer_conflict")), 1)
+        self.assertEqual(len(rep.of_kind("odometer_overridden")), 0)
+        self.assertEqual(ev.vehicle.odometer_km, 500000)   # unchanged
+
+    def test_the_ocr_abstains_below_the_legibility_floor(self):
+        # The engine itself: a token read under the floor yields no km, and the
+        # reason names the confidence rather than emitting the digits.
+        from app import odometer as O
+        reading = O._select([("204113km", O.MIN_CONFIDENCE - 0.1, [0, 0, 10, 10])])
+        self.assertIsNone(reading.km)
+        self.assertEqual(reading.text, "204113km")       # what it saw is still reported
+        self.assertIn("legibility floor", reading.reason)
+
+    def test_a_legible_read_above_the_floor_is_kept(self):
+        from app import odometer as O
+        reading = O._select([("184113km", O.MIN_CONFIDENCE + 0.3, [0, 0, 10, 10])])
+        self.assertEqual(reading.km, 184113)
+
     def test_the_rule_does_not_run_without_a_dashboard_frame(self):
         ev = self._ev(odometer_km=None)
         with unittest.mock.patch("app.odometer.read",

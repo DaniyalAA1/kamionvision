@@ -373,12 +373,19 @@ app/
   (RapidOCR, bundled ONNX, offline) reads the dashboard mileage independently of the VLM; `reconcile`'s
   fourth rule supplies it when the VLM missed one (`odometer_recovered`, which then feeds the price
   model a km it would otherwise lack, via the existing "read off the dashboard" widening — not a new
-  one), or widens the band 1.25× and shows both figures when the two disagree past 2% (`odometer_conflict`,
-  keeping the VLM figure as the priced one), and stays silent when they agree. Mileage is a first-class
-  hedonic term, unlike condition, so a checkable second reading of it is worth more than any damage
-  signal. Soft dependency: absent RapidOCR the rule no-ops, and it runs whether or not `perception.json`
-  is present, since it needs only the dashboard frames and the VLM's own read. It abstains rather than
-  emit a wrong six-figure mileage — a wrong odometer is worse than none.
+  one), and when the two disagree past 2% it resolves the disagreement by *how much OCR is trusted*,
+  not by always deferring to the VLM. A read below the module's `MIN_CONFIDENCE` legibility floor
+  abstains entirely (a wrong six-figure mileage is worse than none). A confident read that only one
+  frame supports, or that another frame contradicts by backing the VLM, only widens the band 1.25×
+  and shows both figures (`odometer_conflict`, keeping the VLM figure — one frame could be the
+  misread). But a confident read corroborated across `ODOMETER_CORROBORATION_MIN` (2) dashboards,
+  when the VLM's figure appears on none, **overrides** the priced figure (`odometer_overridden`, no
+  widening — a mileage read the same off several frames is more certain, not less); because the price
+  model reads `evidence.vehicle.odometer_km`, this also settles pricing's own stated-vs-odometer
+  `km_conflict` when it rested on the same vision misread. Mileage is a first-class hedonic term,
+  unlike condition, so a checkable second reading of it is worth more than any damage signal. Soft
+  dependency: absent RapidOCR the rule no-ops, and it runs whether or not `perception.json` is
+  present, since it needs only the dashboard frames and the VLM's own read.
 - **The identity head may not dispute a brand it was never trained on.** The corpus has no Scania;
   a head that has never seen one still names a class, at high confidence. `reconcile` only raises
   an identity conflict when the VLM's make is in the head's own class list. A test pins this.
