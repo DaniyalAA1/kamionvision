@@ -1357,3 +1357,41 @@ class PagesAreConnected(unittest.TestCase):
     def test_the_landing_assets_the_app_page_borrows_exist(self):
         for name in ("assets/kip.svg", "assets/demo-truck.jpg"):
             self.assertTrue((self.web / name).is_file(), name)
+
+
+class SubjectDrawContract(unittest.TestCase):
+    """The browser must not have to recompute which box is the subject.
+
+    It used to find it by exact float equality on all four coordinates, which
+    held only because `subject_box` was literally an element of `detections`.
+    The moment the subject is decided anywhere else that match fails, `shown`
+    is empty and the screen draws no box at all - silently.
+    """
+
+    JS = Path("app/web/js/frames.js")
+
+    def test_the_subject_is_read_off_is_subject_first(self):
+        src = self.JS.read_text(encoding="utf-8")
+        self.assertIn("d.is_subject", src)
+        lookup = src[src.index("const subjectOf"):src.index("function drawBoxes")]
+        # is_subject before sameBox, not instead of it: an older frozen export
+        # carries the subject as coordinates and nothing else.
+        self.assertLess(lookup.index("is_subject"), lookup.index("sameBox"))
+        self.assertIn("sameBox", lookup)
+
+    def test_the_schema_emits_every_field_the_screen_reads(self):
+        det = Detection(label="truck", confidence=0.9, box=[0, 0, 1, 1],
+                        area_frac=0.5).to_dict()
+        self.assertIn("is_subject", det)
+        self.assertFalse(det["is_subject"])
+        self.assertIn("subject_basis", _check(0).to_dict())
+
+    def test_the_refusal_colour_is_a_separate_channel(self):
+        # Truck detection is set-level: a box earns the refusal colour only
+        # when the whole SET was refused for not being a truck. `is_subject`
+        # must never reach `data-disqualifying`.
+        src = self.JS.read_text(encoding="utf-8")
+        for line in src.splitlines():
+            if "dataset.disqualifying" in line:
+                self.assertIn("blockedLabel", line, line)
+        self.assertIn("refusedAsNotATruck = decision === 'refuse_not_a_truck'", src)
