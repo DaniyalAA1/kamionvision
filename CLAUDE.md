@@ -71,9 +71,12 @@ app/
   schema.py      the data contract; an Appraisal serialises to JSON whole
   vision.py      lazily-loaded YOLOv8n + CLIP, pinned to MPS
   gate.py        stage 1: refuse / re-ask / pass, deterministic, ~1s
+  perception/    stage 1b: three heads trained on the corpus (heads.py, train.py)
   evidence.py    stage 2: one structured vision call over a closed component enum
+  reconcile.py   stage 2b: cross-checks the VLM against the heads, records every change
   vlm/           backends: openai (GPT-5.6), cursor (Agent SDK), anthropic
   pricing/       stage 3: features, ridge fit + calibration (train.py), estimate
+                 anchor.py: second route - published new price x fitted retention
   report.py      stage 4: terminal card
   pipeline.py    wires them together, emits a timed trace
   cli.py         doctor | appraise | serve | demo
@@ -104,6 +107,9 @@ app/
 .venv/bin/python -m app.vlm.bench                        # compare backends on the real task
 .venv/bin/python -m app.pricing.train                    # refit + recalibrate the price model
 .venv/bin/python -m app.calibrate_gate                   # recompute gate thresholds (~2 min)
+.venv/bin/python scripts/cache_embeddings.py             # CLIP embedding cache (~2 min, once)
+.venv/bin/python -m app.perception.train                 # refit the three perception heads
+.venv/bin/python scripts/probe_residual_signal.py        # is there image signal in price? (it says no)
 ```
 
 ### Invariants the appraisal system encodes — don't break these either
@@ -142,7 +148,7 @@ app/
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
 - **Measured numbers and assumed ones are labelled differently in the output.** Interval coverage,
-  gate false-refusal and the 1.65× unseen-brand widening are measured. The 1.12×-per-missing-view
+  gate false-refusal and the 1.85× unseen-brand widening are measured. The 1.12×-per-missing-view
   widening and the severity weights are stated assumptions and say so.
 - **Two questions the detector cannot answer stop the pricing stage** (`pipeline.pricing_blocker`,
   pure and unit-tested): is this one vehicle, and is it a tractor unit? COCO calls a rigid, a
@@ -177,6 +183,37 @@ app/
 - **A detection box only gets the refusal colour when the *set* was refused for
   not being a truck.** Truck detection is set-level; colouring a box red
   because one frame looks odd would contradict the gate.
+- **The image embedding never reaches the price fit; only the condition multiplier does.**
+  `scripts/probe_residual_signal.py` measured whether a CLIP embedding explains the out-of-fold
+  price residual, under nested vehicle-grouped CV against a permuted-target null: TR R² −0.222,
+  US −0.038, pooled −0.046, all inside the null (p ≥ 0.57), across six pooling variants. The
+  positive controls pass on the same pipeline (brand 76.5% vs 39% majority, market 100%), so the
+  negative is the data, not the code. **Do not fit a learned image→price head on this corpus
+  without re-running that probe and beating its null.** The blocker is the target, not the
+  perceiver: TR has 23 distinct prices across 84 listings and both OEM sources sell reconditioned
+  stock.
+- **The heads refine; they never gate.** A missing `models/perception.json` degrades to the
+  shipped behaviour rather than erroring, and `reconcile` deliberately does NOT clear
+  `gate.blocks_pricing` — the two conditions that set it are decided before `missing_views` exists,
+  so no coverage restore legitimately answers them.
+- **A downgraded finding is still shown.** `reconcile.apply` lowers `Issue.confidence` and records
+  a `Correction` carrying the before, the after and the reason; it never deletes. Same posture as
+  `EvidenceReport.fell_back_from`: changing your mind is allowed, doing it quietly is not.
+- **The identity head may not dispute a brand it was never trained on.** The corpus has no Scania;
+  a head that has never seen one still names a class, at high confidence. `reconcile` only raises
+  an identity conflict when the VLM's make is in the head's own class list. A test pins this.
+- **The view head's number to quote is twin agreement, not accuracy.** Its labels are CLIP
+  zero-shot pseudo-labels, so accuracy against them measures agreement with a noisy teacher. What
+  is real is stability: a degraded twin inherits its original's label, so 0.758 vs the teacher's
+  own 0.696 is a measured robustness gain. Never report the 0.772 teacher-agreement as accuracy.
+- **The anchor may claw back a widening; it may never narrow below the measured band.**
+  `estimate()` floors the blended band factor at 1.0 because the 80.3% coverage belongs to the
+  unwidened hedonic interval. Measured payoff, TR:MAN held out (n=6, and say the n): band
+  1.85×→1.00×, coverage 0.17→0.83, median error 16.3%→3.7%.
+- **`data/reference/new_prices_tr.json` is hand-curated and stamped, like `USD_TRY`.** Every row
+  carries a source URL, a date and a `source_type`; `anchor.py` widens a `trade_press` row 1.35×
+  against an `oem_official` one, and `app.cli doctor` warns past 120 days. A brand with no row
+  simply falls back to the existing widening — Freightliner and Scania both do, correctly.
 - **HEIC is registered in `config.py` at import.** iPhones shoot it by default and the brief is
   "a seller with a phone". `config.IMAGE_SUFFIXES` is the single source of truth; the CLI folder
   walk and the web upload filter both read it, and a test asserts they agree.
@@ -228,6 +265,8 @@ That is why the live numbers below are smaller than the cleaning report's.
 | Priced | 155 — all 84 TR, 71 of the US; Mascus is price-on-request throughout |
 | TR brands | **78 of 84 are Ford**, 6 MAN — the binding limitation, see README source vetting |
 | Price model | `tr_only`, R² 0.84, median error 4.2%, 80% band covers 80.3% |
+| New-price anchor | retention curve R² 0.94, median error 3.1%; 5 cited reference rows |
+| Perception heads | degradation AUC 0.985, view stability 0.758 vs 0.696, brand 79.5% vs 39% |
 | Gate thresholds | calibrated on all 7,458 images; 1 of 200 vehicles false-refused |
 | EU comparables | 1,056 TruckStore tractor units (95% Mercedes) — measurement only, not training |
 

@@ -1,0 +1,58 @@
+{
+  "what": "Manufacturer recommended retail prices for NEW tractor units sold in Turkiye, used to anchor a used estimate when the corpus has no comparable of that brand.",
+  "why": "The price model is fit on 84 Turkish listings of which 78 are Ford. A brand it has never seen currently gets only a 1.85x wider band - the widest leave-one-brand-out holdout needed 3.25x at 75% median error. Anchoring on what the truck cost new, times a retention curve fit on the corpus, gives an estimate that does not require a same-brand comparable to exist.",
+  "basis": "Recommended retail, VAT (20%) and OTV included, standard specification, tractor units (cekici) only. Registration, plates and insurance excluded by every source.",
+  "inflation_note": "These are TODAY's prices for the CURRENT model, never the historic price of the model year being appraised. Turkish nominal prices move with ~31% CPI, so a 2019 sticker price is not comparable to a 2026 asking price. Both sides of the retention ratio are current, which removes the problem rather than modelling it.",
+  "refresh": "Hand-curated and stamped, the same posture as USD_TRY in app/config.py. Re-check the source URLs and update as_of; nothing here expires silently, and app.cli doctor reports the age.",
+  "currency": "TRY",
+  "rows": [
+    {
+      "brand": "FORD", "model": "F-MAX", "default": true,
+      "variant": "Yeni F-MAX, Mega Kabin, 13L / 510PS / 2600Nm, 16-speed automatic, Comfort Plus",
+      "list_price": 7433143, "currency": "TRY", "as_of": "2026-09-08",
+      "source": "Ford Trucks Turkiye official price list", "source_type": "oem_official",
+      "source_url": "https://www.fordtrucks.com.tr/fiyat-listesi",
+      "source_note": "Page states '8 Eylul 2026 Tarihi Itibariyle Gecerli Tavsiye Edilen Ford Trucks Fiyat Listesi'."
+    },
+    {
+      "brand": "FORD", "model": "1845T",
+      "variant": "Ekstra Yuksek Tavan, 13L / 450PS / 2300Nm, 16-speed automatic",
+      "list_price": 6845613, "currency": "TRY", "as_of": "2026-09-08",
+      "source": "Ford Trucks Turkiye official price list", "source_type": "oem_official",
+      "source_url": "https://www.fordtrucks.com.tr/fiyat-listesi",
+      "source_note": "Lower-power tractor in the same series; the nearest current equivalent to the pre-F-MAX Cargo tractors that appear in the corpus as model 'TRUCKS'."
+    },
+    {
+      "brand": "MAN", "model": "TGX", "default": true,
+      "variant": "18.480 4X2 BL SA Fleet, GM cab, MY26 Euro 6E",
+      "list_price": 8672000, "currency": "TRY", "as_of": "2026-08-24",
+      "source": "MAN Kamyon ve Otobus Ticaret A.S. official price list", "source_type": "oem_official",
+      "source_url": "https://manyaninda.com/fiyat_listesi/",
+      "source_note": "Page states 'Guncelleme Tarihi: 24/08/2026'. Long-haul tractor, recommended sale price."
+    },
+    {
+      "brand": "MAN", "model": "TGS",
+      "variant": "18.480 4X2 BL SA GA, TM cab, MY26 Euro 6E",
+      "list_price": 8331000, "currency": "TRY", "as_of": "2026-08-24",
+      "source": "MAN Kamyon ve Otobus Ticaret A.S. official price list", "source_type": "oem_official",
+      "source_url": "https://manyaninda.com/fiyat_listesi/",
+      "source_note": "General-purpose tractor. Five of the six Turkish MAN vehicles in the corpus are TGS."
+    },
+    {
+      "brand": "MERCEDES-BENZ", "model": "ACTROS", "default": true,
+      "variant": "Actros 1845 LS 4X2",
+      "list_price": 7687665, "currency": "TRY", "as_of": "2026-02-05",
+      "source": "TreyLog, published Mercedes-Benz Turk 2026 model-year list", "source_type": "trade_press",
+      "source_url": "https://www.treylog.com/mercedes-tir-kamyon-ve-cekici-fiyat-listesi/",
+      "source_note": "WEAKER PROVENANCE, and deliberately kept as such. Mercedes-Benz Turk's own price page (mercedesbenzturk.com.tr/fiyatlistesi/kamyon/satis/fiyat-listesi) currently publishes no figures - it reads 'Fiyatlarimiz guncellenmektedir'. Page date 05.02.2026 is used for as_of even though the title says Eylul 2026, because the older of two stated dates is the safe one. Actros is the second tractor brand in Turkiye and the likeliest unseen make at judging, so an approximate anchor beats none - but anchor.py widens on source_type."
+    },
+    {
+      "brand": "SCANIA", "model": "R-SERIES",
+      "variant": null,
+      "list_price": null, "currency": "TRY", "as_of": "2026-02-11",
+      "source": "Scania Turkiye official price list", "source_type": "oem_official",
+      "source_url": "https://www.scania.com/tr/tr/home/fiyat-listesi.html",
+      "source_note": "DELIBERATE NULL, recorded so the gap is documented rather than invisible. Scania Turkiye publishes its list only as a JPG image (Fiyat-Listesi-11-Subat-2026.jpg, effective 11.02.2026), and OCR-ing a price off a scan to put a number in a truck valuation is not a risk worth taking. A Scania therefore falls back to the existing unknown-brand widening."
+    }
+  ]
+}

@@ -207,6 +207,8 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
         check = checks[idx]
         check.view, check.view_conf = tag["view"], round(tag["view_conf"], 3)
         check.content, check.content_conf = tag["content"], round(tag["content_conf"], 3)
+        check.keep_mass = round(tag["keep_mass"], 3)
+        check._embedding = tag["embedding"]
         # keep_mass is the share of probability across the three "keep"
         # phrasings; a genuine vehicle photo splits between them and so can
         # top out below 0.4 on any single one.

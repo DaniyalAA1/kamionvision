@@ -213,8 +213,58 @@
       }
     }
   },
+  "anchor": {
+    "ok": true,
+    "columns": [
+      "log1p_age",
+      "log_km"
+    ],
+    "coef": [
+      -0.219081,
+      -0.020399
+    ],
+    "intercept": -1.166776,
+    "mean": [
+      1.857635,
+      12.671526
+    ],
+    "scale": [
+      0.331339,
+      0.601145
+    ],
+    "residual_std": 0.0619,
+    "r2_oof": 0.9357,
+    "median_ape_oof": 3.1,
+    "n": 84,
+    "n_groups": 24,
+    "target": "log(asking price / published new price of the current equivalent model)",
+    "basis": "out-of-fold, folds grouped on the same (market, brand, model, year, price) key the hedonic model uses",
+    "reference": "data/reference/new_prices_tr.json",
+    "unseen_brand_test": {
+      "TR:MAN": {
+        "n_held_out": 6,
+        "trained_on": [
+          "FORD"
+        ],
+        "coverage_widened_only": 0.167,
+        "coverage_with_anchor": 0.833,
+        "median_ape_widened_only": 16.3,
+        "median_ape_with_anchor": 3.7,
+        "band_factor_widened_only": 1.85,
+        "band_factor_with_anchor": 1.0,
+        "mean_anchor_weight": 0.862
+      },
+      "_summary": {
+        "ran": true,
+        "holdouts": 1,
+        "median_ape_widened_only": 16.3,
+        "median_ape_with_anchor": 3.7,
+        "basis": "whole Turkish makes held out of the hedonic fit and priced as unknowns, with the 1.85x unknown-brand widening alone versus the new-price anchor blended in"
+      }
+    }
+  },
   "meta": {
-    "fitted_at": "2026-09-12T19:06:07",
+    "fitted_at": "2026-09-12T19:55:56",
     "training_set": "tr_only",
     "n_listings": 84,
     "n_groups": 24,

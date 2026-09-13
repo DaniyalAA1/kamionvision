@@ -20,7 +20,12 @@ from typing import Any
 
 def _asdict(obj: Any) -> Any:
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _asdict(v) for k, v in dataclasses.asdict(obj).items()}
+        # Underscore-prefixed fields are carried in memory but never serialised.
+        # A CLIP embedding is 512 floats per photo; on a 20-photo set that is
+        # 10k numbers that would otherwise land in the JSON payload and in
+        # every SSE frame, for no reader's benefit.
+        return {f.name: _asdict(getattr(obj, f.name))
+                for f in dataclasses.fields(obj) if not f.name.startswith("_")}
     if isinstance(obj, Enum):
         return obj.value
     if isinstance(obj, dict):
@@ -67,6 +72,7 @@ class PhotoCheck(_Dict):
     contrast_rms: float = 0.0
     dark_clipped_frac: float = 0.0
     bright_clipped_frac: float = 0.0
+    colourfulness: float = 0.0
     capture_quality: float = 0.0
     quality_bucket: str = "unknown"
     # detector + zero-shot tags
@@ -82,6 +88,13 @@ class PhotoCheck(_Dict):
     view_conf: float = 0.0
     content: str = "keep"
     content_conf: float = 0.0
+    # Keep-mass, not top-1: the three "keep" prompts split the probability of
+    # a genuine vehicle photo between them, so a legitimate cab interior can
+    # top out at 0.4 on any single one of them.
+    keep_mass: float = 0.0
+    # The L2-normalised CLIP image embedding, carried for app.perception and
+    # dropped on serialisation. Computed by ClipTagger.tag either way.
+    _embedding: Any = None
     # verdict
     usable: bool = True
     reasons: list[str] = field(default_factory=list)
@@ -105,6 +118,71 @@ class GateReport(_Dict):
     @property
     def blocked(self) -> bool:
         return self.decision.value.startswith("refuse")
+
+
+# --- stage 1b: trained perception heads -----------------------------------
+
+@dataclass
+class PhotoPerception(_Dict):
+    """What the trained heads make of one photo.
+
+    Distinct from PhotoCheck on purpose: PhotoCheck is what a formula measured,
+    this is what a fitted model predicted, and the report keeps them apart so a
+    reader can see which is which.
+    """
+    photo_id: int = 0
+    degraded_prob: float = 0.0
+    severity: float = 0.0
+    degradations: list[str] = field(default_factory=list)
+    view: str = "unknown"
+    view_conf: float = 0.0
+    # False when the photo is too corrupted to support a claim resting on fine
+    # detail. Consumed by app.reconcile, never by the gate - a degraded photo
+    # is still a photo of the truck.
+    fine_detail_ok: bool = True
+
+
+@dataclass
+class PerceptionReport(_Dict):
+    photos: list[PhotoPerception] = field(default_factory=list)
+    brand: str | None = None
+    brand_conf: float = 0.0
+    model_card: dict = field(default_factory=dict)
+    elapsed_s: float = 0.0
+
+    def by_id(self, photo_id: int) -> "PhotoPerception | None":
+        return next((p for p in self.photos if p.photo_id == photo_id), None)
+
+
+@dataclass
+class Correction(_Dict):
+    """One disagreement between the trained heads and the vision model.
+
+    Recorded rather than applied silently. The precedent is
+    `EvidenceReport.fell_back_from`: the system is allowed to change its mind,
+    it is not allowed to do so where nobody can see it.
+    """
+    kind: str = ""              # unsupported_detail | identity_conflict | view_conflict | coverage_restored
+    photo_id: int | None = None
+    detail: str = ""
+    before: str = ""
+    after: str = ""
+
+
+@dataclass
+class ReconcileReport(_Dict):
+    corrections: list[Correction] = field(default_factory=list)
+    identity_conflict: str = ""
+    # Widening this stage asks pricing for, as (label, factor) pairs.
+    widening: list[list] = field(default_factory=list)
+    elapsed_s: float = 0.0
+
+    @property
+    def n(self) -> int:
+        return len(self.corrections)
+
+    def of_kind(self, kind: str) -> list["Correction"]:
+        return [c for c in self.corrections if c.kind == kind]
 
 
 # --- stage 2: evidence ----------------------------------------------------
@@ -219,6 +297,30 @@ class AskingVerdict(_Dict):
 
 
 @dataclass
+class AnchorEstimate(_Dict):
+    """What the truck cost new, depreciated - an estimate that needs no comparable.
+
+    The comparables route cannot price a brand it has never seen, and 78 of the
+    84 Turkish listings are Ford. This route only needs a published new price
+    and a retention curve, so it still has an opinion about a Mercedes.
+    """
+    ok: bool = False
+    reason: str = ""
+    new_price: float = 0.0
+    currency: str = "TRY"
+    retention: float = 0.0
+    point: float = 0.0
+    # Share of the blended log-price this route contributed, by inverse variance.
+    weight: float = 0.0
+    matched: str = ""
+    source: str = ""
+    source_type: str = ""
+    source_url: str = ""
+    as_of: str = ""
+    basis: str = ""
+
+
+@dataclass
 class PriceEstimate(_Dict):
     ok: bool = True
     reason: str = ""
@@ -239,6 +341,7 @@ class PriceEstimate(_Dict):
     baseline_point: float = 0.0
     baseline_low: float = 0.0
     baseline_high: float = 0.0
+    anchor: AnchorEstimate | None = None
     adjustment: ConditionAdjustment = field(default_factory=ConditionAdjustment)
     asking: AskingVerdict | None = None
     comparables: list[Comparable] = field(default_factory=list)
@@ -265,7 +368,9 @@ class Appraisal(_Dict):
     status: str = "ok"            # ok | refused | need_more_photos
     headline: str = ""
     gate: GateReport = field(default_factory=GateReport)
+    perception: PerceptionReport | None = None
     evidence: EvidenceReport | None = None
+    reconcile: ReconcileReport | None = None
     price: PriceEstimate | None = None
     requests: list[str] = field(default_factory=list)
     declared: dict = field(default_factory=dict)

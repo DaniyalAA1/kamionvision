@@ -79,6 +79,48 @@ def price_lines(price: PriceEstimate) -> list[str]:
     if card.get("r2") is not None:
         out.append(f"  Fit: R² {card['r2']:.2f}, median error {card['mae_pct']:.1f}% "
                    f"across {card['n_listings']} listings ({card['n_groups']} distinct specs).")
+    a = price.anchor
+    if a is not None and a.ok:
+        out.append("")
+        out.append(f"  Second opinion, from what it cost new   {money(a.point, a.currency)}")
+        out.append(f"    {a.basis}")
+        out.append(f"    Source: {a.source} ({a.source_type.replace('_', ' ')}), {a.source_url}")
+        out.append(f"    Weight in the estimate: {a.weight:.0%}, by inverse variance — this route "
+                   f"needs no same-brand comparable to exist.")
+    for line in price.widened:
+        out.append(f"  Widened: {line}")
+    return out
+
+
+def perception_lines(appraisal: Appraisal) -> list[str]:
+    """The trained heads, and anywhere they disagreed with the vision model."""
+    out: list[str] = []
+    p, r = appraisal.perception, appraisal.reconcile
+    if p is not None and p.photos:
+        card = p.model_card or {}
+        unfit = [x for x in p.photos if not x.fine_detail_ok]
+        out.append(f"  Trained heads scored {len(p.photos)} frames. "
+                   f"{len(unfit)} too degraded to read fine detail from.")
+        if card.get("degradation_auc"):
+            out.append(f"    Degradation head: AUC {card['degradation_auc']} on held-out "
+                       f"vehicles, against known synthetic corruptions — measured.")
+        if card.get("view_agreement_head"):
+            out.append(f"    View head holds its answer on {card['view_agreement_head']:.0%} of "
+                       f"degraded twins, against {card['view_agreement_zeroshot']:.0%} for the "
+                       f"zero-shot tagger it replaces — measured.")
+        if p.brand:
+            out.append(f"    Reads the vehicle as {p.brand} ({p.brand_conf:.0%}); the head is "
+                       f"{card.get('identity_accuracy', 0):.0%} accurate against a "
+                       f"{card.get('identity_majority', 0):.0%} majority baseline, so it is a "
+                       f"cross-check on the badge, not the identification.")
+    if r is not None and r.n:
+        out.append("")
+        out.append(f"  {r.n} correction(s) applied to the vision model's findings:")
+        for c in r.corrections:
+            where = f" [photo {c.photo_id}]" if c.photo_id is not None else ""
+            out.append(f"    · {c.detail}{where}")
+            if c.before:
+                out.append(f"        {c.before} → {c.after}")
     return out
 
 
@@ -182,6 +224,10 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
         for key, text in ev.condition_summary.items():
             L.append(f"    {key.replace('_', ' ').title():<22} {text}")
         L.append("")
+
+    pl = perception_lines(appraisal)
+    if pl:
+        L += [thin, "  WHAT THE TRAINED HEADS SAY", thin] + pl + [""]
 
     requests = list(appraisal.requests)
     gaps = ev.coverage_gaps if ev else []

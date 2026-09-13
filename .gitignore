@@ -25,3 +25,6 @@ runs/
 
 # Exported offline reports (rebuild: python -m app.demo --export demo_reports/)
 demo_reports/
+
+# Derived CLIP embedding cache (14 MB, rebuild: python scripts/cache_embeddings.py)
+data/metadata/embeddings.npz

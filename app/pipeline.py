@@ -20,6 +20,8 @@ import pandas as pd
 
 from . import evidence as evidence_stage
 from . import gate as gate_stage
+from . import reconcile as reconcile_stage
+from .perception import heads as perception_stage
 from .config import IMAGE_SUFFIXES, LISTINGS_CSV
 from .pricing import model as pricing
 from .schema import Appraisal, GateDecision, PriceEstimate, TraceStep
@@ -124,8 +126,32 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         result.elapsed_s = round(time.time() - t0, 2)
         return result
 
+    # --- 1b. perception ---------------------------------------------------
+    # Trained on the corpus, unlike everything in stage 1. It runs on the CLIP
+    # embedding the gate already computed, so it costs matrix multiplies and no
+    # second pass over the pixels. Absent artifact is not fatal: the heads only
+    # ever refine, so a missing models/perception.json degrades to the shipped
+    # behaviour rather than to an error.
+    perception = None
+    if perception_stage.available():
+        perception = perception_stage.run(gate.photos)
+        result.perception = perception
+        unfit = sum(1 for p in perception.photos if not p.fine_detail_ok)
+        result.trace.append(TraceStep(
+            "perception",
+            f"{len(perception.photos)} frames scored, {unfit} too degraded for fine "
+            f"detail, reads {perception.brand or 'unknown'} "
+            f"({perception.brand_conf:.0%})",
+            perception.elapsed_s))
+
     # --- 2. evidence ------------------------------------------------------
-    note("evidence", f"reading {len(gate.usable_photo_ids)} photos")
+    # `evidence.run` sends a view-diverse subset capped at MAX_EVIDENCE_PHOTOS,
+    # not every usable frame, so the old "reading {usable} photos" overstated
+    # it by however many were held back. select_photos is a pure function of
+    # the gate report, so calling it here to report the real set costs one sort
+    # and cannot disagree with what run() picks.
+    sent = evidence_stage.select_photos(gate)
+    note("evidence", f"reading {len(sent)} of {len(gate.usable_photo_ids)} usable frames")
     ev = evidence_stage.run(gate, declared, backend=backend)
     result.evidence = ev
     detail = (f"{len(ev.issues)} findings, {len(ev.coverage_gaps)} gaps "
@@ -137,6 +163,25 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # canonical views the seller can go and shoot right now, the evidence's
     # coverage gaps are things that could not be assessed at all. Collapsing
     # them produced a re-ask list with every item in it twice.
+
+    # --- 2b. reconcile ----------------------------------------------------
+    # Placed before the blocks_pricing return on purpose: a set that stops here
+    # still gets its re-ask list corrected, so a seller is never asked for a
+    # photo the trained head can already see in what they sent.
+    recon = reconcile_stage.apply(gate, perception, ev)
+    if recon.n:
+        result.reconcile = recon
+        result.requests = list(gate.requests)
+        kinds = ", ".join(sorted({c.kind.replace("_", " ") for c in recon.corrections}))
+        result.trace.append(TraceStep(
+            "reconcile", f"{recon.n} correction(s) against the vision model: {kinds}",
+            recon.elapsed_s))
+    # Deliberately does NOT clear gate.blocks_pricing. The two conditions that
+    # set it - no truck-dominant frame, no whole-vehicle view - are decided by
+    # the gate's own ladder before `missing_views` is ever computed, so there
+    # is no coverage restore that legitimately answers them. Lifting a pricing
+    # block on a 0.60-confidence head prediction would be exactly the
+    # confident wrong answer the brief singles out.
 
     if gate.blocks_pricing:
         result.status = "need_more_photos"
@@ -163,7 +208,7 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         result.elapsed_s = round(time.time() - t0, 2)
         return result
 
-    widening = []
+    widening = [tuple(w) for w in (recon.widening if recon else [])]
     if gate.missing_views:
         pretty = ", ".join(v.replace("_", " ") for v in gate.missing_views)
         widening.append((f"{pretty} {'was' if len(gate.missing_views) == 1 else 'were'} "

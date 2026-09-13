@@ -116,14 +116,19 @@ class ClipTagger:
             feats = feats / feats.norm(dim=-1, keepdim=True)
             view = (self.logit_scale * feats @ self.view_bank.T).softmax(dim=-1).cpu().numpy()
             content = (self.logit_scale * feats @ self.content_bank.T).softmax(dim=-1).cpu().numpy()
+        emb = feats.cpu().numpy().astype(np.float32)
         out = []
-        for v, c in zip(view, content):
+        for v, c, e in zip(view, content, emb):
             vi, ci = int(np.argmax(v)), int(np.argmax(c))
             out.append({
                 "view": VIEW_PROMPTS[vi][0],
                 "view_conf": float(v[vi]),
                 "content": CONTENT_PROMPTS[ci][0],
                 "content_conf": float(c[ci]),
+                # The embedding these tags were derived from. Already computed;
+                # app.perception trains on it, so returning it costs nothing and
+                # saves a second CLIP pass over the same pixels.
+                "embedding": e,
                 # keep-mass, not top-1: the three "keep" prompts split the
                 # probability of a genuine vehicle photo between them, so a
                 # legitimate cab interior can top out at 0.4 on any one of them.

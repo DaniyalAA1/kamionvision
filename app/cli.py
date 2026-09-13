@@ -48,6 +48,8 @@ def cmd_doctor(args) -> int:
     for label, path, howto in (
         ("gate thresholds", GATE_THRESHOLDS, "python -m app.calibrate_gate"),
         ("price model", PRICE_MODEL, "python -m app.pricing.train"),
+        ("perception heads", REPO / "models" / "perception.json",
+         "python scripts/cache_embeddings.py && python -m app.perception.train"),
         ("yolov8n weights", REPO / "models" / "yolov8n.pt", "downloaded on first use"),
     ):
         if path.exists():
@@ -70,6 +72,47 @@ def cmd_doctor(args) -> int:
                 print(f"  {float(level) * 100:.0f}% band covers {cov * 100:.1f}% "
                       f"of held-out listings")
         print(f"  unseen-brand widening {m.widening['unknown_brand']}x")
+        a = m.anchor or {}
+        if a.get("ok"):
+            print(f"\nnew-price anchor  (second pricing route, needs no comparable)")
+            print(f"  retention curve R2 {a['r2_oof']:+.3f}, median error "
+                  f"{a['median_ape_oof']}% on {a['n']} TR listings")
+            test = (a.get("unseen_brand_test") or {})
+            for key, r in test.items():
+                if key.startswith("_"):
+                    continue
+                print(f"  {key} held out (n={r['n_held_out']}): band "
+                      f"{r['band_factor_widened_only']:.2f}x -> {r['band_factor_with_anchor']:.2f}x, "
+                      f"coverage {r['coverage_widened_only']:.2f} -> {r['coverage_with_anchor']:.2f}, "
+                      f"error {r['median_ape_widened_only']:.1f}% -> {r['median_ape_with_anchor']:.1f}%")
+        else:
+            print(f"  new-price anchor: not fitted ({a.get('reason', 'no retention curve')})")
+
+    perception_path = REPO / "models" / "perception.json"
+    if perception_path.exists():
+        import json
+        meta = json.loads(perception_path.read_text(encoding="utf-8"))["meta"]
+        print(f"\nperception heads  (fitted {meta.get('fitted_at')})")
+        print(f"  {meta['n_images']} images over {meta['n_vehicles']} vehicles, "
+              f"folds grouped by vehicle")
+        print(f"  degradation AUC {meta['degradation_auc']} (real labels), "
+              f"severity R2 {meta['severity_r2']}")
+        print(f"  view stability under degradation {meta['view_agreement_head']:.3f} "
+              f"vs {meta['view_agreement_zeroshot']:.3f} zero-shot")
+        print(f"  brand accuracy {meta['identity_accuracy']:.3f} vs "
+              f"{meta['identity_majority']:.3f} majority")
+
+    ref = REPO / "data" / "reference" / "new_prices_tr.json"
+    if ref.exists():
+        import datetime
+        import json
+        rows = [r for r in json.loads(ref.read_text(encoding="utf-8"))["rows"] if r.get("list_price")]
+        oldest = min(r["as_of"] for r in rows) if rows else "-"
+        age = (datetime.date.today() - datetime.date.fromisoformat(oldest)).days if rows else 0
+        print(f"\nnew-price reference: {len(rows)} priced rows, oldest stamped {oldest} "
+              f"({age} days ago)")
+        if age > 120:
+            print("  [ WARN ] a list price this old should be re-checked against its source URL")
 
     print("\ndevice")
     try:

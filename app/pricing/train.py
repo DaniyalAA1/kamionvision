@@ -189,6 +189,144 @@ def leave_one_brand_out(df: pd.DataFrame, level: float = 0.8) -> dict:
     return results
 
 
+def fit_retention(df: pd.DataFrame) -> dict:
+    """log(asking / published new price) ~ log1p(age) + log(km), on TR rows.
+
+    The comparables route needs a same-brand comparable to exist. This one
+    needs only a published new price, which is why it is what answers an
+    unseen make. It is fit here rather than in anchor.py so that one command
+    refits every number the pricing stage relies on, and so its folds are the
+    same spec-grouped folds the hedonic model uses - 26 of the Turkish rows are
+    the same F-MAX at the same asking price, and splitting them would score
+    memorisation.
+    """
+    from . import anchor as anchor_mod
+
+    tr = df[df.market.str.upper() == "TR"].copy()
+    new = [anchor_mod.lookup(r.make if hasattr(r, "make") else r.brand, r.model) for r in tr.itertuples()]
+    tr["new_price"] = [float(n["list_price"]) if n else np.nan for n in new]
+    tr = tr[tr.new_price.notna() & (tr.new_price > 0)]
+    if len(tr) < 20:
+        return {"ok": False, "reason": f"only {len(tr)} Turkish listings have a published new price"}
+
+    X = tr[["log1p_age", "log_km"]].to_numpy(dtype=float)
+    y = np.log(tr.price.to_numpy(dtype=float) / tr.new_price.to_numpy(dtype=float))
+    groups = tr.group.to_numpy()
+
+    oof = np.zeros(len(y))
+    for a, b in GroupKFold(n_splits=min(5, len(set(groups)))).split(X, y, groups):
+        m, mu_, sc_ = _fit(X[a], y[a])
+        oof[b] = _predict(m, mu_, sc_, X[b])
+    resid = y - oof
+    r2 = 1 - float(np.sum(resid ** 2) / np.sum((y - y.mean()) ** 2))
+
+    ridge, mean, scale = _fit(X, y)
+    return {
+        "ok": True,
+        "columns": ["log1p_age", "log_km"],
+        "coef": [round(float(c), 6) for c in ridge.coef_],
+        "intercept": round(float(ridge.intercept_), 6),
+        "mean": [round(float(v), 6) for v in mean],
+        "scale": [round(float(v), 6) for v in scale],
+        "residual_std": round(float(np.std(resid)), 4),
+        "r2_oof": round(r2, 4),
+        "median_ape_oof": round(float(100 * np.median(np.abs(np.expm1(-resid)))), 1),
+        "n": int(len(tr)), "n_groups": int(tr.group.nunique()),
+        "target": "log(asking price / published new price of the current equivalent model)",
+        "basis": "out-of-fold, folds grouped on the same (market, brand, model, year, price) "
+                 "key the hedonic model uses",
+        "reference": "data/reference/new_prices_tr.json",
+    }
+
+
+def anchor_holdout(df: pd.DataFrame, retention: dict, level: float = 0.8) -> dict:
+    """Does the new-price anchor actually rescue a brand the fit never saw?
+
+    The claim the anchor is built on is that it prices an unseen make. This
+    measures it the only way that counts: hold a whole Turkish brand out of the
+    hedonic fit, price its vehicles as unknowns twice - once with the measured
+    1.85x widening alone, once with the anchor blended in - and compare band
+    coverage and error.
+
+    n is small and honestly so: the Turkish corpus has exactly two makes, so
+    holding out Ford leaves six MAN rows to fit on. That is a punishing test
+    rather than a flattering one, which is the point.
+    """
+    from . import anchor as anchor_mod
+    from ..schema import AnchorEstimate
+
+    tr = df[df.market.str.upper() == "TR"].copy()
+    if not retention.get("ok"):
+        return {"_summary": {"ran": False, "reason": "no retention curve"}}
+    out: dict = {}
+
+    for brand in sorted(tr.brand.unique()):
+        held, rest = tr[tr.brand == brand], tr[tr.brand != brand]
+        if len(held) < 3 or len(rest) < 8:
+            continue
+        brands = F.brand_vocabulary(rest, min_n=3)
+        Xr, yr = F.matrix(rest, brands), rest.y.to_numpy()
+        ridge, mean, scale = _fit(Xr, yr)
+
+        # Band offsets and residual sd from the reduced fit's own OOF residuals.
+        groups = rest.group.to_numpy()
+        oof = np.full(len(rest), np.nan)
+        for a, b in GroupKFold(n_splits=min(5, len(set(groups)))).split(Xr, yr, groups):
+            m_, mu_, sc_ = _fit(Xr[a], yr[a])
+            oof[b] = _predict(m_, mu_, sc_, Xr[b])
+        resid = yr - oof
+        lo_off, hi_off = _offsets(resid, level)
+        sd_hedonic = float(np.std(resid))
+        widen = 1.85
+
+        hits_plain = hits_anchor = 0
+        ape_plain, ape_anchor, weights, factors = [], [], [], []
+        for r in held.itertuples():
+            Xh = F.matrix(pd.DataFrame([r._asdict()]), brands)
+            mu = _predict(ridge, mean, scale, Xh)[0]
+            row = anchor_mod.lookup(r.brand, r.model)
+            # plain: unknown-brand widening only
+            if mu + lo_off * widen <= r.y <= mu + hi_off * widen:
+                hits_plain += 1
+            ape_plain.append(abs(np.expm1(mu - r.y)))
+            # anchored
+            if row:
+                a_est = AnchorEstimate(ok=True, source_type=row.get("source_type", ""))
+                mu_a = (np.log(float(row["list_price"]))
+                        + anchor_mod._predict(retention, [r.log1p_age, r.log_km]))
+                sd_a = anchor_mod.sigma(retention, a_est)
+                mu_b, sd_b, w = anchor_mod.blend(mu, sd_hedonic * widen, mu_a, sd_a)
+                f = max(1.0, sd_b / sd_hedonic)
+                weights.append(w)
+            else:
+                mu_b, f = mu, widen
+            factors.append(f)
+            if mu_b + lo_off * f <= r.y <= mu_b + hi_off * f:
+                hits_anchor += 1
+            ape_anchor.append(abs(np.expm1(mu_b - r.y)))
+
+        out[f"TR:{brand}"] = {
+            "n_held_out": int(len(held)),
+            "trained_on": sorted(rest.brand.unique().tolist()),
+            "coverage_widened_only": round(hits_plain / len(held), 3),
+            "coverage_with_anchor": round(hits_anchor / len(held), 3),
+            "median_ape_widened_only": round(float(100 * np.median(ape_plain)), 1),
+            "median_ape_with_anchor": round(float(100 * np.median(ape_anchor)), 1),
+            "band_factor_widened_only": widen,
+            "band_factor_with_anchor": round(float(np.mean(factors)), 2),
+            "mean_anchor_weight": round(float(np.mean(weights)), 3) if weights else 0.0,
+        }
+    ran = [v for k, v in out.items() if not k.startswith("_")]
+    out["_summary"] = {
+        "ran": bool(ran), "holdouts": len(ran),
+        "median_ape_widened_only": round(float(np.median([v["median_ape_widened_only"] for v in ran])), 1) if ran else None,
+        "median_ape_with_anchor": round(float(np.median([v["median_ape_with_anchor"] for v in ran])), 1) if ran else None,
+        "basis": "whole Turkish makes held out of the hedonic fit and priced as unknowns, "
+                 "with the 1.85x unknown-brand widening alone versus the new-price anchor blended in",
+    }
+    return out
+
+
 def main() -> None:
     listings = pd.read_csv(LISTINGS_CSV)
     df = F.build_frame(listings)
@@ -253,6 +391,28 @@ def main() -> None:
           f"(median over {lobo['_summary']['holdouts']} within-market holdouts)")
     print(f"brand columns are worth {overall['r2_oof'] - no_brand['r2_oof']:+.3f} R2 within the corpus")
 
+    # --- the second pricing route: new price x retention ------------------
+    retention = fit_retention(df)
+    if retention.get("ok"):
+        print(f"\nretention curve (new-price anchor): R2 {retention['r2_oof']:+.3f} out-of-fold, "
+              f"median error {retention['median_ape_oof']}%, on {retention['n']} TR listings "
+              f"with a published new price")
+        print(f"  hedonic fit for comparison: R2 {overall['r2_oof']:+.3f}, "
+              f"median error {overall['median_ape_oof']}%")
+    else:
+        print(f"\nretention curve not fitted: {retention['reason']}")
+
+    anchor_test = anchor_holdout(df, retention)
+    if anchor_test["_summary"].get("ran"):
+        print("\n  does the anchor rescue an unseen make? (whole TR brands held out)")
+        for key, r in anchor_test.items():
+            if key.startswith("_"):
+                continue
+            print(f"    {key:12s} n={r['n_held_out']:3d}  "
+                  f"band {r['band_factor_widened_only']:.2f}x->{r['band_factor_with_anchor']:.2f}x   "
+                  f"coverage {r['coverage_widened_only']:.2f}->{r['coverage_with_anchor']:.2f}   "
+                  f"median error {r['median_ape_widened_only']:5.1f}%->{r['median_ape_with_anchor']:5.1f}%")
+
     # --- final fit on everything -----------------------------------------
     X = F.matrix(fit_df, fit_brands)
     y = fit_df.y.to_numpy()
@@ -281,6 +441,7 @@ def main() -> None:
                      "tr_only_view": comparison["pooled_tr_us"] if chosen == "pooled_tr_us"
                      else comparison["tr_only"],
                      "without_brand_columns": no_brand},
+        anchor={**retention, "unseen_brand_test": anchor_test},
         widening={"unknown_brand": widen,
                   "unknown_brand_basis": (
                       "measured by within-market leave-one-brand-out: whole makes were held "

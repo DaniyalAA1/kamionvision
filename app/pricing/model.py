@@ -29,6 +29,7 @@ from ..config import (FX_AS_OF, LISTINGS_CSV, PRICE_MODEL, USD_TRY,
                       euro_norm_for_year)
 from ..schema import (AskingVerdict, Comparable, ConditionAdjustment, EvidenceReport,
                        PriceEstimate)
+from . import anchor
 from . import features as F
 
 # Severity and stated price impact combine multiplicatively, then scale by the
@@ -53,13 +54,17 @@ class PriceModel:
     offsets: dict          # interval offsets in log space, per level
     calibration: dict      # measured coverage, MAE, R2
     widening: dict         # measured/assumed multipliers for missing inputs
+    # The second pricing route: coefficients of log(price / new price) on age
+    # and distance, plus its own out-of-fold error. Empty on a model fitted
+    # before the reference table existed, which anchor.estimate handles.
+    anchor: dict = field(default_factory=dict)
     meta: dict = field(default_factory=dict)
 
     # --- persistence ------------------------------------------------------
     def to_dict(self) -> dict:
         return {k: getattr(self, k) for k in
                 ("brands", "columns", "coef", "intercept", "mean", "scale",
-                 "residual_std", "offsets", "calibration", "widening", "meta")}
+                 "residual_std", "offsets", "calibration", "widening", "anchor", "meta")}
 
     def save(self, path: Path = PRICE_MODEL) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,7 +75,10 @@ class PriceModel:
         if not path.exists():
             raise FileNotFoundError(
                 f"{path} missing - run: .venv/bin/python -m app.pricing.train")
-        return cls(**json.loads(path.read_text(encoding="utf-8")))
+        d = json.loads(path.read_text(encoding="utf-8"))
+        # Tolerate an artifact written before a field existed rather than
+        # crashing the demo on a stale models/ directory.
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     # --- prediction -------------------------------------------------------
     def predict_log(self, vector: np.ndarray) -> float:
@@ -210,6 +218,7 @@ def judge_asking_price(asking: float, est: PriceEstimate) -> AskingVerdict:
 # --- the estimate ---------------------------------------------------------
 
 def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
+             vehicle_model: str | None = None,
              evidence: EvidenceReport | None = None,
              provenance: dict | None = None,
              extra_widening: list[tuple[str, float]] | None = None,
@@ -235,12 +244,39 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     lo_off, hi_off = model.offsets[str(level)]
     widened: list[str] = []
     factor = 1.0
-    if feats["brand"] not in model.brands:
+    unknown_brand = feats["brand"] not in model.brands
+    if unknown_brand:
         f = model.widening["unknown_brand"]
         factor *= f
         widened.append(f"{make} is not in the fitted comparables, so the brand term "
                        f"falls back to the market average and the band widens {f:.2f}x "
                        f"(measured by refitting with the brand column removed)")
+
+    # --- second route: what it cost new, depreciated ----------------------
+    # Combined by inverse variance, so neither route is privileged. The whole
+    # point is the unseen-brand case: inflating the hedonic variance by the
+    # measured 1.85x is what hands the decision to the anchor, and the band
+    # tightens back towards 1.0x because two routes now agree where before
+    # there was only one that had never seen the brand.
+    anchor_est = anchor.estimate(model.anchor, year=year, km=km, make=make,
+                                 model=vehicle_model, market=market)
+    if anchor_est.ok:
+        sd_r = model.residual_std * (model.widening["unknown_brand"] if unknown_brand else 1.0)
+        sd_a = anchor.sigma(model.anchor, anchor_est)
+        mu, sd_blend, w_anchor = anchor.blend(mu, sd_r, math.log(anchor_est.point), sd_a)
+        anchor_est.weight = round(w_anchor, 3)
+        # Never narrower than the band whose coverage was actually measured.
+        # The 80.3% belongs to the unwidened hedonic interval; claiming a
+        # tighter one on the strength of an unmeasured blend would be exactly
+        # the overconfidence the two separate bands exist to prevent.
+        blended_factor = max(1.0, sd_blend / model.residual_std)
+        if blended_factor < factor:
+            widened.append(f"the new-price anchor ({anchor_est.matched}) agrees closely "
+                           f"enough to bring that back to {blended_factor:.2f}x, and "
+                           f"contributes {w_anchor:.0%} of the estimate")
+        factor = blended_factor
+    est.anchor = anchor_est
+
     for label, f in (extra_widening or []):
         factor *= f
         widened.append(label)
@@ -257,6 +293,11 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
 
     est.point, est.low, est.high = (round(native, -3), round(lo_native, -3),
                                     round(hi_native, -3))
+    # baseline_* is deliberately the estimate BEFORE condition, and it is the
+    # band the measured coverage belongs to. It now also includes the anchor,
+    # because the anchor is a statement about the vehicle's specification, not
+    # about what the photos show - the split this pair protects is
+    # spec-vs-condition, not comparables-vs-anchor.
     est.baseline_point = round(math.exp(mu), -3)
     est.baseline_low = round(math.exp(mu + lo_off * factor), -3)
     est.baseline_high = round(math.exp(mu + hi_off * factor), -3)
@@ -360,7 +401,12 @@ def price_from_evidence(model: PriceModel, evidence: EvidenceReport | None,
             widening.append(("the stated kilometres and the odometer in the photos "
                              "disagree, so the band widens 1.25x", 1.25))
 
+    # The model name only feeds the new-price lookup, never the hedonic fit.
+    # The seller's word wins when given; otherwise the badge the VLM read.
+    vehicle_model = declared.get("model") or (evidence.vehicle.model if evidence else None)
+
     return estimate(model, year=year, km=km, make=make, market=market,
+                    vehicle_model=vehicle_model,
                     evidence=evidence, provenance=prov, listings=listings,
                     extra_widening=widening,
                     asking_price=declared.get("asking_price"))
