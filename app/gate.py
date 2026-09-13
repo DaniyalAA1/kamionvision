@@ -33,8 +33,8 @@ from .schema import Detection, GateDecision, GateReport, PhotoCheck
 # per-frame fact. Re-exported here so `gate.pick_subject` and the view
 # vocabularies keep resolving for every existing caller.
 from .subject import (MIN_PART_VIEW_CONF, TRUCK_PART_VIEWS,  # noqa: F401
-                      WHOLE_VEHICLE_VIEWS, competing_vehicles, pick_subject,
-                      thresholds)
+                      WHOLE_VEHICLE_VIEWS, competing_vehicles, crop_is_safe,
+                      pick_subject, thresholds)
 
 MIN_SIDE = 200
 

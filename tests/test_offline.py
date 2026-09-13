@@ -1534,3 +1534,150 @@ class SubjectScore(unittest.TestCase):
                    ("car", 0.519, (985.2, 478.8, 1151.3, 597.3)),
                    width=1440, height=1080)
         self.assertEqual(gate.pick_subject(c), [549.3, 76.4, 998.6, 588.4])
+
+
+class PartViewSubject(unittest.TestCase):
+    """A close-up of a component has no subject, not a distant one.
+
+    The bug this pins, in the user's words: "the app appraises trucks in the
+    background while something like a steering wheel or even ENGINE is in the
+    foreground". YOLO finds something truck-shaped in the yard, `pick_subject`
+    returns it, `wants_crop` fires, and the close-up call is handed a crop of a
+    lorry forty metres away under the line "this image has been cropped to the
+    one vehicle being sold; other vehicles in the original frame were
+    deliberately excluded". It is then asked the engine-bay checklist about it.
+    """
+
+    CASES = Path("tests/subject_cases.json")
+
+    def _check(self, view, view_conf, *boxes, width=1000, height=600):
+        return _boxes(*boxes, width=width, height=height,
+                      view=view, view_conf=view_conf)
+
+    def test_a_truck_in_the_yard_behind_an_engine_bay_is_not_the_subject(self):
+        c = self._check("engine_bay", 0.7, ("truck", 0.6, (700, 40, 950, 200)))
+        self.assertIsNone(gate.pick_subject(c))
+        self.assertFalse(evidence.wants_crop(c))
+        self.assertIn("yard behind it", c.subject_basis)
+
+    def test_an_unconfident_view_tag_does_not_suppress_anything(self):
+        # A part view has to be a CONFIDENT part view. Below the threshold the
+        # tag is not evidence of anything and the geometry decides alone.
+        c = self._check("engine_bay", 0.3, ("truck", 0.6, (700, 40, 950, 200)))
+        self.assertIsNotNone(gate.pick_subject(c))
+
+    def test_the_close_up_frame_itself_still_keeps_its_box(self):
+        # YOLO calls a dashboard filling the frame a truck. That box is the
+        # photograph, not the yard, and nulling it would be over-correction.
+        c = self._check("dashboard_odometer", 0.9, ("truck", 0.5, (2, 2, 998, 598)))
+        self.assertEqual(gate.pick_subject(c), [2, 2, 998, 598])
+        # ... and it is still never cropped: the crop can only remove the
+        # thing the per-view checklist is about.
+        self.assertFalse(evidence.wants_crop(c))
+
+    def test_a_tiny_box_fails_on_pixels_even_at_a_friendly_area(self):
+        c = self._check("tire_wheel", 0.8, ("truck", 0.9, (100, 100, 140, 140)),
+                        width=200, height=140)
+        self.assertIsNone(gate.pick_subject(c))
+
+    def test_damage_detail_is_never_treated_as_a_part_view(self):
+        # It is the taxonomy's catch-all and it matched a parked motorcycle
+        # at 0.42, so it may not suppress anything.
+        c = self._check("damage_detail", 0.9, ("truck", 0.6, (700, 40, 950, 200)))
+        self.assertIsNotNone(gate.pick_subject(c))
+
+    def test_a_whole_vehicle_frame_is_untouched_by_the_rule(self):
+        c = self._check("exterior_front_34", 0.9, ("truck", 0.6, (700, 40, 950, 200)))
+        self.assertEqual(gate.pick_subject(c), [700, 40, 950, 200])
+
+    def test_the_prototype_can_rescue_a_mistagged_three_quarter(self):
+        c = self._check("fifth_wheel", 0.6, ("truck", 0.8, (200, 100, 800, 500)))
+        pool = subject.build_candidates(c)
+        pool[0].sim_abs = 0.99
+        identity = subject.SubjectIdentity(prototype=np.ones(4, dtype=np.float32),
+                                           method="recurring_vehicle")
+        with unittest.mock.patch.object(subject, "PART_VIEW_RESCUE_SIM", 0.80):
+            self.assertFalse(subject.is_scenery(c, pool[0], identity))
+            self.assertTrue(subject.is_scenery(c, pool[0], subject.NO_IDENTITY))
+
+    # --- the real frames, end to end -------------------------------------
+
+    def _corpus(self, listing_id, view):
+        cases = json.loads(self.CASES.read_text(encoding="utf-8"))["cases"]
+        row = next(c for c in cases if c["listing_id"] == listing_id and c["view"] == view)
+        c = _check(0)
+        c.width, c.height = row["width"], row["height"]
+        c.view, c.view_conf = row["view"], row["view_conf"]
+        c.detections = [Detection(label=l, confidence=cf, box=b, area_frac=a)
+                        for l, cf, b, a in row["detections"]]
+        c._candidates = subject.build_candidates(
+            c, [d for d in c.detections if d.confidence < subject.DETECTION_CONF])
+        c.detections = [d for d in c.detections if d.confidence >= subject.DETECTION_CONF]
+        return c
+
+    def test_the_tire_close_up_with_a_row_of_lorries_across_the_top(self):
+        # us_selectrucks/256409/007.jpg: eight truck boxes crammed into the top
+        # 15% of a 2000x1500 tire shot. The gate cropped to one of them.
+        c = self._corpus("256409", "tire_wheel")
+        self.assertIsNone(gate.pick_subject(c))
+        self.assertFalse(evidence.wants_crop(c))
+
+    def test_the_dashboard_with_a_truck_seen_through_the_windscreen(self):
+        # us_selectrucks/256409/014.jpg: truck 0.649 over 3.3% of the frame,
+        # through the glass. The odometer checklist was asked about it.
+        c = self._corpus("256409", "dashboard_odometer")
+        self.assertIsNone(gate.pick_subject(c))
+        self.assertFalse(evidence.wants_crop(c))
+
+    def test_the_engine_bay_with_the_yard_behind_it(self):
+        # us_selectrucks/232615/010.jpg: truck 0.212 over 3.3% of a 5712x4284
+        # engine bay. The candidate pool reaches below 0.25, so without this
+        # rule the wider pool would make it worse, not better.
+        c = self._corpus("232615", "engine_bay")
+        self.assertIsNone(gate.pick_subject(c))
+        self.assertFalse(evidence.wants_crop(c))
+
+
+class SubjectCropGeometry(unittest.TestCase):
+    """What `wants_crop` measures, and how small a crop it will write.
+
+    The four SubjectCrop cases are the regression floor; these are the ones
+    the shipped rule got wrong.
+    """
+
+    def _check(self, subject_box, others=(), width=1000, height=600):
+        c = _boxes(("truck", 0.9, subject_box), *others, width=width, height=height)
+        c.subject_box = list(subject_box)
+        c.detections[0].is_subject = True
+        return c
+
+    def test_a_subject_at_sixty_percent_is_not_cropped_to_eighty_one(self):
+        # CROP_PAD is 0.08 a side: 1.16x on each axis, 1.35x on area. The
+        # unpadded box passed the < 0.70 test and the crop it produced covered
+        # 0.81 of the frame - while prompts.py told the model the other
+        # vehicles had been deliberately excluded.
+        c = self._check((110, 40, 890, 560), [("truck", 0.8, (0, 0, 100, 100))])
+        x1, y1, x2, y2 = c.subject_box
+        self.assertLess((x2 - x1) * (y2 - y1) / 600000.0,
+                        evidence.passes.CROP_MAX_SUBJECT_FRAC)
+        self.assertFalse(evidence.wants_crop(c))
+
+    def test_a_crop_under_a_hundred_and_sixty_pixels_is_refused(self):
+        self.assertIsNone(
+            evidence.passes.subject_crop_rect([100, 100, 220, 220], 2000, 1500))
+
+    def test_a_speck_of_a_competitor_does_not_trigger_a_crop(self):
+        # A parked hatchback 80 m behind a lone truck used to be worth
+        # throwing away the ground line for.
+        c = self._check((200, 100, 700, 500), [("car", 0.8, (960, 560, 995, 595))])
+        self.assertFalse(evidence.wants_crop(c))
+        c = self._check((200, 100, 700, 500), [("car", 0.8, (0, 300, 300, 590))])
+        self.assertTrue(evidence.wants_crop(c))
+
+    def test_competition_is_counted_when_the_box_is_not_byte_identical(self):
+        # The subject no longer has to be an element of `detections` by
+        # identity - `is_subject` is the key, and the float match is a
+        # fallback for an older frozen export.
+        c = self._check((200, 100, 700, 500), [("truck", 0.8, (0, 150, 180, 450))])
+        c.subject_box = [200.0000001, 100, 700, 500]
+        self.assertEqual(gate.competing_vehicles(c), 1)

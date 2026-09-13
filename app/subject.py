@@ -167,12 +167,26 @@ COMPETITOR_REL_AREA = 0.08
 COMPETITOR_ABS_AREA = 0.02
 COMPETITOR_CONF = 0.40
 
+# MEASURED, and carried in models/gate_thresholds.json as
+# `detector.part_view_subject_area_frac`: q90 of the best vehicle box's
+# area_frac over the 1,955 confident part-view originals in the corpus. Above
+# it, the close-up frame itself is what YOLO drew a box around; below it, the
+# box is the yard behind the component. The distribution is strongly bimodal -
+# of the 773 part-view frames that carry a box at all, 140 sit under 20% of the
+# frame and 455 sit above 80%.
+PART_VIEW_SUBJECT_AREA_FALLBACK = 0.94
+# ASSUMPTION. A truck forty metres away is small in pixels whatever the frame
+# size; this rounds out the relative test on very large phone frames. The
+# measured q05 of the short side of a boxed part-view candidate is 100 px.
+PART_VIEW_MIN_SIDE_PX = 96.0
+
 # Absolute CLIP cosines. Set by scripts/eval_subject.py --calibrate-rescue at
 # the point giving <= 5% false rescue against other listings' prototypes, or
 # left at 1.01 - unreachable, the clause disabled - when the two distributions
 # do not separate. An unmeasured absolute CLIP cosine is the single most likely
 # way for this to misbehave quietly.
 CAR_RESCUE_SIM = 1.01
+PART_VIEW_RESCUE_SIM = 1.01
 
 
 @dataclass
@@ -312,11 +326,59 @@ def car_eligible(c: Candidate, pool: list[Candidate], identity: SubjectIdentity)
     return c.sim_abs >= CAR_RESCUE_SIM
 
 
+def part_view_subject_area() -> float:
+    """MEASURED: q90 of the best vehicle box's `area_frac` over the confident
+    part-view originals. Written by app.calibrate_gate."""
+    try:
+        value = thresholds()["detector"].get("part_view_subject_area_frac")
+    except Exception:
+        value = None
+    return float(value) if value else PART_VIEW_SUBJECT_AREA_FALLBACK
+
+
+def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bool:
+    """On a close-up of one component, a small vehicle box is the yard behind it.
+
+    The close-up pass is told the image it is holding IS the vehicle being sold
+    - "other vehicles in the original frame were deliberately excluded, so
+    describe only what is in front of you" - and is then asked the engine-bay
+    checklist about it. Handing it a crop of a lorry forty metres away is the
+    worst per-frame error this pipeline can make: every answer comes back
+    confident, cited to a real `photo_id`, and about the wrong truck.
+
+    Measured on the corpus: `us_selectrucks/256409/007.jpg` is a tire close-up
+    whose subject box was a strip of eight lorries across the top 15% of the
+    frame, and `.../014.jpg` a dashboard whose subject box was a truck seen
+    through the windscreen at 3% of the frame.
+    """
+    if check.view not in TRUCK_PART_VIEWS or check.view_conf < MIN_PART_VIEW_CONF:
+        return False                      # not a close-up; not this rule's business
+    if c.area_frac >= part_view_subject_area():
+        return False                      # the close-up frame itself is what got boxed
+    if c.min_side_px < PART_VIEW_MIN_SIDE_PX:
+        return True
+    if identity.prototype is not None and c.sim_abs >= PART_VIEW_RESCUE_SIM:
+        return False                      # genuinely our truck, seen whole, mistagged
+    return True
+
+
+def crop_is_safe(check: PhotoCheck) -> bool:
+    """Never crop a confident close-up of a component.
+
+    The crop can only remove the thing the per-view checklist is about - a
+    fifth-wheel plate, a tread block, the DOT date on a sidewall - and
+    CROP_PAD is not enough padding to protect it. A truck box on an engine-bay
+    frame is the yard behind the engine, not the engine.
+    """
+    return not (check.view in TRUCK_PART_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF)
+
+
 def eligible(check: PhotoCheck, pool: list[Candidate],
              identity: SubjectIdentity = NO_IDENTITY) -> list[Candidate]:
     return [c for c in pool
             if LABEL_PRIOR.get(c.label, 0.0) > 0
-            and car_eligible(c, pool, identity)]
+            and car_eligible(c, pool, identity)
+            and not is_scenery(check, c, identity)]
 
 
 def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
@@ -326,6 +388,11 @@ def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
     if best is None:
         if not pool:
             return ""
+        biggest = max(pool, key=lambda c: c.area_frac)
+        if check.view in TRUCK_PART_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF:
+            return (f"none: close-up of the {check.view.replace('_', ' ')}; the largest "
+                    f"vehicle box is {biggest.area_frac * 100:.0f}% of the frame, which "
+                    f"is the yard behind it")
         return "none: no vehicle box in this frame is the one being sold"
     if identity.prototype is not None and best.sim_abs:
         return (f"matches the vehicle seen in {identity.frames_agreeing} frame(s) "
