@@ -379,6 +379,11 @@ class VehicleRead(_Dict):
     # 16-photo, downscaled identity call and, until now, only ever displayed).
     badge_text: list[str] = field(default_factory=list)
     badge_photo_id: int | None = None
+    # What the badge pass made of its own transcription. Recorded, never
+    # allowed to overwrite `make`/`model` - the badge is a witness and
+    # `app/identity.py` is the only thing that adjudicates between witnesses.
+    badge_make: str | None = None
+    badge_model: str | None = None
     # World Manufacturer Identifier, VIN characters 1-3, and the brand it
     # decodes to. `vin.read` has always returned the former and nothing
     # consumed it.

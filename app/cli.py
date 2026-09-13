@@ -114,6 +114,45 @@ def cmd_doctor(args) -> int:
         if age > 120:
             print("  [ WARN ] a list price this old should be re-checked against its source URL")
 
+    # The spec card and the WMI table are the same posture as the price
+    # reference above: hand-curated, stamped, and worth nothing that cannot be
+    # traced. Both are soft - absent, the pipeline reads exactly as it did
+    # before them - so this reports coverage rather than failing on it.
+    try:
+        import datetime
+
+        from . import modelspec
+        from .config import MODEL_SPEC_STALE_DAYS
+
+        cov = modelspec.coverage()
+        if cov["present"]:
+            print(f"\nmodel spec card: {cov['models']} models, "
+                  f"{cov['models_with_sources']} carrying a citation, "
+                  f"{cov['generations']} generations, {cov['weak_points']} weak points")
+            if cov["models_with_sources"] < cov["models"]:
+                print(f"  [ WARN ] {cov['models'] - cov['models_with_sources']} model(s) "
+                      f"have no source URL - an uncited spec card is a hallucination "
+                      f"with a filename, and this one is read into a prompt")
+            if cov["as_of"]:
+                age = (datetime.date.today()
+                       - datetime.date.fromisoformat(cov["as_of"])).days
+                if age > MODEL_SPEC_STALE_DAYS:
+                    print(f"  [ WARN ] stamped {cov['as_of']} ({age} days ago)")
+        else:
+            print("\nmodel spec card: absent - prompts read as they did before it")
+    except Exception as exc:                             # noqa: BLE001
+        ok = False
+        print(f"\nmodel spec card: [ FAIL ] {type(exc).__name__}: {exc}")
+
+    wmi_ref = REPO / "data" / "reference" / "wmi.json"
+    if wmi_ref.exists():
+        import json
+        rows = json.loads(wmi_ref.read_text(encoding="utf-8")).get("rows", [])
+        verified = [r for r in rows if r.get("verified")]
+        print(f"\nVIN manufacturer table: {len(verified)} of {len(rows)} rows verified")
+        if not verified:
+            print("  [ WARN ] no verified rows - the WMI brand cross-check is inert")
+
     print("\ndevice")
     try:
         from . import vision
