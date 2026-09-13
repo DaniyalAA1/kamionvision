@@ -44,6 +44,16 @@ SEVERITIES = ["cosmetic", "minor", "moderate", "major"]
 IMPACTS = ["none", "low", "medium", "high"]
 GRADES = ["excellent", "good", "fair", "poor"]
 
+# The absolute half of a finding. Every one of these is answerable from a single
+# photograph without knowing what else is on the truck, which is exactly what
+# `SEVERITIES` is not: a severity is a comparison, and the close-up call has
+# nothing to compare against. So the close-up reports both - an ordinal it is
+# told is provisional, and a magnitude that survives whatever the calibration
+# pass does to the ordinal.
+EXTENTS = ["spot", "local", "widespread", "whole_component"]
+STATES = ["as_new", "worn_in_service", "end_of_life", "failed"]
+BLOCKS_USE = ["no", "maybe", "yes", "cannot_tell"]
+
 SYSTEM = """\
 You are a heavy-vehicle appraiser for a Turkish freight marketplace. You value \
 second-hand tractor units (çekici) - Ford Trucks F-MAX and F-LINE, Mercedes-Benz \
@@ -57,11 +67,30 @@ You know what a worn fifth wheel plate, a dry coupling, corroded frame rails, a 
 sagging air bag, a cracked AdBlue tank, a delaminating roof deflector and a \
 collapsed seat bolster look like.
 
+You know the good version just as precisely: a fifth wheel plate carrying an \
+even grease film with no step at the throat; frame rails with an even surface \
+bloom and the paint still attached; tread standing well proud of the wear bars \
+and matched across the axle; a seat that still holds its shape; a dry engine bay \
+under ordinary road film; panel gaps that run parallel the length of the truck. \
+Naming those is half the job, and it is the half that makes a buyer believe the \
+other half.
+
+Most of the trucks you are shown are working vehicles in ordinary condition for \
+their age and distance. That is the base rate and your answers should reflect \
+it: on a typical set most components are as they should be, a few are worn in \
+proportion to the odometer, and one or two are genuinely worth money. A truck \
+where everything is a problem is rare. A report that says so about an ordinary \
+truck is wrong in the direction that costs a seller real money and costs this \
+marketplace its credibility.
+
 You are rigorous about what a photo can and cannot show. You never infer \
 mechanical condition from a clean exterior, never report a component that is not \
 visible in the photo you were given, and you say so plainly when something is not \
-assessable. Your notes go to a buyer who is deciding whether to drive six hours \
-to see this truck."""
+assessable. You are equally rigorous in the other direction: you do not treat \
+wear as damage, you do not treat dirt as decay, and you do not treat a \
+consumable that has done its job as a fault. Your notes go to a buyer who is \
+deciding whether to drive six hours to see this truck - and to a seller whose \
+truck is worth what you say it is."""
 
 
 # --- the severity rubric ---------------------------------------------------
@@ -527,7 +556,7 @@ VIEW_QUESTIONS = {
         "fuel and AdBlue levels",
         "any service-interval, DPF regeneration or fault-code message on the display",
         "engine hours, if the cluster shows them",
-        "wear on the steering wheel rim, stalks and the switches nearest the driver - the honest cross-check on a low odometer",
+        "wear on the steering wheel rim, stalks and the switches nearest the driver, and whether it is in proportion to the distance stated above - say which of the two it is. Wear that matches the stated distance is a confirmation and belongs in strengths. Only wear clearly beyond it is an observation, and even then describe the wear rather than accusing the odometer",
         "cracks, delamination or missing trim on the dash top and the instrument surround",
     ],
     "interior_cab": [
@@ -537,7 +566,7 @@ VIEW_QUESTIONS = {
         "headliner and door card condition, sagging or staining",
         "aftermarket holes, cut wiring, missing trim - signs of hard fleet use",
         "damp, mould or water staining, which points at a leaking roof hatch or windscreen seal",
-        "the general tidiness of the cab relative to the odometer you would expect",
+        "how worn the cab is relative to the distance stated above. A cab worked in for the distance this truck has covered is expected and belongs in strengths. Only wear clearly ahead of that distance is a finding - and a tidy cab on a high-distance truck is a re-trim or a careful driver, not proof of anything",
     ],
     "engine_bay": [
         "oil, coolant, fuel or AdBlue staining, and specifically where it is coming from",
@@ -694,13 +723,24 @@ def closeup_schema() -> dict:
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["component", "observation", "severity",
-                                 "confidence", "price_impact", "box"],
+                                 "confidence", "price_impact", "magnitude", "box"],
                     "properties": {
                         "component": {"type": "string", "enum": COMPONENTS},
                         "observation": {"type": "string"},
                         "severity": {"type": "string", "enum": SEVERITIES},
                         "confidence": {"type": "number"},
                         "price_impact": {"type": "string", "enum": IMPACTS},
+                        "magnitude": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["extent", "state", "consumable", "blocks_use"],
+                            "properties": {
+                                "extent": {"type": "string", "enum": EXTENTS},
+                                "state": {"type": "string", "enum": STATES},
+                                "consumable": {"type": "boolean"},
+                                "blocks_use": {"type": "string", "enum": BLOCKS_USE},
+                            },
+                        },
                         "box": {
                             "type": ["array", "null"],
                             "items": {"type": "number"},
@@ -717,17 +757,24 @@ def closeup_schema() -> dict:
     }
 
 
-CLOSEUP_PROMPT = """\
+# The close-up prompt is assembled in three zones, and the order is the whole
+# point of splitting it. Everything invariant comes first - the task, the
+# rubric, the worked examples, the schema and the rules - then the two lines
+# that are the same for every photo of one truck, then the frame in front of
+# this call. It used to open with the vehicle line and the view tag, which put
+# the variable part in the prefix and defeated prefix caching on every backend
+# that has it. With the rubric added and each photo read CLOSEUP_SAMPLES times
+# that ordering is the difference between paying for this block 48 times and
+# paying for it once. A test asserts the invariant prefix is byte-identical
+# across two different views.
+
+_CLOSEUP_INVARIANT = """\
 You are looking at ONE photograph of a used tractor unit. Examine it properly -
 this is the only look anyone will take at this particular frame.
 
-{vehicle_line}
-A zero-shot classifier tagged this frame as "{view_pretty}". That tag is a hint
-and is sometimes wrong; trust the pixels.
-{crop_line}{soft_line}
-Work through each of these for this photo, and report what you can actually see:
+{rubric}
 
-{checklist}
+{examples}
 
 Return ONE JSON object and nothing else. No markdown fence, no commentary.
 
@@ -737,20 +784,37 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
   "odometer_km": integer|null,  // ONLY if an odometer display is legible in THIS
                                 // photo. Convert miles to km and say so in "shows".
                                 // Null for every frame that is not showing one.
-  "observations": [         // DEFECTS ONLY, each one a thing visible in THIS photo
+  "observations": [         // things that are WORSE than this truck's age and
+                            // distance predict, each one visible in THIS photo.
+                            // Wear that is on schedule goes in "strengths".
     {{
       "component": one of {components},
       "observation": string,       // specific and visual, in fleet-buyer vocabulary
-      "severity": one of {severities},
+      "severity": one of {severities},   // provisional - see rule 11
       "confidence": 0.0-1.0,
       "price_impact": one of {impacts},
+      "magnitude": {{              // what this ONE photograph can say about the
+                                   // size of the defect without comparing it to
+                                   // anything else on the truck
+        "extent": one of {extents},
+        "state": one of {states},
+        "consumable": boolean,     // is this a part that is MEANT to wear out and
+                                   // be replaced - a tire, a brake pad, a mudflap?
+        "blocks_use": one of {blocks}   // would this stop the truck working, or
+                                        // working legally, today?
+      }},
       "box": [x, y, w, h]|null     // normalised 0-1 of THIS image. The smallest
                                    // rectangle that contains the visible evidence
                                    // for this observation. Null if you cannot
-                                   // point at the pixels — never a guess.
+                                   // point at the pixels - never a guess.
     }}
   ],
-  "strengths": [string],    // things this frame positively shows to be in good order
+  "strengths": [string],    // components this frame shows to be sound, or worn
+                            // exactly as much as this truck should be. Work the
+                            // confirm list below. This array is read by the buyer
+                            // and by the pass that sets the final severities; an
+                            // empty one on a sound truck is a failure to look,
+                            // not a clean sheet.
   "cannot_tell": [string],  // what this frame cannot answer, and what shot would
   "confidence": 0.0-1.0
 }}
@@ -765,18 +829,78 @@ Rules, in order of importance:
 3. If this photo is blurred, dark or too distant to support a claim, set
    "legible" false and keep your observations to what survives that. Do not
    claim tread depth from a soft-focus frame.
-4. Do not invent defects to fill the list. A genuinely clean component belongs
-   in "strengths", and an empty "observations" list is a perfectly good answer.
-5. Cosmetic findings are worth reporting but must be marked severity "cosmetic"
-   and price_impact "none" or "low".
-6. Never write a photo number into prose.
-7. Do not estimate a price. You are describing a truck, not valuing one.
-8. "odometer_km" is null unless this photograph actually shows an odometer you
+4. Do not invent defects to fill the list, and do not promote a real one to make
+   it worth reporting. Those are two different errors and the second is the
+   common one. A genuinely clean component belongs in "strengths"; a component
+   worn exactly as much as this truck's age and distance predict also belongs in
+   "strengths", named as on schedule; and an empty "observations" list is a
+   perfectly good answer for a photograph of a sound truck.
+5. When you are between two levels, take the LOWER one, as the rubric says, and
+   put what would have to be true for the higher one into the observation. A
+   "moderate" you are certain of is worth more to a buyer than a "major" you
+   argued yourself into.
+6. Cosmetic findings are worth reporting but must be marked severity "cosmetic"
+   and price_impact "none" or "low". Paint and trim alone are never "major": a
+   truck is not unroadworthy because it is scratched.
+7. Never write a photo number into prose.
+8. Do not estimate a price. You are describing a truck, not valuing one.
+9. "odometer_km" is null unless this photograph actually shows an odometer you
    can read. A guess at a mileage is worse than no mileage, because the number
    downstream is checked against what the seller typed.
-9. "box" is the region that shows THIS defect, not the whole component if the
-   wear is local (the outer shoulder of one tire, not every tire in frame).
-   Coordinates are of the image in front of you. Null rather than a guess."""
+10. "box" is the region that shows THIS defect, not the whole component if the
+    wear is local (the outer shoulder of one tire, not every tire in frame).
+    Coordinates are of the image in front of you. Null rather than a guess.
+11. "magnitude" is the part of your answer that does not depend on comparison.
+    Fill it in even when the severity is uncertain: a later pass that can see
+    every photograph of this truck at once sets the final level from it, and an
+    honest extent with an uncertain severity is worth more to that pass than a
+    confident severity with nothing behind it."""
+
+
+CLOSEUP_INVARIANT = _CLOSEUP_INVARIANT.format(
+    rubric=SEVERITY_RUBRIC, examples=WORKED_EXAMPLES,
+    components=json.dumps(COMPONENTS), severities=json.dumps(SEVERITIES),
+    impacts=json.dumps(IMPACTS), extents=json.dumps(EXTENTS),
+    states=json.dumps(STATES), blocks=json.dumps(BLOCKS_USE))
+
+
+def closeup_prompt(*, view: str, view_pretty: str, vehicle: str,
+                   cropped: bool, soft: bool, expectation: str = "",
+                   band: str | None = None) -> str:
+    """The three zones, joined. Invariant, then per-appraisal, then per-photo."""
+    appraisal = "\n".join(x for x in (vehicle, expectation) if x)
+
+    photo = [f'This frame was tagged "{view_pretty}" by a zero-shot classifier. '
+             f'That tag is a hint and is sometimes wrong; trust the pixels.']
+    if cropped:
+        photo.append("This image has been cropped to the one vehicle being sold; "
+                     "other vehicles in the original frame were deliberately "
+                     "excluded, so describe only what is in front of you.")
+    if soft:
+        photo.append("The capture check scored this frame as soft focus. Do not "
+                     "claim fine detail such as tread depth from it - mark it not "
+                     "legible instead.")
+    anchors = COMPONENT_ANCHORS.get(view)
+    if anchors:
+        photo.append("How the four levels read on the parts that should be in this "
+                     "frame:\n\n" + anchors)
+    rows = EXPECTED_WEAR.get(view, {}).get(band or "")
+    if rows:
+        photo.append("At the distance stated above, this is what on schedule looks "
+                     "like for those parts. A component in this state is not a "
+                     "finding at any level:\n"
+                     + "\n".join(f"  - {row}" for row in rows))
+    photo.append("Work through each of these for this photo, and report what you "
+                 "can actually see:\n\n"
+                 + "\n".join(f"  - {q}" for q in questions_for(view)))
+    confirmations = VIEW_CONFIRMATIONS.get(view)
+    if confirmations:
+        photo.append("Then confirm each of these, and put what you can confirm into "
+                     '"strengths":\n\n'
+                     + "\n".join(f"  - {c}" for c in confirmations))
+    photo.append("Return the JSON object now.")
+
+    return "\n\n".join(x for x in (CLOSEUP_INVARIANT, appraisal, "\n\n".join(photo)) if x)
 
 
 # --- pass C: synthesis, text only ------------------------------------------
@@ -859,31 +983,126 @@ Rules:
 6. Do not estimate a price."""
 
 
-def closeup_prompt(*, view: str, view_pretty: str, vehicle: str,
-                   cropped: bool, soft: bool) -> str:
-    checklist = "\n".join(f"  - {q}" for q in questions_for(view))
-    crop_line = ""
-    if cropped:
-        crop_line = ("This image has been cropped to the one vehicle being sold; other "
-                     "vehicles in the original frame were deliberately excluded, so "
-                     "describe only what is in front of you.\n")
-    soft_line = ""
-    if soft:
-        soft_line = ("The capture check scored this frame as soft focus. Do not claim "
-                     "fine detail such as tread depth from it - mark it not legible "
-                     "instead.\n")
-    return CLOSEUP_PROMPT.format(
-        vehicle_line=vehicle, view_pretty=view_pretty, crop_line=crop_line,
-        soft_line=soft_line, checklist=checklist,
-        components=json.dumps(COMPONENTS), severities=json.dumps(SEVERITIES),
-        impacts=json.dumps(IMPACTS))
-
-
 def synthesis_prompt(*, n: int, vehicle: str, notes: str) -> str:
     return SYNTHESIS_PROMPT.format(
         n=n, vehicle_line=vehicle, notes=notes,
         summary_keys=", ".join(f'"{k}": string' for k in SUMMARY_KEYS),
         grades=json.dumps(GRADES))
+
+
+# --- pass D: set-aware severity, text only --------------------------------
+# The pass that exists because of what pass B structurally cannot see. Every
+# severity in the list below was assigned by a call that saw one photograph and
+# had nothing to compare it against - a relative ordinal demanded from an
+# absolute-only observation, sixteen times over, and then summed into a price.
+# This is the only stage that sees the whole finding list at once, and it runs
+# AFTER `merge_duplicates`: calibrating the pre-merge list would calibrate a
+# list in which three paraphrases of one worn drive tire are still three rows.
+#
+# Its licence is deliberately asymmetric, because the measured direction of
+# error is upward. `calibration.apply_revisions` enforces it: lower freely,
+# raise by at most one level, raise to "major" only with corroboration from a
+# second photograph. Every change is written down as a `Correction`.
+
+CALIBRATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["revisions", "worst_finding", "calibration_note"],
+    "properties": {
+        "revisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["finding", "severity", "price_impact", "reason"],
+                "properties": {
+                    "finding": {"type": "integer"},
+                    "severity": {"type": "string", "enum": SEVERITIES},
+                    "price_impact": {"type": "string", "enum": IMPACTS},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "worst_finding": {"type": ["integer", "null"]},
+        "calibration_note": {"type": "string"},
+    },
+}
+
+CALIBRATION_PROMPT = """\
+Below is the finished list of findings for ONE tractor unit. Duplicates have
+already been folded together, so every line is a distinct defect. Nothing here
+is your own recollection - work only from this list.
+
+{vehicle_line}
+{expectation_line}
+
+Coverage: {n_photos} photographs were read in depth.{coverage_line}
+
+What those photographs confirmed to be sound:
+{strengths}
+
+The findings, numbered:
+{findings}
+
+{rubric}
+
+Every finding above was given its severity by a call that saw ONE photograph
+and nothing else. That call could describe what it saw, but it could not know
+whether what it saw was the worst thing on this truck or the best, because it
+had no other photograph to compare against. You have the whole set. Re-decide
+every one of them.
+
+Return ONE JSON object and nothing else. No markdown fence, no commentary.
+
+{{
+  "revisions": [            // EXACTLY one entry per finding, in order, 0 to {last}
+    {{"finding": integer,
+      "severity": one of {severities},
+      "price_impact": one of {impacts},
+      "reason": string}}    // one line: why this level and not the one above
+  ],
+  "worst_finding": integer|null,  // the single worst thing on this truck, or null
+                                  // if nothing rises above ordinary wear
+  "calibration_note": string      // one sentence: what this truck's condition
+                                  // actually amounts to
+}}
+
+Rules, in order of importance:
+1. Re-decide EVERY finding. Repeating the provisional severity is a decision,
+   not a skip, and it still needs its reason.
+2. You may lower a severity as far as the evidence supports. You may raise one
+   by at most one level, and you may only raise a finding to "major" if it was
+   seen in more than one photograph.
+3. The most common correct revision is downward. These findings were written
+   one photograph at a time by a reader who could not see that the same wear was
+   everywhere on this truck and therefore ordinary, or that this was the only
+   tired thing on an otherwise sound vehicle. Both change the answer, and only
+   you can see them.
+4. A component whose state matches what the distance above predicts is not a
+   finding at any level. If one is in the list, set it to "cosmetic" with
+   price_impact "none" and say in the reason that it is on schedule.
+5. Corroboration is evidence of extent, and its absence is evidence too. A
+   finding seen in one photograph of a component that four photographs show is a
+   local mark; the same finding in three of those four is a condition of the
+   whole component. Both counts are printed beside every finding.
+6. "worst_finding" is a real commitment. On a truck whose worst problem is a
+   kerbed rim, "worst_finding" points at the kerbed rim - not at whichever line
+   happens to say "major".
+7. Do not introduce a finding that is not in the list, and do not remove one.
+   Every line gets an entry.
+8. Do not estimate a price."""
+
+
+def calibration_prompt(*, vehicle: str, expectation: str, n_photos: int,
+                       coverage: str, strengths: str, findings: str,
+                       last: int) -> str:
+    return CALIBRATION_PROMPT.format(
+        vehicle_line=vehicle, expectation_line=expectation, n_photos=n_photos,
+        coverage_line=(" " + coverage if coverage else ""),
+        strengths=strengths or "  (nothing was confirmed sound - treat that as thin "
+                               "coverage, not as evidence against the truck)",
+        findings=findings, rubric=SEVERITY_RUBRIC, last=max(0, last),
+        severities=json.dumps(SEVERITIES), impacts=json.dumps(IMPACTS))
 
 
 # Which system summary each component rolls up into. Used by the deterministic

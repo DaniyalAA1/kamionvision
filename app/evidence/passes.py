@@ -10,6 +10,18 @@
   synthesize() text only, no images. Rolls the per-photo notes into the system
                summary, the grade and the coverage gaps, and says which
                findings are the same defect seen twice.
+
+The fourth, `calibration.calibrate()`, lives next door because it runs after
+`merge_duplicates` rather than inside this file's sequence.
+
+What is new here is `expectation_line`. Every close-up call used to be
+byte-identical for a 2021 truck at 80,000 km and the same truck at 400,000 km,
+so the only baseline the model had for "worn" was a new truck, and everything
+was worn against that. The seller's year and distance are in hand before pass A
+runs, and the distance goes in as a BAND: telling a close-up call the exact
+figure invites it to echo that back as `odometer_km`, which would quietly
+destroy the one cross-check - `reconcile._check_odometer` - that can catch a
+seller understating the distance.
 """
 from __future__ import annotations
 
@@ -25,8 +37,10 @@ from PIL import Image, ImageOps
 from .. import gate as gate_stage
 from ..condition import (CONFIDENCE_UNPARSEABLE, IMPACT_RANK, SEVERITY_RANK,
                          family_of)
+from ..config import (CLOSEUP_EFFORT, IDENTITY_EFFORT, KM_PER_YEAR_TR,
+                      SYNTHESIS_EFFORT)
 from ..schema import Issue, PhotoCheck, PhotoFinding, VehicleRead
-from . import prompts
+from . import calibration, prompts
 
 # Padding added around the subject box before cropping, as a fraction of the
 # box. A box hugging the bodywork loses the ground line and the vehicle beside
@@ -94,6 +108,133 @@ def _confidence(value, default: float = 0.5) -> float:
         return max(0.0, min(1.0, float(value)))
     except (TypeError, ValueError):
         return default
+
+
+# --- what this truck's distance already predicts ---------------------------
+
+def _int(value) -> int | None:
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def km_band(km: int) -> tuple[int, int]:
+    """The band a stated distance falls in. Never the figure itself.
+
+    100,000 km wide below half a million and 250,000 above, because the
+    difference between 120,000 and 180,000 km matters to a tire and the
+    difference between 900,000 and 960,000 does not. A band cannot be read back
+    out as a six-digit odometer reading, which is the entire point: the
+    close-up call gets a reference distribution and `reconcile._check_odometer`
+    keeps an independent read to check the seller against.
+    """
+    width = 100_000 if km < 500_000 else 250_000
+    lo = (km // width) * width
+    return lo, lo + width
+
+
+_NO_ECHO = ('Do NOT use this band to fill in "odometer_km" - that field comes only '
+            "from digits you can read in the photograph in front of you.")
+
+
+def expectation_line(declared: dict | None, *, today: int | None = None) -> str:
+    """What a truck of this age and distance should already look like.
+
+    The anti-exaggeration baseline, and the case that will actually run on
+    judging day is the last one: neither figure stated. It says do not assume
+    old, which is the null bias that stops an unknown truck being graded
+    against a new one.
+    """
+    from datetime import date
+
+    declared = declared or {}
+    year = _int(declared.get("year"))
+    km = _int(declared.get("km"))
+    now = today or date.today().year
+    age = now - year if year and 1980 < year <= now + 1 else None
+    q25, _median, q75 = KM_PER_YEAR_TR
+
+    if age is None and km is None:
+        return ("Neither the age nor the distance of this truck is known. Do not "
+                "assume it is either new or old. Where a finding depends on how "
+                'much work the truck has done, say so in "cannot_tell" rather '
+                "than assuming the worst.")
+
+    lo, hi = km_band(km) if km else (0, 0)
+    band = f"{lo:,}-{hi:,} km"
+
+    if age is None:
+        return (f"The age of this truck is not stated. The seller states a distance "
+                f"in the {band} band. Judge every component against the work that "
+                f"distance represents: a consumable that has done its job over that "
+                f"distance is on schedule and is not a finding. " + _NO_ECHO)
+
+    aged = ("less than a year old" if age <= 0 else
+            "about a year old" if age == 1 else f"about {age} years old")
+    typical_lo, typical_hi = (round(age * q25, -4), round(age * q75, -4))
+    if age <= 0 or typical_hi <= 0:
+        typical = ""
+    else:
+        typical = (f"A tractor unit of this age in this market has typically covered "
+                   f"{typical_lo:,.0f}-{typical_hi:,.0f} km")
+
+    if km is None:
+        if not typical:
+            return (f"This truck is {aged} and the seller did not state a distance. "
+                    "Judge against the age alone.")
+        return (f"This truck is {aged}. The seller did not state a distance. "
+                f"{typical}, but that is the spread of stock offered for sale and "
+                f"not this truck. Judge against the age alone, and where a "
+                f"component's state depends on distance rather than years, say in "
+                f'"cannot_tell" that you would need the odometer to call it.')
+
+    worked_less = typical and km < typical_lo
+    if not typical:
+        verdict = ""
+    elif km > typical_hi:
+        verdict = ", so this one has worked harder than most"
+    elif worked_less:
+        verdict = ", so this one has worked far less than most"
+    else:
+        verdict = ", so this one has done about the work its age predicts"
+
+    if worked_less:
+        judging = ("At that distance the original tires and the original cab trim "
+                   "should still be in place and only lightly worn. Wear that would "
+                   "be ordinary on a truck of this age at the usual distance is a "
+                   "genuine finding on this truck - say so, and note anything that "
+                   "looks like more use than the stated distance.")
+    else:
+        winters = "a winter" if age == 1 else f"{age} winters"
+        judging = (f"Judge every component against a truck that has done that work: "
+                   f"consumables at or past one full replacement cycle, a chassis "
+                   f"that has stood outdoors for {winters}, a cab that has been "
+                   f"lived in. A component in that state is on schedule and is not "
+                   f"a finding.")
+
+    head = f"This truck is {aged}. The seller states a distance in the {band} band."
+    middle = f"{typical}{verdict}." if typical else ""
+    return " ".join(x for x in (head, middle, judging, _NO_ECHO) if x)
+
+
+def component_frame_counts(findings: list[PhotoFinding]) -> dict[str, int]:
+    """How many of the frames that were read should show each component.
+
+    The denominator pass D needs. A finding on the fifth wheel seen once, in
+    the only frame that shows the fifth wheel, is not the same claim as the
+    same finding seen once in four frames that all show it - the second is
+    evidence the defect is local, and until now nothing computed either number.
+    """
+    counts: dict[str, int] = {}
+    for finding in findings:
+        if finding.error:
+            continue
+        for family in prompts.VIEW_FAMILIES.get(finding.view, ()):
+            for component in prompts.ANCHOR_COMPONENTS.get(family, ()):
+                counts[component] = counts.get(component, 0) + 1
+    return counts
 
 
 # --- the subject crop ------------------------------------------------------
@@ -216,6 +357,11 @@ def parse_identity(text: str) -> tuple[VehicleRead, bool, str]:
             str(data.get("vehicle_mismatch") or "").strip())
 
 
+# The only keys from the seller's form that are allowed into a prompt. An
+# asking price is not one of them.
+DECLARED_IN_PROMPTS = ("year", "km", "make", "model")
+
+
 def identity_context(declared: dict | None, selected: list) -> str:
     lines = [f"You are looking at {len(selected)} photos of what should be one vehicle, "
              f"photo_id 0 to {len(selected) - 1}."]
@@ -224,7 +370,11 @@ def identity_context(declared: dict | None, selected: list) -> str:
     lines.append(f"A zero-shot classifier tagged them as - {hints}. "
                  "Those tags are a hint and are sometimes wrong; trust the pixels.")
     if declared:
-        stated = ", ".join(f"{k}={v}" for k, v in declared.items() if v not in (None, ""))
+        # Whitelisted, not filtered: `declared` carries the seller's asking price
+        # on the CLI path, and "the VLM never sees or emits a price" has to
+        # survive someone passing --asking.
+        stated = ", ".join(f"{k}={v}" for k, v in declared.items()
+                           if k in DECLARED_IN_PROMPTS and v not in (None, ""))
         if stated:
             lines.append(f"The seller states: {stated}. Treat this as a claim, not a "
                          "fact - if the cab generation you can see contradicts it, "
@@ -232,12 +382,13 @@ def identity_context(declared: dict | None, selected: list) -> str:
     return "\n".join(lines)
 
 
-def identity(client, selected: list, declared: dict | None, *, max_tokens: int):
+def identity(client, selected: list, declared: dict | None, *, max_tokens: int,
+             effort: str | None = IDENTITY_EFFORT):
     prompt = prompts.IDENTITY_PROMPT.format(
         context=identity_context(declared, selected))
     return client.complete(
         prompt, [Path(c.path) for c in selected], system=prompts.SYSTEM,
-        max_tokens=max_tokens,
+        max_tokens=max_tokens, effort=effort,
         json_schema=prompts.IDENTITY_SCHEMA if client.supports_structured_output else None)
 
 
@@ -282,33 +433,65 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
         impact = _clamp(entry.get("price_impact"), prompts.IMPACTS, None)
         finding.issues.append(Issue(
             photo_id=check.photo_id, component=component, observation=observation,
+            # Unreadable fields round DOWN to zero weight and set `ungraded`;
+            # they used to round up to minor/low/0.5, which was silent
+            # inflation on a finding nobody could read.
             severity=severity or "cosmetic",
             confidence=_confidence(entry.get("confidence"), CONFIDENCE_UNPARSEABLE),
             price_impact=impact or "none",
             ungraded=severity is None or impact is None,
+            magnitude=calibration.parse_magnitude(entry.get("magnitude")),
             box=_observation_box(entry.get("box"), check, cropped=cropped)))
     return finding
 
 
+def closeup_image(check: PhotoCheck, tmpdir: Path) -> tuple[Path, bool]:
+    """The image this photo is sent as, cut once rather than once per sample."""
+    cropped = write_subject_crop(check, tmpdir) if wants_crop(check) else None
+    return (cropped or Path(check.path)), cropped is not None
+
+
 def closeup(client, check: PhotoCheck, vehicle_line: str, *,
-            tmpdir: Path, max_tokens: int) -> PhotoFinding:
-    """One photo, one call. Raises VLMError; the caller decides what that costs."""
+            tmpdir: Path | None = None, max_tokens: int,
+            expectation: str = "", band: str | None = None,
+            image: Path | None = None, cropped: bool | None = None,
+            effort: str | None = CLOSEUP_EFFORT, repair=None) -> PhotoFinding:
+    """One photo, one call. Raises VLMError; the caller decides what that costs.
+
+    `expectation` and `band` are the truck's own baseline, threaded in beside
+    the vehicle line: without them this call grades every consumable against a
+    new one. `repair` is the text-only retry - safe here because
+    `parse_closeup` takes `photo_id` from the caller and never from the
+    response, so a repair cannot re-bind a claim to a photo that was not sent.
+    """
     from ..vision import VIEW_LABELS
 
     t0 = time.time()
-    cropped_path = write_subject_crop(check, tmpdir) if wants_crop(check) else None
-    image = cropped_path or Path(check.path)
+    if image is None:
+        image, cropped = closeup_image(check, tmpdir)
+    cropped = bool(cropped)
     pretty = {k: k.replace("_", " ") for k in VIEW_LABELS}.get(
         check.view, check.view.replace("_", " "))
     prompt = prompts.closeup_prompt(
         view=check.view, view_pretty=pretty, vehicle=vehicle_line,
-        cropped=cropped_path is not None,
+        cropped=cropped, expectation=expectation, band=band,
         soft=any("soft focus" in r for r in check.reasons))
 
-    response = client.complete(
-        prompt, [image], system=prompts.SYSTEM, max_tokens=max_tokens,
-        json_schema=prompts.closeup_schema() if client.supports_structured_output else None)
-    finding = parse_closeup(response.text, check, cropped=cropped_path is not None)
+    schema = prompts.closeup_schema() if client.supports_structured_output else None
+    response = client.complete(prompt, [image], system=prompts.SYSTEM,
+                               max_tokens=max_tokens, effort=effort, json_schema=schema)
+    note = ""
+    try:
+        finding = parse_closeup(response.text, check, cropped=cropped)
+    except (ValueError, json.JSONDecodeError) as exc:
+        if repair is None:
+            raise
+        response = repair(client, response, exc, prompts.closeup_schema(), max_tokens)
+        finding = parse_closeup(response.text, check, cropped=cropped)
+        note = f"unparseable ({exc}); repaired"
+    finding.backend = response.backend
+    if note:
+        finding.sample_errors.append(note)
     finding.elapsed_s = round(time.time() - t0, 2)
     return finding
 
@@ -328,7 +511,7 @@ def notes_block(findings: list[PhotoFinding]) -> tuple[str, list[Issue]]:
         for issue in finding.issues:
             flat.append(issue)
             lines.append(f"  [{len(flat) - 1}] {issue.component}: {issue.observation} "
-                         f"({issue.severity}, {issue.price_impact} price impact)")
+                         f"({calibration.issue_suffix(issue, samples=finding.samples)})")
         for good in finding.strengths:
             lines.append(f"  ok: {good}")
         for gap in finding.cannot_tell:
@@ -560,12 +743,12 @@ def merge_duplicates(flat: list[Issue], duplicates: list) -> list[Issue]:
 
 
 def synthesize(client, findings: list[PhotoFinding], vehicle_line: str, *,
-               max_tokens: int):
+               max_tokens: int, effort: str | None = SYNTHESIS_EFFORT):
     notes, flat = notes_block(findings)
     prompt = prompts.synthesis_prompt(
         n=len([f for f in findings if not f.error]), vehicle=vehicle_line, notes=notes)
     response = client.complete(
-        prompt, [], system=prompts.SYSTEM, max_tokens=max_tokens,
+        prompt, [], system=prompts.SYSTEM, max_tokens=max_tokens, effort=effort,
         json_schema=prompts.synthesis_schema() if client.supports_structured_output else None)
     return response, flat
 

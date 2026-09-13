@@ -1,14 +1,23 @@
 """Stage 2 - the evidence fan-out, and the photo selection that feeds it.
 
-Three passes, in order, described in `passes.py`. What this module owns is the
-orchestration: which photos go, which backend answers, how many calls run at
-once, what happens when one of them fails, and how each finished photo reaches
-the screen while the rest are still in flight.
+Four passes now, described in `passes.py` and `calibration.py`. What this
+module owns is the orchestration: which photos go, which backend answers, how
+many calls run at once, what happens when one of them fails, and how each
+finished photo reaches the screen while the rest are still in flight.
+
+Pass D is the newest and it is sequenced where it is for a reason that is not
+negotiable: it runs AFTER `merge_duplicates`. Severity cannot be decided
+set-aware until the duplicates are folded, because `notes_block` numbers the
+pre-merge flat list and three paraphrases of one worn drive tire are still
+three rows in it.
 
 Failure posture, which is most of why this file exists:
 
   pass A fails on every backend   -> raise. There is nothing to describe.
-  one close-up call fails         -> that photo carries an `error` and the
+  one sample of a photo fails     -> it retries on the next backend, and if
+                                     that fails too the photo is read by the
+                                     samples that did come back. Recorded.
+  every sample of one photo fails -> that photo carries an `error` and the
                                      appraisal continues on the other fifteen.
                                      Recorded, never swallowed.
   every close-up call fails       -> raise. A report with no observations in it
@@ -17,6 +26,9 @@ Failure posture, which is most of why this file exists:
   pass C fails                    -> deterministic rollup. Every finding already
                                      exists; the synthesis only groups them, so
                                      losing the call should not lose the work.
+  pass D fails                    -> the provisional severities stand and a
+                                     parse warning says so. Losing the
+                                     calibration should cost the calibration.
 """
 from __future__ import annotations
 
@@ -27,10 +39,11 @@ from pathlib import Path
 
 from .. import condition as condition_stage
 from .. import vlm
-from ..config import (CLOSEUP_MAX_TOKENS, EVIDENCE_CONCURRENCY, IDENTITY_MAX_TOKENS,
+from ..config import (CALIBRATION_MAX_TOKENS, CLOSEUP_MAX_TOKENS,
+                      EVIDENCE_CONCURRENCY, IDENTITY_MAX_TOKENS,
                       MAX_EVIDENCE_PHOTOS, SYNTHESIS_MAX_TOKENS)
-from ..schema import EvidenceReport, GateReport, PhotoFinding
-from . import passes, prompts
+from ..schema import Correction, EvidenceReport, GateReport, PhotoFinding
+from . import calibration, passes, prompts, sampling
 
 # View priority for photo selection: what a buyer needs, in order.
 VIEW_PRIORITY = ["exterior_front_34", "tire_wheel", "dashboard_odometer", "exterior_side",
@@ -90,6 +103,25 @@ def _identity(chain, selected, declared, report: EvidenceReport):
     raise vlm.VLMError("every vision backend failed:\n  " + "\n  ".join(failures))
 
 
+def _walk(chain, preferred, call, report: EvidenceReport, label: str):
+    """Run `call` on the backend that answered pass A, then the rest of the chain.
+
+    Until now only pass A walked the chain and B, C and D reused whichever
+    client answered it, so a provider that died after the identity call took
+    the appraisal with it. A fallback is recorded, as everywhere else here.
+    """
+    order = [preferred] + [c for c in chain if c is not preferred]
+    failures: list[str] = []
+    for candidate in order:
+        try:
+            return candidate, call(candidate)
+        except vlm.VLMError as exc:
+            failures.append(f"{label} on {candidate.name}: {exc}")
+    report.fell_back_from.extend(failures)
+    raise vlm.VLMError(f"every vision backend failed on the {label} pass:\n  "
+                       + "\n  ".join(failures))
+
+
 def _repair(client, response, exc, schema, max_tokens):
     """One text-only repair attempt.
 
@@ -106,26 +138,33 @@ def _repair(client, response, exc, schema, max_tokens):
 
 # --- pass B, concurrent ----------------------------------------------------
 
-def _fan_out(client, selected, vehicle_line: str, tmpdir: Path,
-             on_photo, report: EvidenceReport) -> list[PhotoFinding]:
-    """One call per photo, `EVIDENCE_CONCURRENCY` at a time.
+def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
+             on_photo, report: EvidenceReport, *, expectation: str = "",
+             band: str | None = None) -> list[PhotoFinding]:
+    """One photo per task, read `CLOSEUP_SAMPLES` times, `EVIDENCE_CONCURRENCY`
+    tasks at a time.
 
     Results are handed to `on_photo` as they land, which is out of order - the
     screen is showing real returned work, and real work does not finish in the
-    order it was started.
+    order it was started. `on_photo` still fires once per PHOTO, after its
+    samples have been combined, never once per sample: the progress figure is a
+    count of finished photos and it stays one.
     """
     findings: list[PhotoFinding] = []
     workers = max(1, min(EVIDENCE_CONCURRENCY, len(selected)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(passes.closeup, client, check, vehicle_line,
-                        tmpdir=tmpdir, max_tokens=CLOSEUP_MAX_TOKENS): check
+            pool.submit(sampling.closeup_consensus, chain, check, vehicle_line,
+                        tmpdir=tmpdir, max_tokens=CLOSEUP_MAX_TOKENS,
+                        expectation=expectation, band=band, repair=_repair): check
             for check in selected
         }
         for future in as_completed(futures):
             check = futures[future]
             try:
-                finding = future.result()
+                finding, corrections, fallbacks = future.result()
+                report.corrections.extend(corrections)
+                report.fell_back_from.extend(fallbacks)
             except Exception as exc:
                 # One lost frame is not a lost appraisal, but it is not nothing
                 # either: the reader is told which photo went unread.
@@ -199,6 +238,60 @@ def _parse_warnings(report: EvidenceReport, findings: list[PhotoFinding]) -> Non
                 f"subsystem they land on is capped")
 
 
+# --- pass D ---------------------------------------------------------------
+
+# Grade ranks, worst last. Read-only here: `GRADE_BY_WORST` above is what the
+# deterministic rollup uses, and pass D only ever RELAXES a grade the model
+# already gave, never tightens one.
+_GRADE_RANK = {"excellent": 0, "good": 1, "fair": 2, "poor": 3}
+
+
+def _calibrate(chain, client, report: EvidenceReport, findings, *,
+               vehicle_line: str, expectation: str) -> None:
+    """Re-decide every severity with the whole list in view. Never fatal."""
+    if not report.issues:
+        return
+    t = time.time()
+    coverage = ""
+    if report.coverage_gaps:
+        coverage = "Still unassessed across the whole set: " + \
+                   "; ".join(g.rstrip(".") for g in report.coverage_gaps[:4]) + "."
+    try:
+        _, response = _walk(
+            chain, client,
+            lambda c: calibration.calibrate(
+                c, report.issues, vehicle_line=vehicle_line,
+                expectation=expectation, n_photos=report.photos_read,
+                coverage=coverage, strengths=report.confirmed_sound,
+                counts=passes.component_frame_counts(findings),
+                samples={f.photo_id: f.samples for f in findings},
+                max_tokens=CALIBRATION_MAX_TOKENS),
+            report, "calibration")
+        try:
+            data = calibration.parse_calibration(response.text)
+        except (ValueError, json.JSONDecodeError) as exc:
+            response = _repair(client, response, exc, prompts.CALIBRATION_SCHEMA,
+                               CALIBRATION_MAX_TOKENS)
+            data = calibration.parse_calibration(response.text)
+            report.parse_warnings.append(
+                f"the calibration pass was unparseable ({exc}); repaired")
+        corrections, warnings = calibration.apply_revisions(report.issues, data)
+        report.corrections.extend(corrections)
+        report.parse_warnings.extend(warnings)
+        report.calibration_note = " ".join(x for x in (
+            data["calibration_note"],
+            calibration.worst_note(report.issues, data["worst_finding"])) if x)
+        report.calls.append(["calibration", response.elapsed_s])
+    except (vlm.VLMError, ValueError, json.JSONDecodeError) as exc:
+        # The provisional severities stand. Every finding still exists, still
+        # cites its photo and still says what it saw - what is lost is the one
+        # pass that could see them all at once, and the reader is told that.
+        report.parse_warnings.append(
+            f"the calibration pass failed ({exc}); the severities below are the "
+            f"per-photo ones, decided without the rest of the set in view")
+        report.calls.append(["calibration (failed)", round(time.time() - t, 2)])
+
+
 # --- the whole stage -------------------------------------------------------
 
 def run(gate: GateReport, declared: dict | None = None, *,
@@ -229,9 +322,19 @@ def run(gate: GateReport, declared: dict | None = None, *,
     report.calls.append(["identity", response.elapsed_s])
     vehicle_line = passes.vehicle_line(vehicle)
 
-    # --- pass B: every photo, on its own ----------------------------------
+    # The truck's own baseline, composed once. `declared` has been in hand
+    # since the top of this function - what was missing was anywhere to put it:
+    # a 2021 tractor at 400,000 km and the same one at 80,000 km used to get
+    # byte-identical close-up prompts, so the only reference either had for
+    # "worn" was a new truck. The distance goes in as a BAND, never the figure,
+    # so it cannot be echoed back as an odometer reading.
+    expectation = passes.expectation_line(declared)
+    band = prompts.wear_band(passes._int((declared or {}).get("km")))
+
+    # --- pass B: every photo, on its own, CLOSEUP_SAMPLES times ------------
     with passes.tempdir() as tmp:
-        findings = _fan_out(client, selected, vehicle_line, Path(tmp), on_photo, report)
+        findings = _fan_out(chain, selected, vehicle_line, Path(tmp), on_photo,
+                            report, expectation=expectation, band=band)
     findings.sort(key=lambda f: f.photo_id)
     report.photo_findings = findings
     report.photos_read = sum(1 for f in findings if not f.error)
@@ -254,8 +357,11 @@ def run(gate: GateReport, declared: dict | None = None, *,
     t = time.time()
     notes, flat = passes.notes_block(findings)
     try:
-        synth_response, flat = passes.synthesize(client, findings, vehicle_line,
-                                                 max_tokens=SYNTHESIS_MAX_TOKENS)
+        client, (synth_response, flat) = _walk(
+            chain, client,
+            lambda c: passes.synthesize(c, findings, vehicle_line,
+                                        max_tokens=SYNTHESIS_MAX_TOKENS),
+            report, "synthesis")
         try:
             data = passes.parse_synthesis(synth_response.text)
         except (ValueError, json.JSONDecodeError) as exc:
@@ -274,6 +380,17 @@ def run(gate: GateReport, declared: dict | None = None, *,
 
     report.issues = passes.merge_duplicates(flat, data["duplicates"])
     report.condition_summary = data["condition_summary"]
+
+    # --- pass D: the severity the whole set decides -----------------------
+    # Between the merge and the rollup, and neither side of that is negotiable.
+    # After the merge, because the pre-merge list still has three paraphrases of
+    # one worn drive tire in it and calibrating that list calibrates the wrong
+    # one. Before the rollup, because the rollup is where severity becomes both
+    # the grade and the price - run it first and pass D's work is computed and
+    # then thrown away.
+    report.confirmed_sound = calibration.confirmed_sound(findings)
+    _calibrate(chain, client, report, findings, vehicle_line=vehicle_line,
+               expectation=expectation)
     # One rollup, two consumers. The grade below and the price multiplier in
     # `pricing.condition_adjustment` are both functions of this object, so they
     # cannot disagree about which truck is worse - which they used to, and in

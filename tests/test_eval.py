@@ -894,13 +894,15 @@ class EndToEndOnFakeBackend(unittest.TestCase):
         if not plan.pairs or not all(p.exists() for p in plan.pairs):
             self.skipTest("corpus images are not on this disk")
         twin_fp.run(plan, self.client, concurrency=4)
+        # CLOSEUP_PROMPT became CLOSEUP_INVARIANT when the prompt was split into
+        # invariant / per-appraisal / per-photo zones for prefix caching.
         first = self.inner.calls
-        original = prompts.CLOSEUP_PROMPT
+        original = prompts.CLOSEUP_INVARIANT
         try:
-            prompts.CLOSEUP_PROMPT = original + "\nAn added instruction.\n"
+            prompts.CLOSEUP_INVARIANT = original + "\nAn added instruction.\n"
             twin_fp.run(plan, self.client, concurrency=4)
         finally:
-            prompts.CLOSEUP_PROMPT = original
+            prompts.CLOSEUP_INVARIANT = original
         self.assertEqual(self.inner.calls, 2 * first,
                          "a prompt edit must show up as a real bill, not a silent hit")
         self.assertEqual(self.cache.stats.cached, 0)

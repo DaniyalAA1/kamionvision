@@ -52,7 +52,7 @@ from dataclasses import dataclass, field
 
 from app import config
 from app.evidence import passes, prompts
-from app.evidence.stage import SEVERITY_RANK
+from app.condition import SEVERITY_RANK
 from app.schema import PhotoCheck
 from app.vlm.base import VLMError
 
@@ -137,8 +137,8 @@ def vehicle_line(pair: cases.TwinPair) -> str:
 
 
 def build_prompt(pair: cases.TwinPair) -> str:
-    from app.vision import VIEW_PROMPTS
-    pretty = dict((k, k.replace("_", " ")) for k, _ in VIEW_PROMPTS).get(
+    from app.vision import VIEW_LABELS
+    pretty = {k: k.replace("_", " ") for k in VIEW_LABELS}.get(
         pair.view, pair.view.replace("_", " "))
     return prompts.closeup_prompt(view=pair.view, view_pretty=pretty,
                                   vehicle=vehicle_line(pair),
