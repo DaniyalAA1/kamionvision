@@ -55,8 +55,21 @@ WHOLE_VEHICLE_VIEWS = {"exterior_front", "exterior_front_34", "exterior_side", "
 # photograph of a scene that happens to contain a vehicle.
 TRUCK_PART_VIEWS = {"tire_wheel", "interior_cab", "dashboard_odometer", "engine_bay",
                     "chassis_undercarriage", "fifth_wheel"}
-# `damage_detail` is deliberately excluded above: it is the taxonomy's catch-all
-# and it matched a photo of a parked motorcycle at 0.42.
+# `damage_detail` is deliberately excluded above, for the gate's sake: it is the
+# taxonomy's catch-all and it matched a photo of a parked motorcycle at 0.42, so
+# letting it vouch that a set is "genuine truck close-ups" would let a motorcycle
+# listing through.
+#
+# The cropping question is not that question, and the costs run the other way.
+# Deciding a frame is a close-up when it is not costs one uncropped frame, and
+# the whole frame is what a close-up call wants anyway. Deciding a close-up is an
+# exterior costs a crop of a lorry forty metres behind it, described confidently
+# and cited to a real photo_id. So the crop path takes the inclusive set.
+#
+# This split was forced by measurement: the prompt ensemble moved chassis frames
+# into `damage_detail` (2.3% -> 7.0% of the corpus), those frames silently lost
+# part-view protection, and background_truck_rejected_rate fell 0.90 -> 0.73.
+CLOSE_UP_VIEWS = TRUCK_PART_VIEWS | {"damage_detail"}
 MIN_PART_VIEW_CONF = 0.50
 
 
@@ -416,6 +429,20 @@ def focus_ratio(gray, box: list[float]) -> float:
     return float(cv2.Laplacian(inside, cv2.CV_64F).var() / outside)
 
 
+# No box this small is the vehicle being sold, in ANY view. The part-view rule
+# needs the classifier to have called the frame a close-up first; this one does
+# not, and that is the point - it is the last line that still holds when the tag
+# is wrong. A truck at 4% of a frame is a truck in the distance.
+#
+# MEASURED over 201 confident whole-vehicle frames, where the selected box IS
+# the subject: median 0.554, q10 0.311, q05 0.137, then a thin tail below 0.02
+# that is mostly already wrong. A floor of 0.04 suppresses 3.0% of them, which
+# keeps whole_vehicle_miss_rate inside the incumbent's 0.031 and costs only an
+# uncropped frame when it fires - while the failure it prevents is a confident
+# description of the wrong truck.
+SUBJECT_MIN_AREA_FRAC = 0.04
+
+
 def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bool:
     """On a close-up of one component, a small vehicle box is the yard behind it.
 
@@ -431,7 +458,11 @@ def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bo
     frame, and `.../014.jpg` a dashboard whose subject box was a truck seen
     through the windscreen at 3% of the frame.
     """
-    # Focus first, and deliberately before the view tag is consulted. A box
+    # Two rules that never consult the view tag, both first, because the tag is
+    # the thing most likely to be wrong.
+    if c.area_frac < SUBJECT_MIN_AREA_FRAC:
+        return True
+    # Focus second, also before the tag. A box
     # markedly less sharp than the frame around it is the yard behind the
     # subject, and that is true whether or not the classifier managed to call
     # this frame a close-up. Measured on the two frames named above: the engine
@@ -440,7 +471,7 @@ def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bo
     # catch different failures and both are needed.
     if c.focus_ratio < FOCUS_SCENERY_RATIO and c.area_frac < part_view_subject_area():
         return True
-    if check.view not in TRUCK_PART_VIEWS or check.view_conf < MIN_PART_VIEW_CONF:
+    if check.view not in CLOSE_UP_VIEWS or check.view_conf < MIN_PART_VIEW_CONF:
         return False                      # not a close-up; not this rule's business
     if c.area_frac >= part_view_subject_area():
         return False                      # the close-up frame itself is what got boxed
@@ -459,7 +490,7 @@ def crop_is_safe(check: PhotoCheck) -> bool:
     CROP_PAD is not enough padding to protect it. A truck box on an engine-bay
     frame is the yard behind the engine, not the engine.
     """
-    return not (check.view in TRUCK_PART_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF)
+    return not (check.view in CLOSE_UP_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF)
 
 
 def eligible(check: PhotoCheck, pool: list[Candidate],
@@ -478,7 +509,7 @@ def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
         if not pool:
             return ""
         biggest = max(pool, key=lambda c: c.area_frac)
-        if check.view in TRUCK_PART_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF:
+        if check.view in CLOSE_UP_VIEWS and check.view_conf >= MIN_PART_VIEW_CONF:
             return (f"none: close-up of the {check.view.replace('_', ' ')}; the largest "
                     f"vehicle box is {biggest.area_frac * 100:.0f}% of the frame, which "
                     f"is the yard behind it")

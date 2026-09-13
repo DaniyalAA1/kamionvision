@@ -1580,11 +1580,26 @@ class PartViewSubject(unittest.TestCase):
                         width=200, height=140)
         self.assertIsNone(gate.pick_subject(c))
 
-    def test_damage_detail_is_never_treated_as_a_part_view(self):
-        # It is the taxonomy's catch-all and it matched a parked motorcycle
-        # at 0.42, so it may not suppress anything.
+    def test_damage_detail_suppresses_a_crop_but_does_not_vouch_for_a_truck(self):
+        """One name was doing two jobs whose costs run in opposite directions.
+
+        For the GATE, `damage_detail` may not vouch that a set is genuine truck
+        close-ups: it is the taxonomy's catch-all and it matched a parked
+        motorcycle at 0.42, so admitting it would let a motorcycle listing past
+        the refusal ladder. For CROPPING, it is unambiguously a close-up of one
+        part, and excluding it meant a damage shot could be cropped to a lorry
+        behind it. Deciding wrongly that a frame is a close-up costs one
+        uncropped frame; deciding wrongly that a close-up is an exterior costs a
+        confident description of the wrong truck.
+
+        Forced by measurement: the prompt ensemble moved chassis frames into
+        `damage_detail` and background_truck_rejected_rate fell 0.90 -> 0.73.
+        """
+        self.assertIn("damage_detail", subject.CLOSE_UP_VIEWS)
+        self.assertNotIn("damage_detail", subject.TRUCK_PART_VIEWS)
         c = self._check("damage_detail", 0.9, ("truck", 0.6, (700, 40, 950, 200)))
-        self.assertIsNotNone(gate.pick_subject(c))
+        self.assertIsNone(gate.pick_subject(c))      # not cropped to the background
+        self.assertFalse(evidence.wants_crop(c))
 
     def test_a_whole_vehicle_frame_is_untouched_by_the_rule(self):
         c = self._check("exterior_front_34", 0.9, ("truck", 0.6, (700, 40, 950, 200)))
@@ -1788,3 +1803,41 @@ class ViewPromptEnsemble(unittest.TestCase):
             src = (root / rel).read_text()
             self.assertNotIn("for k, _ in VIEW_PROMPTS", src, rel)
             self.assertNotIn("VIEW_PROMPTS[i][0]", src, rel)
+
+
+class SubjectAreaFloor(unittest.TestCase):
+    """No box this small is the vehicle being sold, in any view.
+
+    The part-view rule needs the classifier to have called the frame a close-up
+    first. This one does not, which is the point: it is what still holds when
+    the view tag is wrong, and the view tag is wrong on roughly 7% of component
+    close-ups even after the prompt ensemble.
+    """
+
+    def _check(self, view, conf, box, width=1200, height=900):
+        c = PhotoCheck(photo_id=0, path="x.jpg", filename="x.jpg")
+        c.width, c.height = width, height
+        c.view, c.view_conf = view, conf
+        x1, y1, x2, y2 = box
+        c.detections = [Detection(label="truck", confidence=0.8, box=list(box),
+                                  area_frac=abs((x2 - x1) * (y2 - y1)) / (width * height))]
+        return c
+
+    def test_a_truck_in_the_distance_is_not_the_subject_on_an_exterior_frame(self):
+        """The composite this was built for: a whole truck pasted into the top
+        fifth of a close-up occupies 2.56% of the frame. The frame then reads as
+        an exterior view precisely BECAUSE a truck is visible in it, so every
+        view-gated rule stands down."""
+        c = self._check("exterior_front_34", 0.9, (100, 40, 292, 184))   # 2.56%
+        self.assertIsNone(gate.pick_subject(c))
+
+    def test_a_normal_subject_is_far_above_the_floor(self):
+        c = self._check("exterior_front_34", 0.9, (120, 90, 1080, 810))  # 64%
+        self.assertIsNotNone(gate.pick_subject(c))
+
+    def test_the_floor_sits_below_the_measured_whole_vehicle_distribution(self):
+        """Measured over 201 confident whole-vehicle frames: median 0.554,
+        q10 0.311, q05 0.137. The floor must stay well under q05 or it starts
+        eating real subjects."""
+        self.assertLess(subject.SUBJECT_MIN_AREA_FRAC, 0.137)
+        self.assertGreater(subject.SUBJECT_MIN_AREA_FRAC, 0.0256)
