@@ -27,7 +27,15 @@
 
    A close-up often has no truck-shaped object. Those frames still get an
    angle box: the photograph itself is the subject, inset so the stroke
-   does not sit on the clip edge. */
+   does not sit on the clip edge.
+
+   A detected box can also fill nearly the whole frame - a tire or dashboard
+   close-up where the "vehicle" YOLO boxed is the close-up itself
+   (app/subject.py measures this: 455 of 773 boxed part-view frames sit
+   above 80% of the frame). Past SUBJECT_FILLS_FRAME that box draws the same
+   way as the no-detection case above, the photo's own inset edges, rather
+   than its real and usually lopsided coordinates - past that size a
+   rectangle distinguishes nothing from a background. */
 
 import { $, el, svg, viewName, viewAngle, fixed, animate, reduced, titleise } from './dom.js';
 
@@ -267,6 +275,31 @@ function angleBox(check, detected) {
   return null;
 }
 
+/* The photo's own edges, inset so the stroke does not sit on the clip edge -
+   the same fallback `angleBox` reaches for when nothing was detected at all,
+   reused below for a detected box so large there is nothing left for it to
+   distinguish. */
+function wholeFrameBox(check) {
+  if (!check.width || !check.height) return null;
+  const pad = Math.max(8, Math.min(check.width, check.height) * 0.015);
+  return [pad, pad, check.width - pad, check.height - pad];
+}
+
+/* Share of the frame a box covers. */
+function boxFrac(box, check) {
+  if (!box || !check.width || !check.height) return 0;
+  const [x1, y1, x2, y2] = box;
+  return (Math.max(1, x2 - x1) * Math.max(1, y2 - y1)) / (check.width * check.height);
+}
+
+/* Above this share of the frame, a box stops distinguishing anything and
+   starts being the photo's own edges - most often a tire or dashboard
+   close-up where the "vehicle" box IS the close-up (app/subject.py: 455 of
+   773 boxed part-view frames sit above 80% of the frame). Also the cutoff
+   below for skipping the dim overlay, which would otherwise paint a bare
+   rim around a box this size. */
+const SUBJECT_FILLS_FRAME = 0.85;
+
 function drawBoxes(root, check) {
   const shownSrc = $('frame-img')?.getAttribute('src') || '';
   const want = urlFor(check.photo_id);
@@ -291,27 +324,30 @@ function drawBoxes(root, check) {
   const extras = showAll ? all : disqualifying;
   const shown = [subject, ...extras].filter((d, i, list) => d && list.indexOf(d) === i);
 
+  /* Only the drawn geometry changes here - `subject` keeps its identity, so
+     the dedup above and the "show everything it detected" toggle still see
+     the real detection at its real coordinates. */
+  const subjectFillsFrame = !!subject && boxFrac(subject.box, check) >= SUBJECT_FILLS_FRAME;
+  const subjectBox = subject && (subjectFillsFrame ? wholeFrameBox(check) : subject.box);
+
   /* Darken the frame outside the subject, drawn as one even-odd path so the
-     subject stays at full brightness without a second image. A close-up's
-     fallback box is the frame itself - dimming that only paints a rim. */
-  if (subject && !showAll && check.width && check.height) {
-    const [x1, y1, x2, y2] = subject.box;
-    const frac = (Math.max(1, x2 - x1) * Math.max(1, y2 - y1))
-      / (check.width * check.height);
-    if (frac < 0.85) {
-      const outer = `M0 0H${check.width}V${check.height}H0Z`;
-      const inner = `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
-      const dim = svg('path', { class: 'dim', d: `${outer} ${inner}`, 'fill-rule': 'evenodd' });
-      root.append(dim);
-      animate(dim, { opacity: [0, 1] }, { duration: 0.45, delay: 0.1 });
-    }
+     subject stays at full brightness without a second image. Skipped when
+     the subject already fills the frame - dimming that would only paint a
+     rim. */
+  if (subject && !showAll && !subjectFillsFrame && check.width && check.height) {
+    const [x1, y1, x2, y2] = subjectBox;
+    const outer = `M0 0H${check.width}V${check.height}H0Z`;
+    const inner = `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+    const dim = svg('path', { class: 'dim', d: `${outer} ${inner}`, 'fill-rule': 'evenodd' });
+    root.append(dim);
+    animate(dim, { opacity: [0, 1] }, { duration: 0.45, delay: 0.1 });
   }
 
   shown.forEach((d, i) => {
-    const [x1, y1, x2, y2] = d.box;
+    const isSubject = d === subject;
+    const [x1, y1, x2, y2] = isSubject ? subjectBox : d.box;
     const w = Math.max(1, x2 - x1), h = Math.max(1, y2 - y1);
     const g = svg('g', { class: 'box' });
-    const isSubject = d === subject;
     g.dataset.subject = String(isSubject);
     if (blockedLabel && d.label === blockedLabel) g.dataset.disqualifying = 'true';
 
