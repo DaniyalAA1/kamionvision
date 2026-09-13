@@ -34,6 +34,7 @@ function certainty(value) {
 
 export function renderPanels(a, runElev) {
   const ev = a.evidence, price = a.price;
+  impactBreakdown(price);
   findings(a, ev, runElev);
   strengths(a, ev);
   asksAndGaps(a, ev);
@@ -43,11 +44,66 @@ export function renderPanels(a, runElev) {
   working(a, ev, price);
 }
 
+/* ---------- what the condition moved, by part ---------- */
+
+/* In the open, next to the band it explains - not inside "How this number was
+   reached". `family_impacts` is a proportional allocation of an assumed
+   weighting through a nonlinear (tanh) total, never a measured per-part cost,
+   so `impacts_basis` travels with every figure this renders, the same rule
+   `working()` already applies to `cap_basis`/`weights_basis`. */
+function impactBreakdown(price) {
+  const old = document.getElementById('impact-breakdown');
+  if (old) old.remove();
+  const adj = price && price.adjustment;
+  const impacts = (adj && adj.family_impacts) || [];
+  const host = $('band-wrap');
+  if (!host || !price || !price.ok || !impacts.length) return;
+  const valid = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+
+  const block = el('div', 'impact-breakdown');
+  block.id = 'impact-breakdown';
+  block.append(el('h3', 'impact-breakdown-title', 'What the condition moved, by part'));
+
+  const list = el('ul', 'impact-list');
+  const anchor = (cls, label, value) => {
+    const li = el('li', `impact-row impact-row-${cls}`);
+    li.append(el('span', 'impact-label', label), el('span', 'impact-amount', money(value, price.currency)));
+    list.append(li);
+  };
+  /* A waterfall in words: where the comparable market alone would put it,
+     what each family's own findings moved, and where that lands - the same
+     two endpoints the band above already draws, so the two views agree by
+     construction rather than by re-deriving them here. */
+  if (valid(price.baseline_point)) anchor('baseline', 'Comparable-market baseline', price.baseline_point);
+  [...impacts].sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount)).forEach((fi) => {
+    const li = el('li', 'impact-row');
+    li.dataset.family = fi.family;
+    const label = el('span', 'impact-label', titleise(fi.label || fi.family));
+    const amt = el('span', `impact-amount ${fi.amount >= 0 ? 'pos' : 'neg'}`,
+      `${fi.amount >= 0 ? '+' : ''}${money(fi.amount, price.currency)}`);
+    li.append(label, amt);
+    list.append(li);
+  });
+  if (valid(price.point)) anchor('adjusted', 'Adjusted estimate', price.point);
+  block.append(list);
+  if (adj.impacts_basis) block.append(el('p', 'work-note assumed', adj.impacts_basis));
+  /* A sibling after band-wrap, never a static section in index.html - a peer
+     session owns that file while this run is in flight. */
+  host.after(block);
+}
+
 /* ---------- what I found ---------- */
 
 function findings(a, ev, runElev) {
   const block = $('block-findings');
   if (!(ev && ev.issues.length)) { block.hidden = true; return; }
+
+  /* Which family (from the price side's own impact breakdown) each component
+     belongs to - read off the wire rather than a component/family table
+     duplicated here, so there is nothing to keep in sync and nothing to drift. */
+  const familyOf = {};
+  ((a.price && a.price.adjustment && a.price.adjustment.family_impacts) || [])
+    .forEach((fi) => (fi.components || []).forEach((c) => { familyOf[c] = fi; }));
 
   const n = ev.issues.length;
   const major = ev.issues.filter((i) => i.severity === 'major').length;
@@ -65,11 +121,16 @@ function findings(a, ev, runElev) {
     b.dataset.sev = i.severity;
 
     const part = el('span', 'finding-part', titleise(i.component));
+    const fi = familyOf[i.component];
     /* An unreadable severity is not a minor defect. It is shown with its photo
        and weighted at zero rather than rounded up, so it says so here too. */
     part.append(el('span', 'finding-weight', i.ungraded
       ? 'reported without a grade'
-      : `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`));
+      : `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`
+        /* This is the FAMILY's total, not this one finding's own share - two
+           findings on the same subsystem would otherwise both quote the same
+           figure and read as double-counted money. */
+        + (fi ? ` · ${titleise(fi.label || fi.family)} total ${fi.amount >= 0 ? '+' : ''}${money(fi.amount, a.price.currency)}` : '')));
     b.append(partIcon(i.component), part, el('span', 'finding-text', i.observation));
 
     /* An uploaded set is renamed 000.jpg upwards on the way in, so a filename
@@ -94,8 +155,16 @@ function findings(a, ev, runElev) {
     b.append(cite);
 
     b.addEventListener('click', () => citePhoto(i.photo_id, i));
-    /* hovering a finding lights the part of the drawing it is about */
-    const light = (on) => elevation.focus(runElev, i.component, on);
+    /* hovering a finding lights the part of the drawing it is about, and - when
+       it belongs to a costed family - the matching row in the breakdown above
+       the band, so "where" and "how much" answer together. */
+    const light = (on) => {
+      elevation.focus(runElev, i.component, on);
+      if (fi) {
+        const row = document.querySelector(`#impact-breakdown [data-family="${CSS.escape(fi.family)}"]`);
+        if (row) row.classList.toggle('active', on);
+      }
+    };
     b.addEventListener('pointerenter', () => light(true));
     b.addEventListener('pointerleave', () => light(false));
     b.addEventListener('focus', () => light(true));

@@ -1,6 +1,6 @@
 /* Two separate, directly labelled ranges on one shared scale. The baseline
    describes asking prices, not sales; the photo adjustment is not calibrated. */
-import { el, money } from './dom.js';
+import { el, money, animate } from './dom.js';
 
 export function drawBand(root, price) {
   root.replaceChildren();
@@ -16,7 +16,7 @@ export function drawBand(root, price) {
   const amount = (v) => money(v, price.currency);
   const asking = price.asking?.asking;
   const row = (label, description, low, high, point, kind) => {
-    if (![low, high, point].every(valid)) return;
+    if (![low, high, point].every(valid)) return null;
     const section = el('div', `range-row ${kind}`);
     const head = el('div', 'range-heading');
     head.append(el('strong', null, label), el('span', 'range-values', `${amount(low)} – ${amount(high)}`));
@@ -24,8 +24,9 @@ export function drawBand(root, price) {
     const track = el('div', 'range-track');
     track.setAttribute('aria-hidden', 'true');
     const bar = el('span', 'range-interval');
-    bar.style.left = `${position(low)}%`;
-    bar.style.width = `${Math.max(.3, position(high) - position(low))}%`;
+    const finalLeft = position(low), finalWidth = Math.max(.3, position(high) - position(low));
+    bar.style.left = `${finalLeft}%`;
+    bar.style.width = `${finalWidth}%`;
     const mark = el('i', 'range-point');
     mark.style.left = `${position(point)}%`;
     track.append(bar, mark);
@@ -39,15 +40,30 @@ export function drawBand(root, price) {
     foot.append(el('span', null, 'Lower estimate'), el('span', null, `Model estimate ${amount(point)}`), el('span', null, 'Upper estimate'));
     section.append(track, foot);
     root.append(section);
-    return bar;
+    return { bar, finalLeft, finalWidth };
   };
-  const bar = row('Adjusted estimate', 'The expected asking-price range after visible condition and any confirmed history adjustment.', price.low, price.high, price.point, 'adjusted');
-  row('Comparable-market baseline', 'Before condition and history adjustments · similar age and mileage.', price.baseline_low, price.baseline_high, price.baseline_point, 'baseline');
+  const adjusted = row('Adjusted estimate', 'The expected asking-price range after visible condition and any confirmed history adjustment.', price.low, price.high, price.point, 'adjusted');
+  const baseline = row('Comparable-market baseline', 'Before condition and history adjustments · similar age and mileage.', price.baseline_low, price.baseline_high, price.baseline_point, 'baseline');
+
+  /* The adjusted bar draws in FROM the baseline's own position rather than
+     appearing solved, so "condition moved the estimate" reads as a motion a
+     viewer watches happen rather than a fact printed on arrival. Every other
+     reveal in the run is animated; this was the one thing that just appeared. */
+  if (adjusted && baseline) {
+    const from = { left: `${baseline.finalLeft}%`, width: `${baseline.finalWidth}%` };
+    const to = { left: `${adjusted.finalLeft}%`, width: `${adjusted.finalWidth}%` };
+    adjusted.bar.style.left = from.left;
+    adjusted.bar.style.width = from.width;
+    const anim = animate(adjusted.bar, { left: [from.left, to.left], width: [from.width, to.width] },
+      { duration: 0.7, delay: .15, ease: [0.16, 1, 0.3, 1] });
+    if (!anim) { adjusted.bar.style.left = to.left; adjusted.bar.style.width = to.width; }
+  }
+
   const legend = el('div', 'range-legend');
   legend.append(el('span', 'midpoint-key', 'Solid line: model estimate'));
   if (valid(asking)) {
     legend.append(el('span', 'seller-key', `Diamond: seller asks ${amount(asking)}${asking < min ? ' · below chart scale' : asking > max ? ' · above chart scale' : ''}`));
   }
   root.append(legend, el('p', 'range-disclaimer', 'Both rows use the same price scale. These figures are estimated asking prices, not confirmed sale prices of a sold truck. Coverage on the adjusted range is unmeasured.'));
-  return bar;
+  return adjusted && adjusted.bar;
 }

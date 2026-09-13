@@ -437,9 +437,48 @@
 .seller-key::before { content: ''; width: 8px; height: 8px; border: 2px solid var(--ink); transform: rotate(45deg); }
 .range-disclaimer { font-size: var(--t-xs); color: var(--steel); margin-top: .75rem; max-width: 85ch; }
 .band-note { background: var(--lot); border-left: 2px solid var(--signal); padding: .8rem 1rem; max-width: none; }
+
+/* ---------- what the condition moved, by part ---------- */
+/* In the open, beside the band it explains - never inside the disclosure.
+   `impact-amount` reuses the pos/neg convention `.work-table` already set. */
+.impact-breakdown {
+  margin-top: 1.6rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--edge);
+  max-width: 62ch;
+  animation: report-reveal .6s var(--ease-out) both;
+}
+.impact-breakdown-title { font: 600 1rem/1.3 var(--cond); margin-bottom: .7rem; }
+.impact-list { display: grid; gap: .2rem; }
+.impact-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: .4rem .55rem;
+  border-radius: var(--radius);
+  font-size: var(--t-sm);
+  transition: background .15s var(--ease-out);
+}
+.impact-row.active { background: var(--lot-deep); }
+.impact-label { color: var(--ink); }
+.impact-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+.impact-amount.neg { color: var(--stop); }
+.impact-amount.pos { color: var(--verified); }
+/* The two ends of the waterfall read as ledger totals rather than one more
+   part: the adjusted figure closes the list behind a rule, in the same
+   baseline (steel-blue) / adjusted (signal) colours the band above uses. */
+.impact-row-baseline .impact-label, .impact-row-adjusted .impact-label { font-weight: 600; }
+.impact-row-baseline .impact-amount { color: #8196b2; }
+.impact-row-adjusted .impact-amount { color: var(--signal-ink); }
+.impact-row-adjusted { border-top: 1px solid var(--edge); margin-top: .3rem; padding-top: .6rem; }
+
 .result-body > .block { animation: report-reveal .6s var(--ease-out) both; }
 .result-body > .block:nth-child(2) { animation-delay: .06s; }
 .result-body > .block:nth-child(3) { animation-delay: .12s; }
+.result-body > .block:nth-child(4) { animation-delay: .18s; }
+.result-body > .block:nth-child(5) { animation-delay: .24s; }
+.result-body > .block:nth-child(6) { animation-delay: .3s; }
+.result-body > .block:nth-child(n+7) { animation-delay: .36s; }
 @keyframes report-reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (max-width: 560px) {
   .range-heading { display: grid; }
@@ -450,5 +489,5 @@
   .verdict { border-radius: var(--radius); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .result, .result-body > .block { animation: none; }
+  .result, .result-body > .block, .impact-breakdown { animation: none; }
 }
