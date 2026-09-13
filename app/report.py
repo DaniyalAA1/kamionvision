@@ -101,7 +101,9 @@ def price_lines(price: PriceEstimate) -> list[str]:
         out.append(f"  Second opinion, from what it cost new   {money(a.point, a.currency)}")
         out.append(f"    {a.basis}")
         out.append(f"    Source: {a.source} ({a.source_type.replace('_', ' ')}), {a.source_url}")
-        out.append(f"    Weight in the estimate: {a.weight:.0%}, by inverse variance — this route "
+        how = ("learned from held-out listings" if card.get("estimator") == "blend"
+               else "by inverse variance")
+        out.append(f"    Weight in the estimate: {a.weight:.0%}, {how} — this route "
                    f"needs no same-brand comparable to exist.")
     for line in price.widened:
         out.append(f"  Widened: {line}")

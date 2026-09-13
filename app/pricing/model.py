@@ -260,7 +260,22 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     # there was only one that had never seen the brand.
     anchor_est = anchor.estimate(model.anchor, year=year, km=km, make=make,
                                  model=vehicle_model, market=market)
-    if anchor_est.ok:
+    blend_cfg = (model.anchor or {}).get("blend") or {}
+    card = {"estimator": "hedonic", "calibration": model.calibration}
+    measured_blend = (anchor_est.ok and not unknown_brand and blend_cfg.get("ok")
+                      and anchor_est.source_type == "oem_official"
+                      and str(level) in blend_cfg.get("offsets", {}))
+    if measured_blend:
+        # The case the blend was measured on: a make with its own column and an
+        # official new price. Its weight was learned out-of-fold and its band is
+        # built from its own out-of-fold residuals, so the coverage printed next
+        # to this band is a measurement of this estimator, not of a weaker one.
+        w_anchor = float(blend_cfg["weight_anchor"])
+        mu = (1 - w_anchor) * mu + w_anchor * math.log(anchor_est.point)
+        lo_off, hi_off = blend_cfg["offsets"][str(level)]
+        anchor_est.weight = round(w_anchor, 3)
+        card = {"estimator": "blend", "calibration": blend_cfg["calibration"]}
+    elif anchor_est.ok:
         sd_r = model.residual_std * (model.widening["unknown_brand"] if unknown_brand else 1.0)
         sd_a = anchor.sigma(model.anchor, anchor_est)
         mu, sd_blend, w_anchor = anchor.blend(mu, sd_r, math.log(anchor_est.point), sd_a)
@@ -311,13 +326,18 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
                   "brand_used": feats["brand"] if feats["brand"] in model.brands else "other",
                   "euro_norm": euro_norm_for_year(int(year))}
     est.inputs_provenance = provenance or {}
+    cal = card["calibration"]
     est.model_card = {
-        "n_listings": model.meta.get("n_listings"),
-        "n_groups": model.meta.get("n_groups"),
-        "r2": model.calibration.get("r2_oof"),
-        "mae_pct": model.calibration.get("mae_pct_oof"),
-        "coverage": model.calibration.get(f"coverage_{level}"),
-        "coverage_n": model.calibration.get("coverage_n"),
+        # Which estimator produced the band, so the measured figures below are
+        # always the ones belonging to it.
+        "estimator": card["estimator"],
+        "n_listings": cal.get("n") if card["estimator"] == "blend" else model.meta.get("n_listings"),
+        "n_groups": cal.get("n_groups") if card["estimator"] == "blend" else model.meta.get("n_groups"),
+        "r2": cal.get("r2_oof"),
+        # Every surface labels this "median error"; mae_pct_oof is a mean.
+        "mae_pct": cal.get("median_ape_oof"),
+        "coverage": cal.get(f"coverage_{level}"),
+        "coverage_n": cal.get("coverage_n"),
         "fx": {"usd_try": USD_TRY, "as_of": FX_AS_OF},
         "fitted_at": model.meta.get("fitted_at"),
     }

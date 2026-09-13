@@ -55,7 +55,7 @@ No linter, no CI. Dataset scripts self-verify by printing counts; `clean_dataset
 Two test layers for `app/`:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests    # 151 offline tests, ~2s, no API calls
+.venv/bin/python -m unittest discover -s tests    # 163 offline tests, ~2s, no API calls
 .venv/bin/python -m app.demo                      # 8 end-to-end cases, spends vision calls
 ```
 
@@ -176,7 +176,7 @@ app/
   against `tr_only` R²=0.84 on held-out Turkish listings. 14x the data makes it worse. The
   European rows stay as a measurement instrument, not as training data. Don't re-pool without
   re-running `app.pricing.train` and beating 0.84.
-- **Two bands, and they are not interchangeable.** The measured 80.3% coverage belongs to the
+- **Two bands, and they are not interchangeable.** The measured coverage (80.3% hedonic, 80.9% blend) belongs to the
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
 - **Measured numbers and assumed ones are labelled differently in the output.** Interval coverage,
@@ -278,10 +278,20 @@ app/
   zero-shot pseudo-labels, so accuracy against them measures agreement with a noisy teacher. What
   is real is stability: a degraded twin inherits its original's label, so 0.758 vs the teacher's
   own 0.696 is a measured robustness gain. Never report the 0.772 teacher-agreement as accuracy.
-- **The anchor may claw back a widening; it may never narrow below the measured band.**
-  `estimate()` floors the blended band factor at 1.0 because the 80.3% coverage belongs to the
-  unwidened hedonic interval. Measured payoff, TR:MAN held out (n=6, and say the n): band
-  1.85×→1.00×, coverage 0.17→0.83, median error 16.3%→3.7%.
+- **A band is only as narrow as the estimator it was measured on.** Two paths in `estimate()`:
+  - *Measured blend* — make has its own hedonic column AND an `oem_official` new price (Ford, MAN).
+    Weight and band come from `anchor.blend` in `price_model.json`, fit by `train.fit_blend`:
+    least-squares weight on out-of-fold predictions (inverse variance assumed the two routes'
+    errors independent; they share age and km, so it kept too much of the weaker route), band
+    from the blend's own OOF residuals, all nested. Measured: R² 0.938, median error 3.1%, 80%
+    band covers 80.9% at roughly half the hedonic band's width. Anchor share is 1.00 in every
+    fold — on this corpus the hedonic fit adds nothing once a new price exists.
+    `model_card.estimator` says `blend` and the card's numbers are the blend's.
+  - *Everything else* (unseen make, `trade_press` row, no row) — unchanged: inverse-variance
+    blend with the unknown-brand widening, floored at 1.0 because the 80.3% coverage belongs to
+    the unwidened hedonic interval. TR:MAN held out (n=6, say the n): band 1.85×→1.00×, coverage
+    0.17→0.83, median error 16.3%→3.7%.
+  The condition cap stays the hedonic `residual_std` on both paths.
 - **`data/reference/new_prices_tr.json` is hand-curated and stamped, like `USD_TRY`.** Every row
   carries a source URL, a date and a `source_type`; `anchor.py` widens a `trade_press` row 1.35×
   against an `oem_official` one, and `app.cli doctor` warns past 120 days. A brand with no row
@@ -338,6 +348,7 @@ That is why the live numbers below are smaller than the cleaning report's.
 | TR brands | **78 of 84 are Ford**, 6 MAN — the binding limitation, see README source vetting |
 | Price model | `tr_only`, R² 0.84, median error 4.2%, 80% band covers 80.3% |
 | New-price anchor | retention curve R² 0.94, median error 3.1%; 5 cited reference rows |
+| Served blend (Ford, MAN) | R² 0.938, median error 3.1%, 80% band covers 80.9% at ~half the width |
 | Perception heads | degradation AUC 0.985, view stability 0.758 vs 0.696, brand 79.5% vs 39% |
 | Gate thresholds | calibrated on all 7,458 images; 1 of 200 vehicles false-refused |
 | EU comparables | 1,056 TruckStore tractor units (95% Mercedes) — measurement only, not training |

@@ -58,7 +58,10 @@ def evaluate(df: pd.DataFrame, brands: list[str], *, score_market: str | None = 
     """Grouped out-of-fold metrics plus measured interval coverage."""
     X = F.matrix(df, brands)
     if drop_brand:
-        keep = len(["log1p_age", "log_km", "market_tr", "euro6"])
+        # age, km, one dummy per market, euro6 - everything before the brands.
+        # A hard-coded 4 here once sliced off euro6 instead, so "brand columns
+        # are worth -0.024 R2" was really measuring the loss of euro6.
+        keep = 2 + len(F.MARKETS) + 1
         X = X[:, :keep]
     y = df.y.to_numpy()
     groups = df.group.to_numpy()
@@ -239,6 +242,132 @@ def fit_retention(df: pd.DataFrame) -> dict:
     }
 
 
+def _route_predictions(train: pd.DataFrame, test: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Fit both routes on `train`, return (hedonic, anchor) log-price predictions on `test`.
+
+    Both frames must carry `log_new`, the log published new price. Brand
+    vocabulary is rebuilt from the training rows with the tr_only threshold,
+    so a fold never sees a brand column fitted on its own test rows.
+    """
+    brands = F.brand_vocabulary(train, min_n=3)
+    h = _fit(F.matrix(train, brands), train.y.to_numpy())
+    a = _fit(train[["log1p_age", "log_km"]].to_numpy(dtype=float),
+             train.y.to_numpy() - train.log_new.to_numpy())
+    mu_h = _predict(*h, F.matrix(test, brands))
+    mu_a = (_predict(*a, test[["log1p_age", "log_km"]].to_numpy(dtype=float))
+            + test.log_new.to_numpy())
+    return mu_h, mu_a
+
+
+def _route_oof(d: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    groups = d.group.to_numpy()
+    mu_h, mu_a = np.zeros(len(d)), np.zeros(len(d))
+    for a, b in GroupKFold(n_splits=min(5, len(set(groups)))).split(d, groups=groups):
+        mu_h[b], mu_a[b] = _route_predictions(d.iloc[a], d.iloc[b])
+    return mu_h, mu_a
+
+
+def _stack_weight(y: np.ndarray, mu_h: np.ndarray, mu_a: np.ndarray) -> float:
+    """Least-squares share for the anchor, from out-of-fold predictions, in [0, 1].
+
+    Inverse-variance weighting assumes the two routes' errors are independent.
+    They are not: both are fit on the same rows with the same age and km, so
+    their residuals move together and inverse variance keeps too much of the
+    weaker route. Regressing the truth on the two out-of-fold predictions
+    accounts for that correlation directly.
+    """
+    r_h, r_a = y - mu_h, y - mu_a
+    diff = r_h - r_a
+    denom = float(np.dot(diff, diff))
+    if denom < 1e-12:
+        return 0.5
+    return float(np.clip(np.dot(r_h, diff) / denom, 0.0, 1.0))
+
+
+def fit_blend(df: pd.DataFrame) -> dict:
+    """Measure the estimate the screen actually serves, and fit its band.
+
+    Before this, the served price was the hedonic fit blended with the anchor
+    by inverse variance, but only the hedonic fit was ever scored and the band
+    around the blend was the hedonic band. Measured under the same grouped
+    folds, that blend reached R2 0.92, and its "80%" band contained 87% of
+    held-out prices - honest, but a quarter wider than the blend needs.
+
+    Everything here is nested: the weight is chosen on inner out-of-fold
+    predictions and scored on the outer fold, and the band comes from the
+    blend's own inner out-of-fold residuals, exactly as `evaluate` builds the
+    hedonic band. Turkish rows with a published new price only - the only rows
+    where both routes exist.
+    """
+    from . import anchor as anchor_mod
+
+    tr = df[df.market.str.upper() == "TR"].copy()
+    new = [anchor_mod.lookup(r.brand, r.model) for r in tr.itertuples()]
+    tr["new_price"] = [float(n["list_price"]) if n else np.nan for n in new]
+    tr = tr[tr.new_price.notna() & (tr.new_price > 0)].reset_index(drop=True)
+    if len(tr) < 20 or tr.group.nunique() < 10:
+        return {"ok": False, "reason": f"only {len(tr)} Turkish listings have both routes"}
+    tr["log_new"] = np.log(tr.new_price)
+    y, groups = tr.y.to_numpy(), tr.group.to_numpy()
+
+    # --- point accuracy: weight chosen inside, scored outside -------------
+    oof, weights = np.zeros(len(tr)), []
+    for a, b in GroupKFold(n_splits=5).split(tr, groups=groups):
+        inner = tr.iloc[a].reset_index(drop=True)
+        ih, ia = _route_oof(inner)
+        w = _stack_weight(inner.y.to_numpy(), ih, ia)
+        weights.append(w)
+        mu_h, mu_a = _route_predictions(inner, tr.iloc[b])
+        oof[b] = (1 - w) * mu_h + w * mu_a
+    resid = y - oof
+    calibration = {
+        "n": int(len(tr)), "n_groups": int(tr.group.nunique()),
+        "r2_oof": round(1 - float(np.sum(resid ** 2) / np.sum((y - y.mean()) ** 2)), 4),
+        "mae_pct_oof": round(float(np.mean(np.abs(np.expm1(resid)))) * 100, 1),
+        "median_ape_oof": round(float(np.median(np.abs(np.expm1(resid)))) * 100, 1),
+        "fold_weights": [round(w, 3) for w in weights],
+    }
+
+    # --- interval coverage, same protocol as evaluate() -------------------
+    splitter = GroupShuffleSplit(n_splits=N_CALIBRATION_SPLITS, test_size=TEST_SIZE,
+                                 random_state=SEED)
+    hits = {level: [] for level in LEVELS}
+    widths = {level: [] for level in LEVELS}
+    for a, b in splitter.split(tr, groups=groups):
+        inner, test = tr.iloc[a].reset_index(drop=True), tr.iloc[b]
+        ih, ia = _route_oof(inner)
+        w = _stack_weight(inner.y.to_numpy(), ih, ia)
+        band_resid = inner.y.to_numpy() - ((1 - w) * ih + w * ia)
+        mu_h, mu_a = _route_predictions(inner, test)
+        pred, actual = (1 - w) * mu_h + w * mu_a, test.y.to_numpy()
+        for level in LEVELS:
+            lo, hi = _offsets(band_resid, level)
+            hits[level].extend(((actual >= pred + lo) & (actual <= pred + hi)).tolist())
+            widths[level].extend([float(np.expm1(hi - lo))] * len(actual))
+    for level in LEVELS:
+        calibration[f"coverage_{level}"] = round(float(np.mean(hits[level])), 4)
+        calibration[f"band_width_pct_{level}"] = round(float(np.mean(widths[level])) * 100, 1)
+    calibration["coverage_n"] = len(hits[LEVELS[1]])
+    calibration["coverage_splits"] = N_CALIBRATION_SPLITS
+
+    # --- the served artifact: weight and band from all rows' OOF ----------
+    full_h, full_a = _route_oof(tr)
+    w = _stack_weight(y, full_h, full_a)
+    blend_resid = y - ((1 - w) * full_h + w * full_a)
+    return {
+        "ok": True,
+        "weight_anchor": round(w, 4),
+        "residual_std": round(float(np.std(blend_resid)), 4),
+        "offsets": {str(level): [round(v, 4) for v in _offsets(blend_resid, level)]
+                    for level in LEVELS},
+        "calibration": calibration,
+        "applies_to": ("a make with its own hedonic column and an oem_official new price; "
+                       "anything else keeps the inverse-variance blend and its widening"),
+        "basis": ("weight = least-squares share of the anchor on out-of-fold predictions; "
+                  "accuracy and coverage nested, folds grouped on the spec key"),
+    }
+
+
 def anchor_holdout(df: pd.DataFrame, retention: dict, level: float = 0.8) -> dict:
     """Does the new-price anchor actually rescue a brand the fit never saw?
 
@@ -402,6 +531,19 @@ def main() -> None:
     else:
         print(f"\nretention curve not fitted: {retention['reason']}")
 
+    # The blend is only defined against the tr_only hedonic fit it mixes with.
+    blend = fit_blend(df) if (retention.get("ok") and chosen == "tr_only") \
+        else {"ok": False, "reason": "needs the retention curve and the tr_only fit"}
+    if blend.get("ok"):
+        c = blend["calibration"]
+        print(f"\nserved blend (hedonic + anchor, weight learned out-of-fold): anchor share "
+              f"{blend['weight_anchor']:.2f}")
+        print(f"  R2 {c['r2_oof']:+.3f}, median error {c['median_ape_oof']}%, "
+              f"80% band covered {c['coverage_0.8']:.3f} at width {c['band_width_pct_0.8']}% "
+              f"(hedonic band: {overall['coverage_0.8']:.3f} at {overall['band_width_pct_0.8']}%)")
+    else:
+        print(f"\nserved blend not fitted: {blend['reason']}")
+
     anchor_test = anchor_holdout(df, retention)
     if anchor_test["_summary"].get("ran"):
         print("\n  does the anchor rescue an unseen make? (whole TR brands held out)")
@@ -441,7 +583,7 @@ def main() -> None:
                      "tr_only_view": comparison["pooled_tr_us"] if chosen == "pooled_tr_us"
                      else comparison["tr_only"],
                      "without_brand_columns": no_brand},
-        anchor={**retention, "unseen_brand_test": anchor_test},
+        anchor={**retention, "unseen_brand_test": anchor_test, "blend": blend},
         widening={"unknown_brand": widen,
                   "unknown_brand_basis": (
                       "measured by within-market leave-one-brand-out: whole makes were held "

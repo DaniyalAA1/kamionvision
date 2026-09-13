@@ -95,16 +95,16 @@
     "without_brand_columns": {
       "n": 84,
       "n_groups": 24,
-      "r2_oof": 0.8657,
-      "mae_pct_oof": 6.4,
-      "median_ape_oof": 3.8,
-      "residual_std_oof": 0.0909,
-      "coverage_0.5": 0.5877,
-      "band_width_pct_0.5": 11.6,
-      "coverage_0.8": 0.8006,
-      "band_width_pct_0.8": 31.1,
-      "coverage_0.9": 0.8424,
-      "band_width_pct_0.9": 40.9,
+      "r2_oof": 0.8252,
+      "mae_pct_oof": 7.0,
+      "median_ape_oof": 3.9,
+      "residual_std_oof": 0.1036,
+      "coverage_0.5": 0.5637,
+      "band_width_pct_0.5": 13.2,
+      "coverage_0.8": 0.7745,
+      "band_width_pct_0.8": 33.5,
+      "coverage_0.9": 0.8372,
+      "band_width_pct_0.9": 45.3,
       "coverage_n": 958,
       "coverage_splits": 40
     }
@@ -261,10 +261,53 @@
         "median_ape_with_anchor": 3.7,
         "basis": "whole Turkish makes held out of the hedonic fit and priced as unknowns, with the 1.85x unknown-brand widening alone versus the new-price anchor blended in"
       }
+    },
+    "blend": {
+      "ok": true,
+      "weight_anchor": 1.0,
+      "residual_std": 0.0619,
+      "offsets": {
+        "0.5": [
+          -0.0251,
+          0.0365
+        ],
+        "0.8": [
+          -0.0859,
+          0.0543
+        ],
+        "0.9": [
+          -0.106,
+          0.0567
+        ]
+      },
+      "calibration": {
+        "n": 84,
+        "n_groups": 24,
+        "r2_oof": 0.9381,
+        "mae_pct_oof": 4.5,
+        "median_ape_oof": 3.1,
+        "fold_weights": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "coverage_0.5": 0.5814,
+        "band_width_pct_0.5": 8.9,
+        "coverage_0.8": 0.809,
+        "band_width_pct_0.8": 16.7,
+        "coverage_0.9": 0.8695,
+        "band_width_pct_0.9": 21.6,
+        "coverage_n": 958,
+        "coverage_splits": 40
+      },
+      "applies_to": "a make with its own hedonic column and an oem_official new price; anything else keeps the inverse-variance blend and its widening",
+      "basis": "weight = least-squares share of the anchor on out-of-fold predictions; accuracy and coverage nested, folds grouped on the spec key"
     }
   },
   "meta": {
-    "fitted_at": "2026-09-12T19:55:56",
+    "fitted_at": "2026-09-12T22:04:39",
     "training_set": "tr_only",
     "n_listings": 84,
     "n_groups": 24,

@@ -225,11 +225,17 @@ function working(a, ev, price) {
                     [`${price.adjustment.pct >= 0 ? '+' : ''}${fixed(price.adjustment.pct, 1)}%`,
                      'num ' + (price.adjustment.pct >= 0 ? 'pos' : 'neg')]]);
     }
+    const blended = card.estimator === 'blend' && price.anchor && price.anchor.ok;
     body.append(section(
       'What moves this number',
-      el('p', null, 'A ridge regression over the comparable listings. The vision '
-        + 'model never sees a price and the regression never sees the photos; the '
-        + 'only thing that crosses between them is the condition multiplier on the '
+      el('p', null, (blended
+        ? `${Math.round(price.anchor.weight * 100)}% of this price comes from what the `
+          + 'truck costs new, depreciated (below), a share learned from held-out '
+          + 'listings. The table is the comparable-listings regression it was weighed '
+          + 'against. '
+        : 'A ridge regression over the comparable listings. ')
+        + 'The vision model never sees a price and the pricing never sees the photos; '
+        + 'the only thing that crosses between them is the condition multiplier on the '
         + 'last row.'),
       table([['Factor'], ['Value', 'num'], ['Effect vs. the average truck', 'num']],
             drivers)));
@@ -287,7 +293,8 @@ function working(a, ev, price) {
         el('p', null, `${money(anchor.point, anchor.currency)} — ${anchor.basis}`),
         el('p', 'work-note', `Source: ${anchor.source} `
           + `(${String(anchor.source_type).replace(/_/g, ' ')}), stamped ${anchor.as_of}. `
-          + `Weight in the estimate ${Math.round(anchor.weight * 100)}%, by inverse variance.`)));
+          + `Weight in the estimate ${Math.round(anchor.weight * 100)}%, `
+          + (card.estimator === 'blend' ? 'learned from held-out listings.' : 'by inverse variance.'))));
     }
     if (price.caveats && price.caveats.length) {
       body.append(section('Caveats', list(price.caveats)));

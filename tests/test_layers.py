@@ -255,6 +255,23 @@ class Anchor(unittest.TestCase):
         self.assertLess(sd, 0.10)
 
 
+class StackWeight(unittest.TestCase):
+    """The learned blend share, which replaced inverse variance where measured."""
+
+    def test_a_perfect_route_takes_all_the_weight(self):
+        from app.pricing.train import _stack_weight
+        y = np.array([1.0, 2.0, 3.0, 4.0])
+        self.assertAlmostEqual(_stack_weight(y, y + [0.3, -0.2, 0.1, -0.4], y), 1.0)
+        self.assertAlmostEqual(_stack_weight(y, y, y + [0.3, -0.2, 0.1, -0.4]), 0.0)
+
+    def test_the_weight_is_a_share(self):
+        from app.pricing.train import _stack_weight
+        rng = np.random.default_rng(0)
+        y = rng.normal(size=50)
+        w = _stack_weight(y, y + rng.normal(size=50), y - 3 + rng.normal(size=50))
+        self.assertTrue(0.0 <= w <= 1.0)
+
+
 class AnchorInEstimate(unittest.TestCase):
     """The fitted artifact has to actually reach the price."""
 
@@ -277,18 +294,52 @@ class AnchorInEstimate(unittest.TestCase):
         self.assertFalse(noref.anchor.ok)
         self.assertLess(withref.high - withref.low, noref.high - noref.low)
 
-    def test_the_band_never_narrows_below_the_measured_interval(self):
-        # The 80.3% coverage belongs to the unwidened hedonic band. The anchor
-        # may claw back a widening; it may not claim a tighter band than the
-        # one that was actually measured.
-        lo_off, hi_off = self.model.offsets["0.8"]
-        est = self._estimate(year=2021, km=164374, make="FORD", vehicle_model="F-MAX")
+    def _band_ratio_at_least(self, est, offsets):
+        lo_off, hi_off = offsets
         floor = math.exp(hi_off) / math.exp(lo_off)
         # Prices are rounded to the nearest 1000 for display, so the ratio of
         # two rounded ends can sit a hair under the exact one. Tolerate exactly
         # that much and no more: half a step on each end, relative to the band.
         tol = 1000.0 / est.baseline_low
         self.assertGreaterEqual(est.baseline_high / est.baseline_low, floor - tol)
+
+    def test_the_band_never_narrows_below_the_measured_interval(self):
+        # An unseen make keeps the inverse-variance blend, which was never
+        # measured, so it may claw back a widening but never claim a band
+        # tighter than the hedonic one whose coverage was.
+        est = self._estimate(year=2021, km=500000, make="MERCEDES-BENZ",
+                             vehicle_model="Actros")
+        self.assertEqual(est.model_card["estimator"], "hedonic")
+        self._band_ratio_at_least(est, self.model.offsets["0.8"])
+
+    def test_a_measured_blend_serves_its_own_band_and_its_own_numbers(self):
+        # Ford with an official new price is the case the blend was scored on:
+        # the band and the coverage printed beside it must both be the blend's.
+        blend = self.model.anchor.get("blend") or {}
+        if not blend.get("ok"):
+            self.skipTest("no measured blend - run app.pricing.train")
+        est = self._estimate(year=2021, km=164374, make="FORD", vehicle_model="F-MAX")
+        self.assertEqual(est.model_card["estimator"], "blend")
+        self.assertEqual(est.model_card["coverage"], blend["calibration"]["coverage_0.8"])
+        self.assertAlmostEqual(est.anchor.weight, blend["weight_anchor"], places=3)
+        self._band_ratio_at_least(est, blend["offsets"]["0.8"])
+
+    def test_the_blend_band_is_labelled_honestly(self):
+        # Narrowing is only allowed because it was measured; an "80%" band that
+        # covers far off 80% on held-out listings would be a claim, not a fact.
+        blend = self.model.anchor.get("blend") or {}
+        if not blend.get("ok"):
+            self.skipTest("no measured blend - run app.pricing.train")
+        self.assertTrue(0.0 <= blend["weight_anchor"] <= 1.0)
+        self.assertAlmostEqual(blend["calibration"]["coverage_0.8"], 0.8, delta=0.05)
+
+    def test_a_trade_press_price_does_not_borrow_the_measured_blend(self):
+        from app.pricing import anchor as A
+        row = A.lookup("MERCEDES-BENZ", "Actros")
+        self.assertEqual(row["source_type"], "trade_press")
+        est = self._estimate(year=2021, km=500000, make="MERCEDES-BENZ",
+                             vehicle_model="Actros")
+        self.assertNotEqual(est.model_card["estimator"], "blend")
 
     def test_a_missing_reference_degrades_to_the_shipped_behaviour(self):
         est = self._estimate(year=2021, km=500000, make="SCANIA", vehicle_model="R450")
