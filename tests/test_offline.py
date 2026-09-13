@@ -1518,11 +1518,73 @@ class Gallery(unittest.TestCase):
     def test_the_lot_filter_does_not_change_how_a_truck_is_priced(self):
         # A US card on the wall is still sent as market=TR. The old dropdown
         # asked a Turkish fit for a number in dollars; this one must not.
+        # The lot control is a Country facet in js/filters.js now, which is
+        # where the browse vocabulary lives; app.js is still the only place a
+        # market reaches the pipeline.
         app = Path("app/web/app.js").read_text(encoding="utf-8")
-        gallery = Path("app/web/js/gallery.js").read_text(encoding="utf-8")
+        filters = Path("app/web/js/filters.js").read_text(encoding="utf-8")
         self.assertIn("p.set('market', 'TR')", app)
-        self.assertIn("Türkiye", gallery)
-        self.assertIn("gallery-market", gallery)
+        self.assertIn("Türkiye", filters)
+        self.assertIn("gallery-market", filters)
+
+    def test_no_card_on_the_wall_is_exempt_from_the_filters(self):
+        # The rehearsed cases used to be pinned into the grid AND excused from
+        # every chip by `if (card.demo) return true`, so narrowing to Ford left
+        # a motorcycle sitting among the Fords. They have their own shelf now,
+        # and the grid is fed from a pool with no demo cards in it at all.
+        src = Path("app/web/js/gallery.js").read_text(encoding="utf-8")
+        self.assertNotIn("card.demo) return true", src)
+        self.assertIn("demos = cards.filter((c) => c.demo)", src)
+        self.assertIn("listings = cards.filter((c) => !c.demo)", src)
+        # The shelf draws the demos; everything paged draws from `listings`.
+        self.assertIn("shelf.replaceChildren(...demos.map(nodeFor))", src)
+        self.assertIn("listings.filter((c) => inSearch(c) && facets.matches(c))", src)
+
+    def test_the_wall_is_paged_rather_than_grown(self):
+        # "Show 24 more" only went one way and hid how much there was.
+        src = Path("app/web/js/gallery.js").read_text(encoding="utf-8")
+        html = Path("app/web/index.html").read_text(encoding="utf-8")
+        self.assertNotIn("more trucks", src)
+        self.assertNotIn("gallery-more", html)
+        self.assertIn('id="gallery-pager"', html)
+        self.assertIn("pager.render", src)
+        # Any narrowing goes back to page one: staying on page 4 of a two-page
+        # result set is how "the filter did nothing" happens.
+        self.assertRegex(src, r"function narrow\(\) \{\s*page = 1;")
+
+    def test_every_filter_group_reads_a_key_the_cards_carry(self):
+        # A typo in a group id is a filter that silently matches nothing.
+        src = Path("app/web/js/filters.js").read_text(encoding="utf-8")
+        block = re.search(r"export const GROUPS = \[(.*?)\n\];", src, re.S).group(1)
+        ids = re.findall(r"\{ id: '([a-z_]+)'", block)
+        self.assertEqual(ids, ["make", "year", "km", "market", "capture"])
+        card = next(c for c in self.cards if not c["demo"])
+        for key in ids:
+            self.assertIn(key, card, key)
+
+    def test_the_photo_filter_can_reach_every_capture_label(self):
+        # `mixed` was in the data from the first harvest and had no chip, so
+        # 103 of 197 trucks could not be filtered to at all.
+        src = Path("app/web/js/filters.js").read_text(encoding="utf-8")
+        labels = {c["capture"] for c in self.cards if not c["demo"]}
+        for label in labels:
+            self.assertIn(f"c.capture === '{label}'", src, label)
+
+    def test_the_upload_path_survives_the_gallery_overhaul(self):
+        # The brief is judged on photos the team has never seen, and the
+        # dropzone is the only way those reach the system. It moved behind a
+        # button; it did not go away.
+        html = Path("app/web/index.html").read_text(encoding="utf-8")
+        app = Path("app/web/app.js").read_text(encoding="utf-8")
+        self.assertIn('id="dropzone"', html)
+        self.assertIn('id="own-toggle"', html)
+        self.assertIn('aria-controls="own-panel"', html)
+        self.assertIn("uploadFiles", app)
+        # The seller fields feed declaredParams() whether or not the panel is
+        # open, so they have to stay in the document rather than be built on
+        # demand.
+        for field in ("f-year", "f-km", "f-make", "f-asking"):
+            self.assertIn(f'id="{field}"', html)
 
 
 class NearDuplicateMerge(unittest.TestCase):

@@ -1,42 +1,86 @@
-/* The gallery: one grid, every truck, no market split.
+/* The gallery: a shelf of rehearsed cases, then a wall you can page.
 
    A card is a photograph with its specification sitting on it, the way a
    marketplace listing looks, because that is what a person is actually
    scanning for - shape, colour, how clean it is. The specification is set over
-   a scrim rather than in a panel below, so 200 of them still read as a wall of
-   trucks rather than a table with pictures.
+   a scrim rather than in a panel below, so a page of them still reads as a
+   wall of trucks rather than a table with pictures.
+
+   Above the wall, five buttons and a search field. What they replaced was
+   roughly twenty outlined chips in two different control idioms, which drew
+   twenty boxes the eye had to read before it reached a truck. The filters that
+   are ON are the loud thing now - pills, in ink, under the buttons - and the
+   filters that are merely AVAILABLE are quiet until you open one.
 
    The rehearsed cases are marked by what the system will DO with them - price
    it, ask for more, refuse - because that is the only thing about them worth
    knowing in advance. */
 
-.gallery-head {
+/* ---------- section heads ---------- */
+
+.block-head {
   display: flex;
   align-items: baseline;
   gap: var(--s-4);
-  margin: var(--s-7) 0 var(--s-4);
+  margin: 0 0 var(--s-4);
 }
-.gallery-head h2 { font-size: 2.4rem; }
-.gallery-count { color: var(--steel); font-size: var(--t-sm); margin-left: auto; }
+.block-head h2 { font-size: 2.2rem; letter-spacing: -.02em; }
+.block-sub, .gallery-count {
+  color: var(--steel);
+  font-size: var(--t-sm);
+  margin-left: auto;
+  text-align: right;
+}
+.shelf-block { margin-bottom: var(--s-7); }
+.shelf-block[hidden] { display: none; }
+.browse { scroll-margin-top: var(--s-4); }
+
+/* ---------- the rehearsed shelf ---------- */
+
+/* A shelf rather than a grid: nine cases wrap into a ragged second row in any
+   column count this page uses, and a ragged row reads as "the gallery started
+   badly" rather than "these nine are a set". Scrolling sideways also says
+   there are more without spending vertical space saying it. */
+.case-shelf {
+  display: flex;
+  gap: var(--s-4);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: var(--s-3);
+  scrollbar-width: thin;
+  /* The right edge fades so a half-visible tenth card reads as "keep going"
+     rather than as a clipping bug. */
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 3rem), transparent 100%);
+}
+.case-shelf .truck {
+  flex: 0 0 15.5rem;
+  scroll-snap-align: start;
+}
+.case-shelf::-webkit-scrollbar { height: 6px; }
+.case-shelf::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius); }
+
+/* ---------- search and sort ---------- */
 
 .gallery-tools {
   display: flex;
   align-items: center;
   gap: var(--s-3);
   flex-wrap: wrap;
-  margin: 0 0 var(--s-4);
+  margin: 0 0 var(--s-3);
 }
 .gallery-search {
   display: flex;
   align-items: center;
   gap: .55rem;
-  flex: 1 1 16rem;
+  flex: 1 1 18rem;
   min-width: 12rem;
   background: var(--card);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  padding: .55rem .85rem;
+  padding: .6rem .9rem;
+  transition: border-color .18s;
 }
+.gallery-search:focus-within { border-color: var(--ink); }
 .gallery-search .part-icon { width: 1.05rem; height: 1.05rem; color: var(--steel); }
 .gallery-search input {
   border: 0;
@@ -46,123 +90,142 @@
   color: var(--ink);
   outline: none;
 }
-.gallery-tools select {
+.gallery-sort {
   border: 1px solid var(--edge);
   background: var(--card);
   border-radius: var(--radius);
-  padding: .62rem 1.8rem .62rem .75rem;
+  padding: .66rem 1.8rem .66rem .75rem;
   font: var(--t-sm)/1 var(--sans);
   color: var(--ink);
 }
 
-/* A physical key-switch: the ink thumb slides to the chosen stop instead of
-   the pressed state popping. Same piece for the All/Listings/Guided tabs and
-   the Türkiye/US lot filter. */
-.seg {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  isolation: isolate;
-  padding: 3px;
-  background: var(--lot-deep);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-}
-.seg-thumb {
-  position: absolute;
-  top: 0;
-  left: 0;
-  background: var(--ink);
-  border-radius: calc(var(--radius) - 3px);
-  pointer-events: none;
-  z-index: 0;
-  transition: transform .45s var(--ease-out), width .45s var(--ease-out), height .45s var(--ease-out);
-}
-.seg-btn {
-  position: relative;
-  z-index: 1;
-  background: transparent;
-  border: 0;
-  border-radius: calc(var(--radius) - 3px);
-  padding: .5rem .85rem;
-  color: var(--steel);
-  font: 500 var(--t-sm)/1 var(--sans);
-  cursor: pointer;
-  transition: color .28s var(--ease-out);
-}
-.seg-btn[aria-checked="true"] { color: var(--card); }
-.seg-btn:hover:not([aria-checked="true"]) { color: var(--ink); }
-.seg-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* ---------- the facet bar ---------- */
 
-.gallery-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-3);
-  margin-top: var(--s-5);
-  padding-top: var(--s-4);
-  border-top: 1px solid var(--edge);
-  font-size: var(--t-xs);
-  color: var(--steel);
-}
-
-/* ---------- filters ---------- */
-
-.filters {
+.facet-bar {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.facet { position: relative; }
+
+.facet-btn {
+  display: inline-flex;
   align-items: center;
-  gap: .4rem var(--s-2);
-  padding-bottom: var(--s-4);
-  border-bottom: 1px solid var(--edge);
-  margin-bottom: var(--s-5);
-}
-.filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
-.filter-group + .filter-group {
-  margin-left: var(--s-3);
-  padding-left: var(--s-3);
-  border-left: 1px solid var(--edge);
-}
-.filter-lot .seg { vertical-align: middle; }
-.filter-label {
-  font: 400 var(--t-xs)/1 var(--sans);
-  color: var(--steel-dim);
-  margin-right: .15rem;
-}
-/* Twenty outlined pills above the wall drew twenty boxes and the eye had to
-   read all of them before it reached a truck. The resting state is a filled
-   tint with no border, so the row reads as one soft band until you touch it;
-   choosing one still fills it with ink, which is the loudest thing the row
-   can do and belongs only to a filter that is on. */
-.chip {
-  font: 500 var(--t-sm)/1 var(--cond);
-  letter-spacing: .01em;
-  color: var(--steel);
+  gap: .45rem;
+  padding: .58rem .85rem;
   background: var(--lot-deep);
   border: 1px solid transparent;
   border-radius: var(--radius);
-  padding: .42rem .8rem;
+  color: var(--steel);
+  font: 500 var(--t-sm)/1 var(--sans);
   cursor: pointer;
   white-space: nowrap;
-  transition: color .16s, border-color .16s, background .16s;
+  transition: color .16s, background .16s, border-color .16s;
 }
-.chip:hover { color: var(--ink); border-color: var(--edge); background: var(--card); }
-.chip b { font-weight: 400; color: var(--steel-dim); margin-left: .3rem; }
-.chip[aria-pressed="true"] {
-  color: var(--card); background: var(--ink); border-color: var(--ink);
+.facet-btn:hover { color: var(--ink); background: var(--card); border-color: var(--edge); }
+.facet-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.facet.on .facet-btn, .facet-btn[aria-expanded="true"] {
+  background: var(--card);
+  border-color: var(--ink);
+  color: var(--ink);
 }
-.chip[aria-pressed="true"] b { color: rgba(255, 255, 255, .6); }
+/* Ink only for a filter that is applied, and it outranks the open-menu look
+   on purpose: an open menu is a thing you are looking at and can see, while a
+   selected filter is a thing that is changing the wall. Specificity matched to
+   the rule above so source order decides, and this is the later one. */
+.facet .facet-btn.on { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.facet .facet-btn.on:hover { background: var(--ink); color: var(--card); }
+.facet-caret { font-size: .7em; opacity: .7; }
+.facet-n:empty { display: none; }
+.facet-n {
+  font: 400 var(--t-xs)/1 var(--mono);
+  padding: .15rem .35rem;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, .18);
+}
 
-.filter-clear {
+.facet-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + .35rem);
+  left: 0;
+  min-width: 14rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding: .35rem;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--lift);
+  animation: facet-open .18s var(--ease-out);
+}
+.facet-menu[hidden] { display: none; }
+/* Its horizontal position is measured in js/filters.js the moment it opens:
+   the bar wraps, so which button is rightmost is not a source-order fact. */
+@keyframes facet-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.facet-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .45rem .5rem;
+  border-radius: var(--radius);
+  font: 400 var(--t-sm)/1.2 var(--sans);
+  cursor: pointer;
+}
+.facet-row:hover { background: var(--lot-deep); }
+.facet-row input { accent-color: var(--ink); margin: 0; cursor: pointer; }
+.facet-label { flex: 1; white-space: nowrap; }
+.facet-row b { font: 400 var(--t-xs)/1 var(--mono); color: var(--steel-dim); }
+/* A dead end stays in the list and goes flat. Removing it would reshuffle the
+   list under the cursor every time a box is ticked. */
+.facet-row.empty { opacity: .38; cursor: default; }
+.facet-row.empty:hover { background: none; }
+.facet-none { color: var(--steel); font-size: var(--t-sm); padding: .5rem; margin: 0; }
+
+/* ---------- what is currently on ---------- */
+
+.facet-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: var(--s-4);
+}
+.facet-pills[hidden] { display: none; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .38rem .5rem .38rem .65rem;
+  background: var(--ink);
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--card);
+  font: 500 var(--t-sm)/1 var(--sans);
+  cursor: pointer;
+}
+.pill-group {
+  font: 400 var(--t-xs)/1 var(--mono);
+  color: rgba(255, 255, 255, .55);
+  letter-spacing: .02em;
+}
+.pill-x { font-size: 1.1em; line-height: .8; opacity: .7; }
+.pill:hover .pill-x { opacity: 1; color: var(--signal); }
+.pill:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pill-clear {
   margin-left: auto;
   font: 400 var(--t-sm)/1 var(--sans);
   color: var(--signal-ink);
   background: none;
   border: 0;
   cursor: pointer;
-  padding: .42rem 0;
+  padding: .38rem 0;
 }
-.filter-clear[hidden] { display: none; }
 
 /* ---------- the grid ---------- */
 
@@ -170,12 +233,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
   gap: var(--s-4);
-}
-.gallery-exit {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
 }
 .gallery-empty { color: var(--steel); padding: var(--s-6) 0; }
 
@@ -255,6 +312,22 @@
 .truck-flag[data-expect="refused"]        { background: var(--stop); }
 .truck-flag[data-expect="need_more_photos"] { background: var(--caution); }
 
+/* Where it was advertised. Quiet - it is a fact about the listing, not about
+   the truck - but present, so the Country filter is visibly doing something
+   rather than silently thinning the wall. */
+.truck-lot {
+  position: absolute;
+  top: .7rem;
+  right: .7rem;
+  font: 400 var(--t-xs)/1 var(--mono);
+  letter-spacing: .02em;
+  color: rgba(255, 255, 255, .9);
+  padding: .3rem .5rem;
+  border-radius: var(--radius);
+  background: rgba(12, 18, 25, .55);
+  backdrop-filter: blur(3px);
+}
+
 .truck-missing {
   position: absolute;
   inset: 0;
@@ -278,32 +351,70 @@
   background: var(--lot-deep);
 }
 
-/* The first screenful deals in rather than appearing at once, which is how
-   you see how many there are. One sequence, on load, and never again. */
+/* The first screenful deals in rather than appearing at once, which is how you
+   see how many there are. A later page rises the same way, faster. */
 .truck.deal { animation: deal .45s var(--ease-out) backwards; }
 @keyframes deal {
   from { opacity: 0; transform: translateY(10px) scale(.99); }
   to   { opacity: 1; transform: none; }
 }
 
+/* ---------- the foot and the pages ---------- */
+
+.gallery-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--edge);
+  font-size: var(--t-xs);
+  color: var(--steel);
+}
+
+.pager { display: flex; align-items: center; gap: .3rem; }
+.pager[hidden] { display: none; }
+.page-no, .page-step {
+  min-width: 2.2rem;
+  padding: .45rem .55rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--steel);
+  font: 500 var(--t-sm)/1 var(--sans);
+  cursor: pointer;
+  transition: color .16s, background .16s, border-color .16s;
+}
+.page-no:hover, .page-step:not([disabled]):hover {
+  color: var(--ink);
+  background: var(--card);
+  border-color: var(--edge);
+}
+.page-no.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
+}
+.page-no:focus-visible, .page-step:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.page-step[disabled] { opacity: .3; cursor: default; }
+.page-gap { padding: 0 .2rem; color: var(--steel-dim); }
+
 @media (max-width: 600px) {
   /* The heading and its count fought over one line and both lost: a two-line
-     "Or try one of these" beside a two-line count. */
-  .gallery-head { flex-wrap: wrap; gap: .35rem; }
-  .gallery-head h2 { font-size: 2rem; }
-  .gallery-count { margin-left: 0; flex-basis: 100%; }
+     head beside a two-line count. */
+  .block-head { flex-wrap: wrap; gap: .35rem; }
+  .block-head h2 { font-size: 1.9rem; }
+  .block-sub, .gallery-count { margin-left: 0; flex-basis: 100%; text-align: left; }
   .gallery-search { flex-basis: 100%; }
-  .seg-btn { padding: .45rem .6rem; font-size: var(--t-xs); }
-  /* Squeezed onto the tabs' row the sort read "Recon" with the chevron sitting
-     on top of it. */
-  .gallery-tools select { flex: 1 1 100%; min-width: 0; }
-  /* One group per row. The rules between groups are for a single line of
-     filters; once the row wraps they hang off the left of a new line with
-     nothing on the other side of them. */
-  .filter-group { flex-basis: 100%; }
-  .filter-group + .filter-group {
-    margin-left: 0;
-    padding-left: 0;
-    border-left: 0;
-  }
+  /* Squeezed onto the search's row the sort read "Recon" with the chevron
+     sitting on top of it. */
+  .gallery-sort { flex: 1 1 100%; min-width: 0; }
+  .facet-menu { min-width: 12rem; }
+  .case-shelf .truck { flex-basis: 13rem; }
+  .gallery-foot { justify-content: center; }
 }

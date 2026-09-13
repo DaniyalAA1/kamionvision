@@ -37,14 +37,24 @@
 <!-- ============================== intake ============================== -->
 <section class="intake" id="intake">
 
-  <div class="hero">
   <div class="intake-head">
-    <h1>What's this truck worth?</h1>
-    <p>Send photos of a tractor unit and you'll get a price range, a read on its
-       condition, and a straight answer about what the photos can't tell you.</p>
+    <div class="intake-say">
+      <h1>What's this truck worth?</h1>
+      <p>Send photos of a tractor unit and you'll get a price range, a read on its
+         condition, and a straight answer about what the photos can't tell you.</p>
+    </div>
+    <button class="own-toggle" id="own-toggle" type="button"
+            aria-expanded="false" aria-controls="own-panel">
+      <span>Use my own photos</span>
+      <span class="own-caret" aria-hidden="true">▾</span>
+    </button>
   </div>
 
-  <div class="intake-do">
+  <!-- The judged path: a seller with a phone, or a judge holding photos
+       nobody here has seen. One click behind a button rather than a dropzone
+       filling the first screenful, because the trucks below are what this
+       screen is for and they used to start under the fold. -->
+  <div class="own-panel" id="own-panel" hidden>
   <div class="dropzone" id="dropzone" tabindex="0" role="button"
        aria-label="Add photos of the truck">
     <input type="file" id="filepicker" multiple accept="image/*" hidden>
@@ -70,16 +80,36 @@
       <label>Asking price <input type="number" id="f-asking" min="0" step="10000" placeholder="2800000"></label>
     </div>
   </details>
-  </div><!-- /intake-do -->
-  </div><!-- /hero -->
+  </div><!-- /own-panel -->
 
-  <div class="gallery-head">
-    <h2>Or try one of these</h2>
-    <p class="gallery-count" id="gallery-count">loading trucks…</p>
-  </div>
-  <div class="filters" id="filters"></div>
-  <div class="gallery" id="gallery"></div>
-  <p class="gallery-empty" id="gallery-empty" hidden>No trucks match those filters.</p>
+  <!-- The rehearsed cases are a different kind of object from the corpus: we
+       know what each one does before it runs. They get their own shelf, and
+       the filters below never touch them. -->
+  <section class="shelf-block" id="shelf-block">
+    <div class="block-head">
+      <h2>Start with a rehearsed case</h2>
+      <p class="block-sub">Sets we already know the answer to — including the
+         ones it refuses.</p>
+    </div>
+    <div class="case-shelf" id="case-shelf"></div>
+  </section>
+
+  <section class="browse" id="browse">
+    <div class="block-head">
+      <h2>Or browse the corpus</h2>
+      <p class="gallery-count" id="gallery-count">loading trucks…</p>
+    </div>
+    <div class="gallery-tools" id="gallery-tools"></div>
+    <div class="facet-bar" id="facet-bar"></div>
+    <div class="facet-pills" id="facet-pills" hidden></div>
+    <div class="gallery" id="gallery"></div>
+    <p class="gallery-empty" id="gallery-empty" hidden>No trucks match those
+       filters. Clear one to widen the search.</p>
+    <div class="gallery-foot">
+      <span id="gallery-range"></span>
+      <nav class="pager" id="gallery-pager" aria-label="Gallery pages" hidden></nav>
+    </div>
+  </section>
 </section>
 
 <!-- =============================== run ================================ -->

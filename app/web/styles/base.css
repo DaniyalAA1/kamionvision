@@ -150,27 +150,61 @@ a { color: inherit; }
 
 /* ---------- intake ---------- */
 
-/* Two halves: what this is on the left, what you do about it on the right.
-   The wall of trucks - the thing actually worth looking at - then starts
-   inside the first screenful instead of below it. */
-.hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  gap: var(--s-7);
-  align-items: end;
-  padding: var(--s-6) 0 var(--s-2);
+/* One band of words across the full width, then trucks. The screen used to
+   put a 15rem dropzone in the right half of the first screenful, which pushed
+   the wall - the thing actually worth looking at - under the fold. Sending
+   your own photos is now the button at the end of this band, and it opens the
+   drop target in place. */
+.intake-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-6);
+  padding: var(--s-6) 0 var(--s-5);
 }
-@media (max-width: 820px) { .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s-5); } }
-
-.intake-head { max-width: 26rem; }
+.intake-say { min-width: 0; }
 .intake-head h1 {
-  font-size: clamp(3rem, 6.5vw, 4.6rem);
+  font-size: clamp(2.6rem, 5.6vw, 4.2rem);
   letter-spacing: -.035em;
-  margin-bottom: var(--s-4);
+  margin-bottom: var(--s-3);
 }
-.intake-head p { color: var(--steel); font-size: var(--t-md); max-width: 38ch; }
+.intake-head p { color: var(--steel); font-size: var(--t-md); max-width: 52ch; }
 
-.intake-do { min-width: 0; }
+.own-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .72rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: 500 var(--t-sm)/1 var(--sans);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, transform .18s var(--ease-out);
+}
+.own-toggle:hover { border-color: var(--signal); transform: translateY(-1px); }
+.own-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.own-caret { color: var(--steel); transition: transform .25s var(--ease-out); }
+.own-toggle[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--lot); }
+.own-toggle[aria-expanded="true"] .own-caret { transform: rotate(180deg); color: inherit; }
+
+.own-panel {
+  max-width: 40rem;
+  margin: 0 0 var(--s-6);
+  animation: own-open .32s var(--ease-out);
+}
+.own-panel[hidden] { display: none; }
+@keyframes own-open {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (max-width: 820px) {
+  .intake-head { flex-direction: column; align-items: stretch; gap: var(--s-4); }
+  .own-toggle { align-self: flex-start; }
+  .own-panel { max-width: none; }
+}
 
 /* This is the primary action on the screen and it used to be the palest thing
    on it: a hairline dashed rectangle on near-white, with the actual control
@@ -181,7 +215,7 @@ a { color: inherit; }
   justify-items: center;
   align-content: center;
   gap: .3rem;
-  min-height: 15rem;
+  min-height: 12rem;
   padding: var(--s-6) var(--s-5);
   background: var(--card);
   border: 1px dashed var(--edge);

@@ -288,6 +288,18 @@ function bandNote(price) {
 
 /* ---------- wiring ---------- */
 
+/* The upload panel. The gallery is the screen now, so the drop target lives
+   one press behind a button - but it is still the path a judge's own photos
+   take, so it opens in place, focuses itself, and the seller fields inside it
+   keep feeding `declaredParams()` whether the panel is open or shut. */
+const own = $('own-toggle');
+own.addEventListener('click', () => {
+  const open = own.getAttribute('aria-expanded') !== 'true';
+  own.setAttribute('aria-expanded', String(open));
+  $('own-panel').hidden = !open;
+  if (open) $('dropzone').focus();
+});
+
 const dz = $('dropzone');
 dz.addEventListener('click', () => $('filepicker').click());
 dz.addEventListener('keydown', (e) => {
