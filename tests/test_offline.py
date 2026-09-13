@@ -1187,7 +1187,7 @@ class ScreenChrome(unittest.TestCase):
 
     def test_price_ranges_are_separate_and_directly_labelled(self):
         js = Path("app/web/js/band.js").read_text(encoding="utf-8")
-        self.assertIn("Photo-adjusted estimate", js)
+        self.assertIn("Adjusted estimate", js)
         self.assertIn("Comparable-market baseline", js)
         self.assertIn("Both rows use the same price scale", js)
         self.assertIn("not confirmed sale prices", js)

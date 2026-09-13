@@ -15,7 +15,10 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .history import HistoryReport
 
 
 def _asdict(obj: Any) -> Any:
@@ -646,6 +649,7 @@ class Appraisal(_Dict):
     perception: PerceptionReport | None = None
     evidence: EvidenceReport | None = None
     reconcile: ReconcileReport | None = None
+    history: HistoryReport | None = None
     price: PriceEstimate | None = None
     requests: list[str] = field(default_factory=list)
     declared: dict = field(default_factory=dict)

@@ -211,7 +211,7 @@ function render(a) {
     priceLine(price);
     $('price-sub').textContent = subLine(a, ev, price);
     drawBand($('band'), price);
-    $('band-note').textContent = bandNote(price);
+    $('band-note').textContent = bandNote(price, a.history);
     writeUsdBand(price);
   } else if (price && !price.ok) {
     showRefusal(a.headline, price.reason);
@@ -266,7 +266,12 @@ function subLine(a, ev, price) {
 /* The two bands are not interchangeable, so the note that explains them says
    which is which without quoting the measured figure for the one it does not
    belong to. That number lives in the disclosure, attached to its own band. */
-function bandNote(price) {
+function bandNote(price, history) {
+  if (history?.adjustment_pct) {
+    return `Visible condition changed the baseline by ${fixed(price.adjustment.pct, 1)}%; `
+      + `VIN-confirmed accident history then reduced that estimate by ${fixed(Math.abs(history.adjustment_pct), 1)}%. `
+      + 'The history deduction is a stated policy assumption. See the record and calculation below.';
+  }
   if (Math.abs(price.point - price.baseline_point) <= 1) {
     return 'This is what comparable trucks of this age and mileage are being '
       + 'asked for. Nothing in the photos moved it.';
