@@ -154,6 +154,18 @@ class PipelineTests(unittest.TestCase):
         history_scan.assert_not_called()
         self.assertIsNone(result.history)
 
+    def test_refused_input_never_triggers_history_scan(self):
+        from app import pipeline
+        from app.schema import GateDecision
+        with patch('app.pipeline.gate_stage.run',
+                   return_value=GateReport(decision=GateDecision.REFUSE_NOT_A_TRUCK)), \
+             patch('app.pipeline.history_stage.enabled', return_value=True), \
+             patch('app.pipeline.history_stage.scan') as history_scan:
+            result = pipeline.appraise([])
+        history_scan.assert_not_called()
+        self.assertEqual(result.status, 'refused')
+        self.assertIsNone(result.history)
+
     def test_foreign_record_does_not_apply_turkish_policy(self):
         p = price()
         h = HistoryReport(observations=[matched(record(country='BG'))])

@@ -221,15 +221,16 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     if on_gate:
         on_gate(gate)
 
-    if history_stage.enabled() and gate.decision not in (GateDecision.REFUSE_QUALITY, GateDecision.REFUSE_NO_PHOTOS):
+    refused = (GateDecision.REFUSE_NOT_A_TRUCK, GateDecision.REFUSE_QUALITY,
+               GateDecision.REFUSE_NO_PHOTOS)
+    if history_stage.enabled() and gate.decision not in refused:
         note("history", "reading vehicle plates and checking available history records")
         history_started = time.time()
         result.history = history_stage.scan(gate, backend=backend)
         result.trace.append(TraceStep("history", f"{len(result.history.observations)} vehicle plate reads",
                                       round(time.time() - history_started, 2)))
 
-    if gate.decision in (GateDecision.REFUSE_NOT_A_TRUCK, GateDecision.REFUSE_QUALITY,
-                         GateDecision.REFUSE_NO_PHOTOS):
+    if gate.decision in refused:
         result.status = "refused"
         result.headline = gate.headline
         result.elapsed_s = round(time.time() - t0, 2)
