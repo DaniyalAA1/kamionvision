@@ -249,13 +249,19 @@ def closeup_schema() -> dict:
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["component", "observation", "severity",
-                                 "confidence", "price_impact"],
+                                 "confidence", "price_impact", "box"],
                     "properties": {
                         "component": {"type": "string", "enum": COMPONENTS},
                         "observation": {"type": "string"},
                         "severity": {"type": "string", "enum": SEVERITIES},
                         "confidence": {"type": "number"},
                         "price_impact": {"type": "string", "enum": IMPACTS},
+                        "box": {
+                            "type": ["array", "null"],
+                            "items": {"type": "number"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                        },
                     },
                 },
             },
@@ -292,7 +298,11 @@ Return ONE JSON object and nothing else. No markdown fence, no commentary.
       "observation": string,       // specific and visual, in fleet-buyer vocabulary
       "severity": one of {severities},
       "confidence": 0.0-1.0,
-      "price_impact": one of {impacts}
+      "price_impact": one of {impacts},
+      "box": [x, y, w, h]|null     // normalised 0-1 of THIS image. The smallest
+                                   // rectangle that contains the visible evidence
+                                   // for this observation. Null if you cannot
+                                   // point at the pixels — never a guess.
     }}
   ],
   "strengths": [string],    // things this frame positively shows to be in good order
@@ -318,7 +328,10 @@ Rules, in order of importance:
 7. Do not estimate a price. You are describing a truck, not valuing one.
 8. "odometer_km" is null unless this photograph actually shows an odometer you
    can read. A guess at a mileage is worse than no mileage, because the number
-   downstream is checked against what the seller typed."""
+   downstream is checked against what the seller typed.
+9. "box" is the region that shows THIS defect, not the whole component if the
+   wear is local (the outer shoulder of one tire, not every tire in frame).
+   Coordinates are of the image in front of you. Null rather than a guess."""
 
 
 # --- pass C: synthesis, text only ------------------------------------------

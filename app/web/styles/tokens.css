@@ -73,8 +73,10 @@
 
   --gut: clamp(1.15rem, 4vw, 2.75rem);
   --wide: 1328px;          /* the landing's .wrap, so the two pages line up */
+  /* One corner on every surface. Nested chips, thumbs and inputs share it
+     rather than inventing a second family of radii. */
   --radius: 10px;
-  --radius-sm: 6px;
+  --radius-sm: var(--radius);
 
   /* one easing for anything mechanical, one for anything that settles */
   --ease-draw: cubic-bezier(.2, .7, .3, 1);

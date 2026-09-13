@@ -36,12 +36,21 @@ h3 { font-weight: 600; letter-spacing: -.015em; margin: 0; line-height: 1.15; }
 p { margin: 0; }
 ul, dl { margin: 0; padding: 0; list-style: none; }
 
+/* Shop-manual glyphs. Sized by the surface they sit on. */
+.part-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  display: block;
+  overflow: visible;
+}
+
 a { color: inherit; }
 
 :where(button, a, input, summary):focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
 }
 
 /* ---------- top bar ---------- */
@@ -118,7 +127,7 @@ a { color: inherit; }
   color: var(--steel);
   background: transparent;
   border: 1px solid var(--edge);
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: .58rem 1.05rem;
   cursor: pointer;
   transition: color .18s, border-color .18s, background .18s;
@@ -133,6 +142,10 @@ a { color: inherit; }
 .run .ghost-btn[aria-pressed="true"] {
   color: var(--stage-text); border-color: var(--stage-haze);
   background: rgba(230, 236, 241, .08);
+}
+.run #follow-live[aria-pressed="true"] {
+  color: var(--verified-lit);
+  border-color: #8fc47a55;
 }
 
 /* ---------- intake ---------- */
@@ -216,7 +229,7 @@ a { color: inherit; }
   color: var(--ink);
   background: var(--card);
   border: 1px solid var(--edge);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: .6rem .7rem;
 }
 .seller-fields input::placeholder { color: var(--steel-dim); }
@@ -235,11 +248,35 @@ a { color: inherit; }
   background: rgba(19, 28, 38, .93);
   backdrop-filter: blur(6px);
 }
+.lightbox-stage {
+  position: relative;
+  display: inline-block;
+  max-width: min(94vw, 1100px);
+  line-height: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
 .lightbox img {
   max-width: min(94vw, 1100px);
   max-height: 80vh;
-  border-radius: var(--radius);
   display: block;
+}
+.lightbox-mark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  visibility: hidden;
+}
+.lightbox-mark.on { visibility: visible; }
+.lightbox-box {
+  fill: rgba(255, 214, 0, .16);
+  stroke: #ffd400;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 0 1px rgba(0, 0, 0, .55));
 }
 .lightbox p {
   color: var(--stage-haze);

@@ -150,6 +150,42 @@ class ParseCloseup(unittest.TestCase):
                                    cropped=False)
         self.assertEqual(f.odometer_km, 164374)
 
+    def parsed_box(self, box, *, cropped=False):
+        f = evidence.parse_closeup(self.payload(observations=[{
+            "component": "steer_tires", "observation": "worn",
+            "severity": "minor", "confidence": 0.5, "price_impact": "low",
+            "box": box,
+        }]), self.check, cropped=cropped)
+        return f.issues[0].box
+
+    def test_a_valid_box_is_kept(self):
+        # The screen draws this on the photo the finding cites. A claim that
+        # cannot point at pixels is still a finding; it just opens unmarked.
+        self.assertEqual(self.parsed_box([0.2, 0.3, 0.4, 0.25]),
+                         [0.2, 0.3, 0.4, 0.25])
+
+    def test_a_missing_or_junk_box_is_dropped(self):
+        for junk in (None, [], [0.1, 0.2], [0, 0, 0, 0],
+                     [1.5, 0.1, 0.2, 0.2], [0.1, 0.1, -0.2, 0.2],
+                     "nope", [0.1, 0.1, 0.2, "wide"]):
+            self.assertIsNone(self.parsed_box(junk), junk)
+
+    def test_a_cropped_box_is_mapped_onto_the_original(self):
+        # The model saw the padded subject crop; the lightbox shows the listing
+        # photo. The box has to land on the same pixels, not on the crop.
+        self.check.width, self.check.height = 1000, 800
+        self.check.subject_box = [200, 100, 700, 500]
+        # 8% pad on a 500×400 box → crop (160, 68, 740, 532) in a 1000×800 frame.
+        self.assertEqual([round(v, 6) for v in self.parsed_box([0.0, 0.0, 1.0, 1.0],
+                                                              cropped=True)],
+                         [0.16, 0.085, 0.58, 0.58])
+
+    def test_an_uncropped_box_is_not_remapped(self):
+        self.check.width, self.check.height = 1000, 800
+        self.check.subject_box = [200, 100, 700, 500]
+        self.assertEqual(self.parsed_box([0.1, 0.2, 0.3, 0.4]),
+                         [0.1, 0.2, 0.3, 0.4])
+
 
 class MergeDuplicates(unittest.TestCase):
     """One worn tire seen in three frames is one finding with three photos."""
@@ -217,10 +253,15 @@ class JsonSchema(unittest.TestCase):
             self.assertEqual(set(node["required"]), set(node["properties"]))
 
     def test_enums_match_the_parser(self):
-        obs = evidence.closeup_schema()["properties"]["observations"]["items"]["properties"]
+        item = evidence.closeup_schema()["properties"]["observations"]["items"]
+        obs = item["properties"]
         self.assertEqual(obs["component"]["enum"], evidence.COMPONENTS)
         self.assertEqual(obs["severity"]["enum"], evidence.SEVERITIES)
         self.assertEqual(obs["price_impact"]["enum"], evidence.IMPACTS)
+        # Strict structured output requires every property. Null is how a
+        # close-up that cannot point at pixels still returns a legal object.
+        self.assertEqual(obs["box"]["type"], ["array", "null"])
+        self.assertIn("box", item["required"])
 
     def test_every_component_rolls_up_into_a_summary_key(self):
         # The deterministic fallback used when the synthesis call fails groups
@@ -804,6 +845,77 @@ class FrozenExport(unittest.TestCase):
         self.assertIn("data-component", html)
 
 
+class PartIcons(unittest.TestCase):
+    """Every closed component has a shop-manual glyph. A missing key would
+    silently draw the generic truck, which is the old wall-of-prose failure
+    wearing a different hat."""
+
+    SRC = Path("app/web/js/icons.js").read_text(encoding="utf-8")
+
+    def _object(self, name):
+        match = re.search(rf"export const {name} = \{{(.*?)\n\}}", self.SRC, re.S)
+        self.assertIsNotNone(match, name)
+        return dict(re.findall(r"([a-z0-9_]+):\s*'([^']*)'", match.group(1)))
+
+    def test_every_component_has_a_glyph(self):
+        from app.evidence.prompts import COMPONENTS
+        self.assertEqual(sorted(self._object("COMPONENT_ICONS")), sorted(COMPONENTS))
+
+    def test_every_summary_key_has_a_glyph(self):
+        from app.evidence.prompts import SUMMARY_KEYS
+        self.assertEqual(sorted(self._object("SUMMARY_ICONS")), sorted(SUMMARY_KEYS))
+
+    def test_every_mapped_kind_has_a_path(self):
+        paths = self._object("PATHS")
+        kinds = set(self._object("COMPONENT_ICONS").values())
+        kinds |= set(self._object("SUMMARY_ICONS").values())
+        self.assertEqual(sorted(k for k in kinds if k not in paths), [])
+
+    def test_the_screen_draws_them(self):
+        for name in ("reasoning.js", "panels.js", "gallery.js"):
+            src = Path("app/web/js", name).read_text(encoding="utf-8")
+            self.assertIn("from './icons.js'", src, name)
+            self.assertIn("partIcon", src, name)
+
+    def test_every_summary_key_has_a_workshop_title(self):
+        from app.evidence.prompts import SUMMARY_KEYS
+        src = Path("app/web/js/panels.js").read_text(encoding="utf-8")
+        match = re.search(r"const SYSTEM_TITLE = \{(.*?)\n\}", src, re.S)
+        self.assertIsNotNone(match)
+        titles = dict(re.findall(r"([a-z0-9_]+):\s*'([^']*)'", match.group(1)))
+        self.assertEqual(sorted(titles), sorted(SUMMARY_KEYS))
+
+
+class ScreenChrome(unittest.TestCase):
+    """The live screen's motion and corners have a habit of drifting back
+    into a second look. These pin the current ones: no defocus on the rail,
+    a wave of dots instead of a green sweep, and one corner radius."""
+
+    STYLES = Path("app/web/styles")
+
+    def test_inspection_cards_do_not_blur(self):
+        css = (self.STYLES / "reasoning.css").read_text(encoding="utf-8")
+        self.assertNotIn("filter: blur", css)
+        self.assertNotIn("blur(", css)
+
+    def test_the_scan_is_a_dot_wave_not_a_green_sweep(self):
+        css = (self.STYLES / "run.css").read_text(encoding="utf-8")
+        js = Path("app/web/js/run.js").read_text(encoding="utf-8")
+        self.assertIn("@keyframes dot-wave", css)
+        self.assertIn("fillScanGrid", js)
+        self.assertNotIn("@keyframes sweep", css)
+        self.assertNotIn("78, 207, 164", css)
+        html = Path("app/web/index.html").read_text(encoding="utf-8")
+        self.assertIn('id="scan"', html)
+
+    def test_appraisal_surfaces_share_one_corner_radius(self):
+        for name in ("base.css", "gallery.css", "run.css",
+                     "reasoning.css", "result.css", "tokens.css"):
+            css = (self.STYLES / name).read_text(encoding="utf-8")
+            self.assertNotIn("999px", css, name)
+            self.assertNotRegex(css, r"border-radius:\s*\d+px", name)
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1041,7 +1153,7 @@ class FallbackSynthesis(unittest.TestCase):
 
 
 class Gallery(unittest.TestCase):
-    """One grid, every vehicle, no market split."""
+    """One grid, every vehicle, filterable by lot on the client."""
 
     @classmethod
     def setUpClass(cls):
@@ -1085,6 +1197,29 @@ class Gallery(unittest.TestCase):
                 continue
             index = int(card["cover"].rsplit("/", 1)[1])
             self.assertLess(index, card["n_photos"])
+
+    def test_rehearsed_cases_inherit_the_backing_lot(self):
+        demos = {c["case_id"]: c for c in self.cards if c["demo"]}
+        self.assertEqual(demos["tr_clean"]["market"], "TR")
+        self.assertEqual(demos["tr_phone"]["market"], "TR")
+        self.assertEqual(demos["unseen_brand"]["market"], "US")
+        self.assertIsNone(demos["not_a_truck"]["market"])
+        real = [c for c in self.cards if not c["demo"]]
+        self.assertTrue(real)
+        self.assertTrue(all(c.get("market") in ("TR", "US") for c in real))
+        self.assertGreater(sum(1 for c in real if c["market"] == "TR"), 0)
+        self.assertGreater(sum(1 for c in real if c["market"] == "US"), 0)
+        lots = self.g.facets()["markets"]
+        self.assertEqual(lots["TR"] + lots["US"], len(real))
+
+    def test_the_lot_filter_does_not_change_how_a_truck_is_priced(self):
+        # A US card on the wall is still sent as market=TR. The old dropdown
+        # asked a Turkish fit for a number in dollars; this one must not.
+        app = Path("app/web/app.js").read_text(encoding="utf-8")
+        gallery = Path("app/web/js/gallery.js").read_text(encoding="utf-8")
+        self.assertIn("p.set('market', 'TR')", app)
+        self.assertIn("Türkiye", gallery)
+        self.assertIn("gallery-market", gallery)
 
 
 class NearDuplicateMerge(unittest.TestCase):

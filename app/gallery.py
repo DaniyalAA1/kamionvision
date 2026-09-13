@@ -1,14 +1,15 @@
 """The unified truck gallery behind the intake screen.
 
-One grid, every vehicle in the corpus, no market split. The eight rehearsed
-demo cases pin to the front so a refusal is always one click away on stage, and
-the 200 real listings follow, filterable by make, year, kilometres and how the
-photos were taken.
+One grid, every vehicle in the corpus. The eight rehearsed demo cases pin to
+the front so a refusal is always one click away on stage, and the 200 real
+listings follow, filterable by lot (Türkiye / US), make, year, kilometres and
+how the photos were taken.
 
-The market selector this replaces was a trap: the price model is `tr_only`, so
-choosing "United States" asked a Turkish fit to price in dollars. Everything
-here prices in lira, and an American truck takes the unseen-brand widening and
-says why - which is a rehearsed, measured path rather than a hidden one.
+The lot filter is a browse control. It does not change how a truck is priced:
+the model is `tr_only`, so every appraisal still asks for `market=TR`. An
+American listing takes the unseen-brand widening and says why - which is a
+rehearsed, measured path rather than a hidden one. The old dropdown that let
+someone ask a Turkish fit for a number in dollars is the thing that stays gone.
 
 Reads the packaged corpus only. No network, no image decoding at import: the
 covers are resolved lazily and cached, because a grid of 200 dealer originals
@@ -36,7 +37,16 @@ _LOCK = threading.Lock()
 _CARDS: list[dict] | None = None
 _PHOTOS: dict[tuple[str, str], list[str]] | None = None
 _COVER_PATHS: dict[str, str] | None = None
+_LISTING_MARKET: dict[str, str] | None = None
 _THUMBS: Path | None = None
+
+
+def _lot(market: object, source_key: object) -> str:
+    """TR or US, from the listing row, falling back to which harvester wrote it."""
+    value = str(market or "").strip().upper()
+    if value in ("TR", "US"):
+        return value
+    return "TR" if str(source_key or "").startswith("tr_") else "US"
 
 
 def pretty_make(raw: object) -> str:
@@ -64,7 +74,7 @@ def _quality_label(buckets: list[str]) -> str:
     return "mixed"
 
 
-def _load() -> tuple[list[dict], dict]:
+def _load() -> tuple[list[dict], dict, dict, dict]:
     listings = pd.read_csv(LISTINGS_CSV, low_memory=False)
     images = pd.read_csv(IMAGES_CSV, low_memory=False)
     images = images[images.variant == "original"]
@@ -72,6 +82,7 @@ def _load() -> tuple[list[dict], dict]:
     photos: dict[tuple[str, str], list[str]] = {}
     covers: dict[tuple[str, str], int] = {}
     cover_paths: dict[str, str] = {}
+    listing_market: dict[str, str] = {}
     quality: dict[tuple[str, str], list[str]] = {}
     for key, group in images.groupby(["source_key", "listing_id"]):
         group = group.sort_values("image_index")
@@ -93,10 +104,13 @@ def _load() -> tuple[list[dict], dict]:
             continue
         km = None if pd.isna(row.km) else float(row.km)
         year = None if pd.isna(row.year) else int(row.year)
+        lot = _lot(getattr(row, "market", None), key[0])
+        listing_market[str(key[1])] = lot
         cards.append({
             "id": f"{key[0]}:{key[1]}",
             "source_key": key[0],
             "listing_id": key[1],
+            "market": lot,
             "make": pretty_make(row.make),
             "model": "" if pd.isna(row.model) else str(row.model),
             "year": year,
@@ -107,7 +121,7 @@ def _load() -> tuple[list[dict], dict]:
             "demo": False,
         })
     cards.sort(key=lambda c: (c["make"], -(c["year"] or 0)))
-    return cards, photos, cover_paths
+    return cards, photos, cover_paths, listing_market
 
 
 def _case_cover(case: dict, photos: list) -> int:
@@ -163,6 +177,7 @@ def _demo_cards() -> list[dict]:
         folder = REPO / case["folder"]
         photos = pipeline.collect_photos(folder) if folder.exists() else []
         declared = case.get("declared") or {}
+        lid = str(case.get("listing_id") or "")
         out.append({
             "id": f"case:{case['id']}",
             "case_id": case["id"],
@@ -170,6 +185,7 @@ def _demo_cards() -> list[dict]:
             "title": case["title"],
             "blurb": case["blurb"],
             "expect": case["expect"],
+            "market": (_LISTING_MARKET or {}).get(lid),
             "make": pretty_make(declared.get("make")) if declared.get("make") else "—",
             "model": "",
             "year": declared.get("year"),
@@ -185,11 +201,11 @@ def _demo_cards() -> list[dict]:
 
 def cards() -> list[dict]:
     """Every card in the gallery: rehearsed cases first, then the corpus."""
-    global _CARDS, _PHOTOS, _COVER_PATHS
+    global _CARDS, _PHOTOS, _COVER_PATHS, _LISTING_MARKET
     with _LOCK:
         if _CARDS is None:
-            corpus, photos, cover_paths = _load()
-            _PHOTOS, _COVER_PATHS = photos, cover_paths
+            corpus, photos, cover_paths, listing_market = _load()
+            _PHOTOS, _COVER_PATHS, _LISTING_MARKET = photos, cover_paths, listing_market
             # A vehicle that backs a rehearsed case appears once, as the case.
             from .demo import resolved_cases
             backing = {str(c.get("listing_id")) for c in resolved_cases()
@@ -219,11 +235,16 @@ def facets() -> dict:
             continue
         makes[card["make"]] = makes.get(card["make"], 0) + 1
     years = sorted({c["year"] for c in rows if c["year"]})
+    lots = {"TR": 0, "US": 0}
+    for card in rows:
+        if card.get("market") in lots:
+            lots[card["market"]] += 1
     return {
         "makes": [{"name": k, "n": v} for k, v in
                   sorted(makes.items(), key=lambda kv: (-kv[1], kv[0]))],
         "year_min": years[0] if years else None,
         "year_max": years[-1] if years else None,
+        "markets": lots,
         "total": len(rows),
     }
 

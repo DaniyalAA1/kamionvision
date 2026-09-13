@@ -109,24 +109,75 @@ def wants_crop(check: PhotoCheck) -> bool:
     return gate_stage.competing_vehicles(check) >= 1
 
 
+def subject_crop_rect(box, width: int, height: int) -> tuple[int, int, int, int] | None:
+    """The padded subject crop, in source pixels. Same rectangle
+    `write_subject_crop` actually cuts, so a box the model returns on a crop
+    can be mapped back."""
+    if not box or not width or not height:
+        return None
+    x1, y1, x2, y2 = box
+    pad_x, pad_y = (x2 - x1) * CROP_PAD, (y2 - y1) * CROP_PAD
+    crop = (max(0, int(x1 - pad_x)), max(0, int(y1 - pad_y)),
+            min(int(width), int(x2 + pad_x)), min(int(height), int(y2 + pad_y)))
+    if crop[2] - crop[0] < 32 or crop[3] - crop[1] < 32:
+        return None
+    return crop
+
+
 def write_subject_crop(check: PhotoCheck, into: Path) -> Path | None:
     """Crop to the subject box, padded, into `into`. None if it cannot."""
-    box = check.subject_box
-    if not box:
+    if not check.subject_box:
         return None
     try:
         pil = ImageOps.exif_transpose(Image.open(check.path)).convert("RGB")
     except Exception:
         return None
-    x1, y1, x2, y2 = box
-    pad_x, pad_y = (x2 - x1) * CROP_PAD, (y2 - y1) * CROP_PAD
-    crop = (max(0, int(x1 - pad_x)), max(0, int(y1 - pad_y)),
-            min(pil.width, int(x2 + pad_x)), min(pil.height, int(y2 + pad_y)))
-    if crop[2] - crop[0] < 32 or crop[3] - crop[1] < 32:
+    crop = subject_crop_rect(check.subject_box, pil.width, pil.height)
+    if not crop:
         return None
     out = into / f"crop_{check.photo_id}.jpg"
     pil.crop(crop).save(out, format="JPEG", quality=90)
     return out
+
+
+def parse_box(value) -> list[float] | None:
+    """Normalised [x, y, w, h] in 0-1, or None if missing or junk.
+
+    A guessed region is worse than none: the screen would draw a yellow box
+    on the wrong part of the truck and call it evidence.
+    """
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        x, y, w, h = (float(v) for v in value)
+    except (TypeError, ValueError):
+        return None
+    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.0 < w <= 1.0 and 0.0 < h <= 1.0):
+        return None
+    w, h = min(w, 1.0 - x), min(h, 1.0 - y)
+    return [x, y, w, h] if w > 0.0 and h > 0.0 else None
+
+
+def map_box_to_original(box: list[float], crop: tuple[int, int, int, int],
+                        width: int, height: int) -> list[float] | None:
+    """Move a box from crop-normalised space onto the original photograph."""
+    cx1, cy1, cx2, cy2 = crop
+    cw, ch = cx2 - cx1, cy2 - cy1
+    if cw <= 0 or ch <= 0 or width <= 0 or height <= 0:
+        return None
+    x, y, w, h = box
+    return parse_box([(cx1 + x * cw) / float(width),
+                      (cy1 + y * ch) / float(height),
+                      (w * cw) / float(width),
+                      (h * ch) / float(height)])
+
+
+def _observation_box(raw, check: PhotoCheck, *, cropped: bool) -> list[float] | None:
+    box = parse_box(raw)
+    if not box or not cropped:
+        return box
+    crop = subject_crop_rect(check.subject_box, check.width, check.height)
+    return map_box_to_original(box, crop, check.width, check.height) if crop else None
 
 
 # --- pass A: identity ------------------------------------------------------
@@ -204,7 +255,8 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
             photo_id=check.photo_id, component=component, observation=observation,
             severity=_clamp(entry.get("severity"), prompts.SEVERITIES, "minor"),
             confidence=_confidence(entry.get("confidence")),
-            price_impact=_clamp(entry.get("price_impact"), prompts.IMPACTS, "low")))
+            price_impact=_clamp(entry.get("price_impact"), prompts.IMPACTS, "low"),
+            box=_observation_box(entry.get("box"), check, cropped=cropped)))
     return finding
 
 

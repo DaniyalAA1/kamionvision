@@ -13,7 +13,6 @@
 <link rel="stylesheet" href="/static/styles/run.css">
 <link rel="stylesheet" href="/static/styles/reasoning.css">
 <link rel="stylesheet" href="/static/styles/result.css">
-<link rel="stylesheet" href="/static/styles/refinement.css">
 </head>
 <body>
 
@@ -82,7 +81,14 @@
 
 <!-- =============================== run ================================ -->
 <section class="run" id="run" hidden>
-  <div class="inspection-header"><div><span class="inspection-kicker">KAMIONVISION / INSPECTION STUDIO</span><h2>A closer look, in motion.</h2></div><ol class="inspection-steps" aria-label="Appraisal stages"><li data-step="gate">01 <span>Photo check</span></li><li data-step="evidence">02 <span>Inspection</span></li><li data-step="price">03 <span>Valuation</span></li></ol></div>
+  <div class="run-head">
+    <p class="run-now" id="run-now">Looking at the photographs</p>
+    <ol class="run-steps" aria-label="Appraisal stages">
+      <li data-step="gate"><span>Photos</span></li>
+      <li data-step="evidence"><span>Inspection</span></li>
+      <li data-step="price"><span>Price</span></li>
+    </ol>
+  </div>
   <div class="stage">
 
     <div class="stage-main">
@@ -208,7 +214,12 @@
 
 <div class="lightbox" id="lightbox" hidden>
   <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close">×</button>
-  <img id="lightbox-img" alt="">
+  <div class="lightbox-stage">
+    <img id="lightbox-img" alt="">
+    <svg class="lightbox-mark" id="lightbox-mark" viewBox="0 0 1 1" aria-hidden="true">
+      <rect class="lightbox-box" id="lightbox-box" x="0" y="0" width="0" height="0"></rect>
+    </svg>
+  </div>
   <p id="lightbox-cap"></p>
 </div>
 

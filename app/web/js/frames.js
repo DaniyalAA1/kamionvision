@@ -240,23 +240,46 @@ export function renderGrid(gate, onPick) {
   }));
 }
 
-export function openLightbox(check) {
+function paintMark(mark) {
+  const overlay = $('lightbox-mark');
+  const rect = $('lightbox-box');
+  if (!overlay) return;
+  const box = mark && Array.isArray(mark.box) && mark.box.length === 4 ? mark.box : null;
+  overlay.classList.toggle('on', !!(box && rect));
+  if (!box || !rect) return;
+  const [x, y, w, h] = box;
+  rect.setAttribute('x', x);
+  rect.setAttribute('y', y);
+  rect.setAttribute('width', w);
+  rect.setAttribute('height', h);
+}
+
+export function openLightbox(check, mark) {
   $('lightbox-img').src = urlFor(check.photo_id);
   $('lightbox-img').alt = viewName(check.view);
-  $('lightbox-cap').textContent = check.usable
-    ? `${viewName(check.view)} — ${CAPTURE_WORD[check.quality_bucket] || 'unrated'} photo`
-    : `Not used: ${(check.reasons || []).join('; ')}`;
+  paintMark(mark);
+  let cap;
+  if (mark && mark.observation) {
+    cap = mark.observation;
+  } else if (check.usable) {
+    cap = `${viewName(check.view)} — ${CAPTURE_WORD[check.quality_bucket] || 'unrated'} photo`;
+  } else {
+    cap = `Not used: ${(check.reasons || []).join('; ')}`;
+  }
+  $('lightbox-cap').textContent = cap;
   $('lightbox').hidden = false;
 }
 
-/* Flash the thumbnail a finding cites, then open it. */
-export function citePhoto(id) {
+/* Flash the thumbnail a finding cites, then open it — marked if the finding
+   pointed at pixels. */
+export function citePhoto(id, mark) {
   const node = $(`thumb-${id}`);
   const check = checkFor(id);
-  if (!node) return;
-  node.classList.remove('flash');
-  void node.offsetWidth;
-  node.classList.add('flash');
-  node.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'nearest' });
-  if (check) openLightbox(check);
+  if (node) {
+    node.classList.remove('flash');
+    void node.offsetWidth;
+    node.classList.add('flash');
+    node.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'nearest' });
+  }
+  if (check) openLightbox(check, mark);
 }

@@ -53,7 +53,7 @@ function findings(a, ev, runElev) {
   $('findings-sub').textContent =
     `${n} thing${n === 1 ? '' : 's'} worth knowing about`
     + (major ? `, ${major} of them serious. ` : '. ')
-    + 'Each one names the photo it came from — press it to see that photo.';
+    + 'Each one names the photo it came from — press it to see the evidence marked on that photo.';
 
   const list = [...ev.issues].sort(
     (x, y) => (SEV_ORDER[x.severity] ?? 9) - (SEV_ORDER[y.severity] ?? 9));
@@ -83,7 +83,7 @@ function findings(a, ev, runElev) {
     if (check) b.title = check.filename;
     b.append(cite);
 
-    b.addEventListener('click', () => citePhoto(i.photo_id));
+    b.addEventListener('click', () => citePhoto(i.photo_id, i));
     /* hovering a finding lights the part of the drawing it is about */
     const light = (on) => elevation.focus(runElev, i.component, on);
     b.addEventListener('pointerenter', () => light(true));
@@ -116,7 +116,7 @@ function strengths(a, ev) {
     const wrap = el('span');
     wrap.append(document.createTextNode(s.text));
     wrap.append(el('span', null, ` — seen in photo ${photoOrdinal(s.photo_id)}`));
-    li.append(wrap);
+    li.append(partIcon('check'), wrap);
     return li;
   }));
   block.hidden = false;
@@ -127,10 +127,10 @@ function strengths(a, ev) {
 function asksAndGaps(a, ev) {
   const asks = a.requests || [];
   $('block-asks').hidden = !asks.length;
-  $('asks').replaceChildren(...asks.map(bullet));
+  $('asks').replaceChildren(...asks.map((t) => bullet(t, 'camera')));
   const gaps = ev ? ev.coverage_gaps : [];
   $('block-gaps').hidden = !gaps.length;
-  $('gaps').replaceChildren(...gaps.map(bullet));
+  $('gaps').replaceChildren(...gaps.map((t) => bullet(t, 'search')));
 }
 
 /* ---------- what it is ---------- */
@@ -157,6 +157,17 @@ function identity(ev) {
   block.hidden = false;
 }
 
+const SYSTEM_TITLE = {
+  tires: 'Tires',
+  wheels_brakes: 'Wheels & brakes',
+  fifth_wheel_coupling: 'Fifth-wheel coupling',
+  chassis_corrosion: 'Chassis',
+  body_paint: 'Body & paint',
+  cab_interior: 'Cab interior',
+  engine_driveline: 'Engine & driveline',
+  glass_lights: 'Glass & lights',
+};
+
 function systems(ev) {
   const block = $('block-systems');
   if (!(ev && Object.keys(ev.condition_summary).length)) { block.hidden = true; return; }
@@ -165,12 +176,16 @@ function systems(ev) {
   for (const [k, v] of Object.entries(ev.condition_summary)) {
     const card = el('div', 'system-card');
     const term = el('dt');
-    term.append(partIcon(k), el('span', null, titleise(k)));
+    term.append(partIcon(k), el('span', null, SYSTEM_TITLE[k] || titleise(k)));
     const definition = el('dd');
-    const detail = el('details', 'system-detail');
-    const summary = el('summary', null, 'Read assessment');
-    detail.append(summary, el('p', null, v));
-    definition.append(detail);
+    const line = gist(v);
+    if (line === String(v || '').trim() || !v) {
+      definition.append(el('p', 'system-gist', line || 'Not in these photos'));
+    } else {
+      const detail = el('details', 'system-detail');
+      detail.append(el('summary', null, line), el('p', null, v));
+      definition.append(detail);
+    }
     card.append(term, definition);
     dl.append(card);
   }
@@ -198,8 +213,16 @@ function table(head, rows) {
   return t;
 }
 
-function bullet(text) {
+function gist(text) {
+  const t = String(text || '').trim();
+  if (!t || /^not visible/i.test(t)) return 'Not in these photos';
+  const sentence = t.split(/(?<=[.!?])\s+/)[0] || t;
+  return sentence.length > 120 ? `${sentence.slice(0, 116)}…` : sentence;
+}
+
+function bullet(text, icon) {
   const li = el('li');
+  if (icon) li.append(partIcon(icon));
   li.append(el('span', null, text));
   return li;
 }

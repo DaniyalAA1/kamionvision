@@ -30,18 +30,55 @@ let evidenceIds = [];
 let read = 0;
 let following = true;
 let latest = null;
+
+function liveBtn() { return $('follow-live'); }
+
+const SCAN_COLS = 18;
+const SCAN_ROWS = 13;
+
+function fillScanGrid() {
+  const scan = $('scan');
+  if (!scan || scan.dataset.ready === '1') return;
+  scan.style.setProperty('--cols', String(SCAN_COLS));
+  scan.style.setProperty('--rows', String(SCAN_ROWS));
+  const frag = document.createDocumentFragment();
+  for (let y = 0; y < SCAN_ROWS; y += 1) {
+    for (let x = 0; x < SCAN_COLS; x += 1) {
+      const dot = document.createElement('i');
+      dot.style.setProperty('--delay', `${x * 55 + y * 22}ms`);
+      frag.append(dot);
+    }
+  }
+  scan.append(frag);
+  scan.dataset.ready = '1';
+}
+
 function setStep(step) {
-  const steps = ['gate', 'evidence', 'price'];
-  document.querySelectorAll('[data-step]').forEach(node => {
-    const index = steps.indexOf(node.dataset.step);
-    node.dataset.state = step === 'done' || index < steps.indexOf(step) ? 'done' : node.dataset.step === step ? 'active' : 'waiting';
-    if (node.dataset.state === 'active') node.setAttribute('aria-current', 'step');
+  const order = ['gate', 'evidence', 'price'];
+  const here = order.indexOf(step);
+  document.querySelectorAll('[data-step]').forEach((node) => {
+    const index = order.indexOf(node.dataset.step);
+    const state = step === 'done' || index < here ? 'done'
+      : node.dataset.step === step ? 'active' : 'waiting';
+    node.dataset.state = state;
+    if (state === 'active') node.setAttribute('aria-current', 'step');
     else node.removeAttribute('aria-current');
   });
+  const now = $('run-now');
+  if (now) {
+    now.textContent = {
+      gate: 'Checking the photographs',
+      evidence: 'Looking at each photo',
+      price: 'Matching it against listings',
+      done: 'The photographs are read',
+    }[step] || now.textContent;
+  }
 }
+
 function follow(value) {
   following = value;
-  const button = $('follow-live');
+  const button = liveBtn();
+  if (!button) return;
   button.setAttribute('aria-pressed', String(value));
   button.textContent = value ? 'Following live' : 'Resume live view';
 }
@@ -49,10 +86,16 @@ function selectFrame(c) { follow(false); frames.showFrame(c); frames.markCell(c.
 
 export async function mount() {
   runElev = await elevation.mount($('run-elev'));
-  $('follow-live').addEventListener('click', () => {
-    follow(!following);
-    if (following && latest) { frames.showFrame(latest); frames.markCell(latest.photo_id); }
-  });
+  const live = liveBtn();
+  if (live) {
+    live.addEventListener('click', () => {
+      follow(!following);
+      if (following && latest) {
+        frames.showFrame(latest);
+        frames.markCell(latest.photo_id);
+      }
+    });
+  }
   return runElev;
 }
 export const elevationRoot = () => runElev;
@@ -66,13 +109,14 @@ function progress(label, fraction) {
 
 export function begin() {
   stop();
+  fillScanGrid();
   gate = null;
   evidenceIds = [];
   read = 0;
   latest = null;
   follow(true);
   setStep('gate');
-  $('follow-live').hidden = false;
+  if (liveBtn()) liveBtn().hidden = false;
   $('run').hidden = false;
   $('result').hidden = true;
   $('strip').replaceChildren();
@@ -134,6 +178,7 @@ export function onStage(msg) {
       const c = $(`cell-${id}`);
       if (c) c.classList.add('reading');
     });
+    fillScanGrid();
     $('scan').classList.add('on');
     progress(`reading ${evidenceIds.length} photos`, 0.12);
   }
@@ -170,7 +215,7 @@ export function onResult(a) {
   stop();
   progress('done', 1);
   setStep('done');
-  $('follow-live').hidden = true;
+  if (liveBtn()) liveBtn().hidden = true;
   const ev = a.evidence;
   if (ev) {
     elevation.setSummarised(runElev, ev.condition_summary);
@@ -192,6 +237,7 @@ export function showFrozen(a) {
   evidenceIds = [];
   $('run').hidden = false;
   $('progress').hidden = true;
+  if (liveBtn()) liveBtn().hidden = true;
   frames.setSource(a.photo_urls, gate.photos, gate.decision);
   elevation.reset(runElev);
   elevation.setCoverage(runElev, gate.views_present, { stagger: 0 });
@@ -213,7 +259,7 @@ export function showFrozen(a) {
 export function onError(message) {
   stop();
   reasoning.note(message);
-  $('follow-live').hidden = true;
+  if (liveBtn()) liveBtn().hidden = true;
   progress(message, 0);
   $('rail-title').textContent = 'Something broke';
   $('rail-sub').textContent = message;

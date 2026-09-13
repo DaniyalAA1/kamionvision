@@ -212,6 +212,10 @@ class Issue(_Dict):
     # It is also the honest consumer-facing confidence signal - "seen in 3
     # photos" is checkable in a way that "confidence 0.87" is not.
     also_seen_in: list[int] = field(default_factory=list)
+    # Normalised [x, y, w, h] in 0-1 of the original photograph. The close-up
+    # pass is asked to point at the pixels that show the defect; missing or
+    # junk boxes stay None and the screen opens the photo unmarked.
+    box: list[float] | None = None
 
 
 @dataclass

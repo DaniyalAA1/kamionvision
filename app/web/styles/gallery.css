@@ -19,6 +19,93 @@
 .gallery-head h2 { font-size: 2.4rem; }
 .gallery-count { color: var(--steel); font-size: var(--t-sm); margin-left: auto; }
 
+.gallery-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin: 0 0 var(--s-4);
+}
+.gallery-search {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex: 1 1 16rem;
+  min-width: 12rem;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: .55rem .85rem;
+}
+.gallery-search .part-icon { width: 1.05rem; height: 1.05rem; color: var(--steel); }
+.gallery-search input {
+  border: 0;
+  background: none;
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  outline: none;
+}
+.gallery-tools select {
+  border: 1px solid var(--edge);
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: .62rem 1.8rem .62rem .75rem;
+  font: var(--t-sm)/1 var(--sans);
+  color: var(--ink);
+}
+
+/* A physical key-switch: the ink thumb slides to the chosen stop instead of
+   the pressed state popping. Same piece for the All/Listings/Guided tabs and
+   the Türkiye/US lot filter. */
+.seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  isolation: isolate;
+  padding: 3px;
+  background: var(--lot-deep);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+.seg-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--ink);
+  border-radius: calc(var(--radius) - 3px);
+  pointer-events: none;
+  z-index: 0;
+  transition: transform .45s var(--ease-out), width .45s var(--ease-out), height .45s var(--ease-out);
+}
+.seg-btn {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius) - 3px);
+  padding: .5rem .85rem;
+  color: var(--steel);
+  font: 500 var(--t-sm)/1 var(--sans);
+  cursor: pointer;
+  transition: color .28s var(--ease-out);
+}
+.seg-btn[aria-checked="true"] { color: var(--card); }
+.seg-btn:hover:not([aria-checked="true"]) { color: var(--ink); }
+.seg-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.gallery-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--edge);
+  font-size: var(--t-xs);
+  color: var(--steel);
+}
+
 /* ---------- filters ---------- */
 
 .filters {
@@ -36,6 +123,7 @@
   padding-left: var(--s-3);
   border-left: 1px solid var(--edge);
 }
+.filter-lot .seg { vertical-align: middle; }
 .filter-label {
   font: 400 var(--t-xs)/1 var(--sans);
   color: var(--steel-dim);
@@ -47,7 +135,7 @@
   color: var(--steel);
   background: transparent;
   border: 1px solid var(--edge);
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: .42rem .8rem;
   cursor: pointer;
   white-space: nowrap;
@@ -77,6 +165,12 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
   gap: var(--s-4);
+}
+.gallery-exit {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
 }
 .gallery-empty { color: var(--steel); padding: var(--s-6) 0; }
 
@@ -122,10 +216,22 @@
   letter-spacing: -.01em;
 }
 .truck-spec {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem .7rem;
   font: 400 var(--t-xs)/1.4 var(--sans);
   color: rgba(255, 255, 255, .72);
-  margin-top: .12rem;
+  margin-top: .28rem;
+}
+.truck-spec-item {
+  display: inline-flex;
+  align-items: center;
+  gap: .28rem;
+}
+.truck-spec .part-icon {
+  width: .85rem;
+  height: .85rem;
+  opacity: .85;
 }
 
 /* A rehearsed case is flagged by the answer it produces, which is the only
@@ -137,7 +243,7 @@
   font: 500 var(--t-xs)/1 var(--sans);
   color: var(--card);
   padding: .3rem .55rem;
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: rgba(12, 18, 25, .72);
   backdrop-filter: blur(3px);
 }
@@ -157,10 +263,33 @@
 }
 .truck[disabled] { cursor: not-allowed; opacity: .55; }
 
+.photo-fallback {
+  display: grid;
+  place-content: center;
+  position: absolute;
+  inset: 0;
+  color: var(--steel);
+  font-size: var(--t-xs);
+  background: var(--lot-deep);
+}
+
 /* The first screenful deals in rather than appearing at once, which is how
    you see how many there are. One sequence, on load, and never again. */
 .truck.deal { animation: deal .45s var(--ease-out) backwards; }
 @keyframes deal {
   from { opacity: 0; transform: translateY(10px) scale(.99); }
   to   { opacity: 1; transform: none; }
+}
+
+@media (max-width: 600px) {
+  .gallery-search { flex-basis: 100%; }
+  .seg-btn { padding: .45rem .6rem; font-size: var(--t-xs); }
+  .gallery-tools select { flex: 1; min-width: 0; }
+  .filter-lot,
+  .filter-lot + .filter-group {
+    flex-basis: 100%;
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
