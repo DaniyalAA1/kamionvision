@@ -41,13 +41,13 @@ export function drawBand(root, price) {
     root.append(section);
     return bar;
   };
-  const bar = row('Photo-adjusted estimate', 'The expected asking-price range, adjusted for visible condition.', price.low, price.high, price.point, 'adjusted');
-  row('Comparable-market baseline', 'Before photo adjustments · similar age and mileage.', price.baseline_low, price.baseline_high, price.baseline_point, 'baseline');
+  const bar = row('Adjusted estimate', 'The expected asking-price range after visible condition and any confirmed history adjustment.', price.low, price.high, price.point, 'adjusted');
+  row('Comparable-market baseline', 'Before condition and history adjustments · similar age and mileage.', price.baseline_low, price.baseline_high, price.baseline_point, 'baseline');
   const legend = el('div', 'range-legend');
   legend.append(el('span', 'midpoint-key', 'Solid line: model estimate'));
   if (valid(asking)) {
     legend.append(el('span', 'seller-key', `Diamond: seller asks ${amount(asking)}${asking < min ? ' · below chart scale' : asking > max ? ' · above chart scale' : ''}`));
   }
-  root.append(legend, el('p', 'range-disclaimer', 'Both rows use the same price scale. These are estimated asking prices, not confirmed sale prices. The photo-adjusted range has no measured coverage guarantee.'));
+  root.append(legend, el('p', 'range-disclaimer', 'Both rows use the same price scale. These are estimated asking prices, not confirmed sale prices. The adjusted range has no measured coverage guarantee.'));
   return bar;
 }

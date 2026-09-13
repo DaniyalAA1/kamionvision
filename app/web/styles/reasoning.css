@@ -34,7 +34,7 @@
   background: var(--stage-rule);
   border-radius: var(--radius);
 }
-.thoughts:hover::-webkit-scrollbar-thumb { background: #4d6a5d; }
+.thoughts:hover::-webkit-scrollbar-thumb { background: #42608b; }
 
 .thought {
   display: block;
@@ -190,12 +190,12 @@
   text-transform: uppercase;
 }
 .takeaway-pill.clean {
-  background: rgba(143, 196, 122, .18);
+  background: rgba(138, 200, 255, .18);
   color: var(--verified-lit);
-  border: 1px solid rgba(143, 196, 122, .3);
+  border: 1px solid rgba(138, 200, 255, .3);
 }
 .takeaway-pill.minor {
-  background: rgba(143, 196, 122, .2);
+  background: rgba(138, 200, 255, .2);
   color: var(--verified-lit);
 }
 .takeaway-pill.moderate {
@@ -236,7 +236,7 @@
   transition: all .2s var(--ease-out);
 }
 .thought-focus-btn:hover {
-  background: rgba(143, 196, 122, .12);
+  background: rgba(138, 200, 255, .12);
   border-color: var(--verified-lit);
 }
 .cite-title-row {
@@ -251,7 +251,7 @@
   padding: .05rem .25rem;
   border-radius: var(--radius);
 }
-.sev-pill.minor { background: rgba(143, 196, 122, .2); color: var(--verified-lit); }
+.sev-pill.minor { background: rgba(138, 200, 255, .2); color: var(--verified-lit); }
 .sev-pill.moderate { background: rgba(232, 180, 92, .2); color: var(--caution-lit); }
 .sev-pill.major { background: rgba(242, 112, 92, .2); color: var(--stop-lit); }
 .cite-impact {
