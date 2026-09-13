@@ -499,6 +499,9 @@ def price_from_evidence(model: PriceModel, evidence: EvidenceReport | None,
     year = declared.get("year")
     if year:
         prov["year"] = "stated by seller"
+    elif evidence and evidence.vehicle.vin_year:
+        year = evidence.vehicle.vin_year
+        prov["year"] = f"decoded from chassis-plate VIN {evidence.vehicle.vin}"
     elif evidence and evidence.vehicle.approx_year_range:
         years = [int(y) for y in __import__("re").findall(r"\d{4}",
                  evidence.vehicle.approx_year_range)]

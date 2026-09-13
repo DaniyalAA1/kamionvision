@@ -204,6 +204,7 @@ class Correction(_Dict):
     """
     # reconcile: unsupported_detail | identity_conflict | coverage_restored
     #            | odometer_recovered | odometer_conflict
+    #            | vin_recovered | vin_conflict
     # evidence:  severity_calibrated | severity_raise_clamped
     #            | uncorroborated_finding | sample_disagreement
     kind: str = ""
@@ -348,6 +349,8 @@ class VehicleRead(_Dict):
     cab_type: str | None = None
     axle_config: str | None = None
     approx_year_range: str | None = None
+    vin: str | None = None
+    vin_year: int | None = None
     odometer_km: int | None = None
     odometer_photo_id: int | None = None
     badges_seen: list[str] = field(default_factory=list)

@@ -11,7 +11,7 @@ particular frame is too corrupted to read tread depth off. When the vision
 model reads tread depth off that frame anyway, this stage lowers the confidence
 of that claim and writes down that it did.
 
-Four rules, all of them one-directional:
+Five rules, all of them one-directional:
 
   unsupported_detail  a fine-detail claim resting on a photo the degradation
                       head scores past its calibrated cutoff
@@ -20,6 +20,8 @@ Four rules, all of them one-directional:
   odometer_*          an OCR model reads the dashboard independently of the VLM
                       and either supplies a mileage it missed (odometer_recovered)
                       or disputes the one it read (odometer_conflict)
+  vin_*               OCR reads a chassis-plate VIN and either supplies its model
+                      year or surfaces a conflict with the seller's declared year
 
 The odometer rule is the one that most changes the number. The condition
 adjustment is capped at one residual sigma by design, so a damage signal can
@@ -72,9 +74,11 @@ ODOMETER_TOLERANCE_FRAC = 0.02
 ODOMETER_TOLERANCE_FLOOR = 1_000        # km
 ODOMETER_CONFLICT_WIDENING = 1.25
 ODOMETER_MAX_FRAMES = 4                  # cap OCR cost on a 40-photo set
+VIN_CONFLICT_WIDENING = 1.15
+VIN_MAX_FRAMES = 4
 
 
-def apply(gate, perception, evidence) -> ReconcileReport:
+def apply(gate, perception, evidence, declared: dict | None = None) -> ReconcileReport:
     """Reconcile the tracks. Mutates issue confidences; records every change."""
     t0 = time.time()
     report = ReconcileReport()
@@ -85,6 +89,7 @@ def apply(gate, perception, evidence) -> ReconcileReport:
     # Runs whether or not the perception artifact is present: it needs only the
     # dashboard frames and the VLM's own reading, not the trained heads.
     _check_odometer(gate, evidence, report)
+    _check_vin(gate, evidence, report, declared or {})
 
     if perception is not None and perception.photos:
         _downgrade_unsupported(perception, evidence, report)
@@ -94,6 +99,66 @@ def apply(gate, perception, evidence) -> ReconcileReport:
 
     report.elapsed_s = round(time.time() - t0, 3)
     return report
+
+
+def _check_vin(gate, evidence, report, declared: dict) -> None:
+    """Fifth rule: read a chassis-plate VIN and reconcile its model year."""
+    if gate is None or not gate.photos:
+        return
+    try:
+        from . import vin
+        from .subject import WHOLE_VEHICLE_VIEWS
+    except Exception:                                    # noqa: BLE001
+        return
+
+    named = [c for c in gate.photos
+             if c.usable and any(word in c.filename.lower() for word in ("vin", "plate"))]
+    detail = [c for c in gate.photos
+              if c.usable and c.view not in WHOLE_VEHICLE_VIEWS and c not in named]
+    candidates = named + sorted(detail, key=lambda c: -c.capture_quality)[:VIN_MAX_FRAMES]
+    if not candidates:
+        return
+
+    try:
+        reads = [(c, vin.read(c.path)) for c in candidates]
+    except Exception:                                    # noqa: BLE001
+        return
+    hits = [(c, result) for c, result in reads if result.vin is not None]
+    if not hits:
+        return
+    photo, best = max(hits, key=lambda item: (item[1].check_ok is True,
+                                              item[1].confidence))
+    evidence.vehicle.vin = best.vin
+    evidence.vehicle.vin_year = best.year
+    if best.year is None:
+        return
+
+    check_note = "" if best.check_ok else " (the VIN check digit failed; verify the plate)"
+    stated_year = declared.get("year")
+    if not stated_year:
+        report.corrections.append(Correction(
+            kind="vin_recovered", photo_id=photo.photo_id,
+            detail=f"no model year was declared; chassis-plate VIN {best.vin} decodes "
+                   f"to {best.year}{check_note}",
+            before="year: not declared", after=f"{best.year} (VIN)"))
+        return
+
+    try:
+        delta = abs(int(stated_year) - best.year)
+    except (TypeError, ValueError):
+        return
+    if delta <= 1:
+        return
+    report.corrections.append(Correction(
+        kind="vin_conflict", photo_id=photo.photo_id,
+        detail=f"the seller declares {stated_year}; chassis-plate VIN {best.vin} "
+               f"decodes to {best.year}{check_note} - priced on the declared year",
+        before=f"{stated_year} (declared)", after=f"{best.year} (VIN)"))
+    report.widening.append([
+        f"the declared year and chassis-plate VIN year disagree "
+        f"({stated_year} vs {best.year}), so the band widens "
+        f"{VIN_CONFLICT_WIDENING:.2f}x (a stated assumption)",
+        VIN_CONFLICT_WIDENING])
 
 
 def _check_odometer(gate, evidence, report) -> None:

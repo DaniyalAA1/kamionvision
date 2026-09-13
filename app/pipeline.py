@@ -235,7 +235,7 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # Placed before the blocks_pricing return on purpose: a set that stops here
     # still gets its re-ask list corrected, so a seller is never asked for a
     # photo the trained head can already see in what they sent.
-    recon = reconcile_stage.apply(gate, perception, ev)
+    recon = reconcile_stage.apply(gate, perception, ev, declared)
     if recon.n:
         result.reconcile = recon
         result.requests = list(gate.requests)

@@ -43,6 +43,31 @@ def _perception(*photos, brand=None, conf=0.0):
     return PerceptionReport(photos=list(photos), brand=brand, brand_conf=conf)
 
 
+class Vin(unittest.TestCase):
+
+    def test_check_digit_accepts_a_vin_from_the_us_corpus(self):
+        import pandas as pd
+        from app.config import LISTINGS_CSV
+        from app.vin import check_digit_ok
+        vin = (pd.read_csv(LISTINGS_CSV)["vin"].dropna().astype(str)
+                 .loc[lambda s: s.str.len() == 17].iloc[0])
+        self.assertTrue(check_digit_ok(vin), vin)
+
+    def test_ioq_substituted_before_length_check(self):
+        from app.vin import normalise
+        self.assertEqual(normalise("IOQ"), "100")
+
+    def test_model_year_uses_the_modern_cycle_when_position_seven_is_a_letter(self):
+        from app.vin import model_year
+        self.assertEqual(model_year("3AKJHHDR3LSLJ7839"), 2020)
+
+    def test_read_abstains_without_an_exact_length_candidate(self):
+        from app import vin
+        with unittest.mock.patch.object(vin, "_tokens", return_value=[("short", 0.9)]):
+            reading = vin.read("/tmp/plate.jpg")
+        self.assertIsNone(reading.vin)
+
+
 class ScalarContract(unittest.TestCase):
     """The training matrix and the inference vector must agree, in order."""
 
@@ -341,6 +366,34 @@ class Odometer(unittest.TestCase):
                                  return_value=self._read(None)) as read:
             reconcile.apply(gate, None, self._ev())
         read.assert_called_once_with("/tmp/3.jpg", subject_box=box)
+
+
+class VinReconciliation(unittest.TestCase):
+
+    def _gate(self):
+        return GateReport(photos=[_photo(7, view="chassis_undercarriage", usable=True,
+                                                capture_quality=0.9)])
+
+    @staticmethod
+    def _read(year=2020):
+        from app.vin import VinRead
+        return VinRead(vin="3AKJHHDR3LSLJ7839", year=year, wmi="3AK",
+                       check_ok=True, confidence=0.91)
+
+    def test_a_missing_year_is_recovered_from_the_vin(self):
+        ev = EvidenceReport(vehicle=VehicleRead())
+        with unittest.mock.patch("app.vin.read", return_value=self._read()):
+            rep = reconcile.apply(self._gate(), None, ev, {})
+        self.assertEqual(len(rep.of_kind("vin_recovered")), 1)
+        self.assertEqual(ev.vehicle.vin, "3AKJHHDR3LSLJ7839")
+        self.assertEqual(ev.vehicle.vin_year, 2020)
+
+    def test_a_conflicting_year_widens_but_keeps_the_declared_year_for_pricing(self):
+        ev = EvidenceReport(vehicle=VehicleRead())
+        with unittest.mock.patch("app.vin.read", return_value=self._read(2020)):
+            rep = reconcile.apply(self._gate(), None, ev, {"year": 2024})
+        self.assertEqual(len(rep.of_kind("vin_conflict")), 1)
+        self.assertEqual([w[1] for w in rep.widening], [reconcile.VIN_CONFLICT_WIDENING])
 
 
 class Anchor(unittest.TestCase):
