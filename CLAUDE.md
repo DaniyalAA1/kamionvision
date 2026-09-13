@@ -55,7 +55,7 @@ No linter, no CI. Dataset scripts self-verify by printing counts; `clean_dataset
 Two test layers for `app/`:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests    # 151 offline tests, ~2s, no API calls
+.venv/bin/python -m unittest discover -s tests    # 496 offline tests, ~5s, no API calls
 .venv/bin/python -m app.demo                      # 8 end-to-end cases, spends vision calls
 ```
 
@@ -63,7 +63,7 @@ Run the offline suite on every edit; it covers JSON extraction, evidence-to-phot
 price interval, the capture thresholds, the `on_step`/`on_gate`/`on_photo` callback contracts,
 subject-box selection, the crop rule, near-duplicate merging, the gallery API, the nested
 `/static/` route and the drawing's zone vocabulary — the things that have actually broken.
-`app.demo` is the real check but now costs ~18 vision calls per case rather than one, so keep it
+`app.demo` is the real check but now costs ~51 vision calls per case rather than one, so keep it
 for before a commit that matters.
 
 ## The appraisal system (`app/`)
@@ -72,7 +72,10 @@ for before a commit that matters.
 app/
   config.py      paths, credentials, model ids, FX rate - everything tunable
   schema.py      the data contract; an Appraisal serialises to JSON whole
-  vision.py      lazily-loaded YOLOv8n + CLIP, pinned to MPS
+  vision.py      lazily-loaded YOLOv8n + CLIP, pinned to MPS; the view prompts are
+                 an ensemble, several templates per class, max-pooled
+  subject.py     which vehicle in the frame is the one being sold, set-level
+  condition.py   the one rollup the grade AND the price are both derived from
   gate.py        stage 1: refuse / re-ask / pass, deterministic, ~1s
   perception/    stage 1b: three heads trained on the corpus (heads.py, train.py)
   evidence/      stage 2: three vision passes over a closed component enum
@@ -138,11 +141,39 @@ app/
   is handed exactly one photograph per call, the binding is structural rather than something the
   model has to remember - `parse_closeup` takes the id from the caller and never reads one out of
   the response. The identity pass still sees the whole set, so it keeps the old index mapping.
-- **Evidence is three passes, and the first one is why.** `identity()` sees every selected photo
-  at once and answers make / model / body type / `same_vehicle`; `closeup()` is one call per photo
-  with a view-specific checklist; `synthesize()` is text-only. Do not collapse pass A into the
-  synthesis to save a call: a text-only pass cannot notice that photo 9 is a different truck, and
-  `pipeline.pricing_blocker` and the `mixed_vehicles` case both rest on that answer.
+- **Evidence is four passes, and two of them exist because of what the other two cannot see.**
+  `identity()` sees every selected photo at once and answers make / model / body type /
+  `same_vehicle` - do not collapse it into the synthesis, because a text-only pass cannot notice
+  that photo 9 is a different truck, and `pipeline.pricing_blocker` and the `mixed_vehicles` case
+  both rest on that answer. `closeup()` is one call per photo, sampled `CLOSEUP_SAMPLES` times.
+  `synthesize()` is text-only. `calibrate()` is text-only and runs **between `merge_duplicates`
+  and `condition.rollup`**, and neither side of that is negotiable: after the merge because the
+  pre-merge list still holds three paraphrases of one worn drive tire, and before the rollup
+  because the rollup is where severity becomes both the grade and the price - run it first and
+  pass D's work is computed and then discarded. It may lower a severity freely, raise it by at
+  most one level, and raise to `major` only with corroboration; a refused raise cannot come back
+  through `price_impact`, because the price multiplies the two.
+- **The four severity words have a written meaning, and the close-up is told the distance.**
+  `prompts.SEVERITY_RUBRIC` defines cosmetic / minor / moderate / major on repair effort - a
+  workshop morning, a component replacement - never on lira, so teaching the model what a severity
+  means never puts a currency figure in front of it (`config.REPAIR_BANDS` holds the lira reading
+  for the README only, and a test asserts it never reaches a prompt). Every anchor is a visually
+  checkable state, "tread level with the wear bars" and not "below 1.6mm", because a state claim
+  survives JPEG crush and a measurement claim does not. The close-up gets the truck's age and a km
+  **band** - never the figure, which it would echo into `odometer_km` and destroy reconcile's
+  fourth rule and the rehearsed `odometer_lie` case. Before this, a 2021 F-MAX at 400,000 km and
+  one at 80,000 km received byte-identical prompts and there was no rubric anywhere in the repo.
+- **The view tag is measured now, and it was worse than anyone had checked.** The figure this repo
+  used to quote, 0.758, is twin *stability*; the trained head is fitted on CLIP's own zero-shot
+  output and inherits its errors. Against 90 hand-labelled frames (60 dev, 30 held out), one
+  template per class scored 83.3%/86.7% on whole-vehicle-vs-component and called **18.9%/15.8% of
+  genuine component close-ups an exterior view**. That is not cosmetic: such a frame is handed the
+  exterior checklist, counts toward `has_whole_vehicle`, and is exempt from every view-gated rule.
+  Three or four templates per class, **max-pooled** before the softmax, takes it to 91.7%/96.7%
+  and 10.8%/0.0%. Max and not mean - the templates are alternative phrasings and averaging the
+  best against worse ones dilutes it. Asking whole-vs-part directly as its own binary was tried
+  and was worse (76.7%, dangerous error doubled). A margin on top scored better on dev and worse
+  on held-out and was dropped; that is what the split was for.
 - **The per-view question bank is the depth.** `prompts.VIEW_QUESTIONS` asks a tire close-up about
   tread across the ribs, cupping, sidewall cracking, DOT dates and brand match across the axle.
   The single call it replaced said "at most 12 issues" and "a `per_photo` entry ONLY for photos
@@ -179,9 +210,17 @@ app/
 - **Two bands, and they are not interchangeable.** The measured 80.3% coverage belongs to the
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
-- **Measured numbers and assumed ones are labelled differently in the output.** Interval coverage,
-  gate false-refusal and the 1.85× unseen-brand widening are measured. The 1.12×-per-missing-view
-  widening and the severity weights are stated assumptions and say so.
+- **Measured numbers and assumed ones are labelled differently in the output.** Measured:
+  interval coverage, gate false-refusal, the 1.85× unseen-brand widening, the price model's
+  residual sigma (0.0988, out-of-fold), the focus threshold, the subject area floor, and the
+  view-framing accuracy against 90 hand-labelled frames. Assumed and labelled so wherever they
+  surface: the 1.12×-per-missing-view widening, **the choice to cap condition at exactly one
+  residual sigma**, and the severity × impact weight tables, the per-subsystem decay, the family
+  weights and the coverage thresholds - this corpus has no condition ground truth, so none of
+  them can be fitted. `ConditionAdjustment` carries `cap_basis` (measured) and `weights_basis`
+  (assumed) as separate strings. Both were previously wrong in opposite directions:
+  `pricing/model.py` called the 1σ choice a measurement and `web/js/panels.js` called the
+  measured sigma an assumption.
 - **Two questions the detector cannot answer stop the pricing stage** (`pipeline.pricing_blocker`,
   pure and unit-tested): is this one vehicle, and is it a tractor unit? COCO calls a rigid, a
   tipper and a tractor all "truck", and every comparable in the corpus is a tractor unit. A low
@@ -236,15 +275,40 @@ app/
 - **One box, and the gate picks it.** `gate.pick_subject` decides which vehicle is being sold and
   records it on `PhotoCheck.subject_box`; the screen draws that one and dims the rest, behind a
   `show everything it detected` toggle. Deciding it in the browser meant the box a viewer saw and
-  the pixels the model read were only coincidentally the same truck. The rule is **a box holding
-  the centre of the frame wins outright**, with area x centrality only breaking ties among those:
-  on `demo/tr_clean/000.jpg` the subject ran off the top of the frame, so YOLO measured it at 15%
-  of the area against 23% for a whole tractor parked to the left, and pure area picked the wrong
-  truck. A clipped box is always under-measured; the frame's centre is not.
+  the pixels the model read were only coincidentally the same truck. The rule is two-phase. Per
+  frame, every vehicle box scores on label prior × confidence × √area × centrality × edge relief:
+  holding the centre is a **1.35× bonus, not an outright win**, so it loses to a rival roughly
+  three times its size but still beats a whole tractor parked to the left - on
+  `demo/tr_clean/000.jpg` the subject ran off the top of the frame and measured 15% of the area
+  against 23% for that tractor, and it still wins by 1.22×. Across the set, candidate crops are
+  embedded with the CLIP model the gate already runs and the vehicle that **recurs** becomes the
+  subject; only frames where the answer is already obvious may seed that prototype, so a
+  dealer-lot frame with two comparable trucks gets no vote on who the subject is. The outright
+  override was the bug: any 0.26-confidence box straddling the centre pixel eliminated a
+  0.95-confidence box filling a third of the frame.
+- **Three rules decide the subject without consulting the view tag, because the tag is the thing
+  most likely to be wrong.** `SUBJECT_MIN_AREA_FRAC` (0.04, measured against the whole-vehicle
+  distribution) - no box that small is the vehicle being sold in any view. `FOCUS_SCENERY_RATIO`
+  (0.55, measured at a 5% false-suppression budget) - Laplacian variance inside the box over the
+  frame around it, because the subject is what the photographer focused on and the yard behind it
+  is not. And the part-view rule, which does use the tag. The first two are what still hold when
+  the classifier calls a dashboard `exterior_front`, which it does on roughly 7% of component
+  close-ups even after the prompt ensemble.
+- **`TRUCK_PART_VIEWS` and `CLOSE_UP_VIEWS` are different sets on purpose.** `damage_detail` is
+  in the second and not the first. For the gate's refusal ladder it may not vouch that a set is
+  genuine truck close-ups - it is the taxonomy's catch-all and it matched a parked motorcycle at
+  0.42. For cropping it is unambiguously a close-up of one part. The costs run opposite ways:
+  wrongly calling a frame a close-up costs one uncropped frame, and the whole frame is what a
+  close-up call wants anyway; wrongly calling a close-up an exterior costs a confident,
+  photo-cited description of a lorry forty metres behind it.
 - **When another vehicle is in frame, the close-up call gets the crop.** `evidence.wants_crop` is
   true only when a subject box exists, covers under 70% of the frame, and something else competes
-  - a lone truck is already the crop and a tire close-up has no box at all. Measured on the
-  rehearsed Ford set: 5 of 16 frames cropped.
+  - a lone truck is already the crop and a tire close-up has no box at all. It measures the
+  **padded** rect, not the raw box: `CROP_PAD` is 8% per side, ×1.35 on area, so a subject at 60%
+  used to pass the 70% test and yield a crop covering 81% while the prompt said other vehicles had
+  been excluded. A confident close-up is never cropped at all - the crop can only remove the
+  component the checklist is about. Measured on the rehearsed Ford set after this change: 2 of 16
+  frames cropped, both genuine exterior views.
 - **The image embedding never reaches the price fit; only the condition multiplier does.**
   `scripts/probe_residual_signal.py` measured whether a CLIP embedding explains the out-of-fold
   price residual, under nested vehicle-grouped CV against a permuted-target null: TR R² −0.222,
