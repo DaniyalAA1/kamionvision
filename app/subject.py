@@ -202,6 +202,11 @@ class Candidate:
     far: float                     # 0 at the centre, 1 at a corner
     clipped_sides: int
     min_side_px: float
+    # Sharpness inside the box over sharpness outside it. The subject of a
+    # photograph is what the photographer focused on; the yard behind it is
+    # not. 1.0 means "no information" and is the safe default, so a frame we
+    # could not measure is never suppressed on this signal.
+    focus_ratio: float = 1.0
     emb: Any = None                # CLIP of the padded crop, L2-normalised
     sim_abs: float = 0.0
     sim_rel: float = 1.0
@@ -277,13 +282,25 @@ def _candidate(check: PhotoCheck, det: Detection, *, attached: bool = True) -> C
         attached=attached)
 
 
-def build_candidates(check: PhotoCheck, extra: list[Detection] = ()) -> list[Candidate]:
+def build_candidates(check: PhotoCheck, extra: list[Detection] = (),
+                     gray=None) -> list[Candidate]:
     """The frame's candidate pool: the vehicle boxes the screen draws plus the
-    sub-threshold ones it does not, deduped as one set."""
+    sub-threshold ones it does not, deduped as one set.
+
+    `gray` is the frame in greyscale, passed in because `gate.inspect` already
+    has it and decoding a second time per candidate would cost a pass over the
+    pixels for nothing. Without it every candidate keeps the neutral focus
+    ratio of 1.0 and the focus rule simply does not fire - which is what a unit
+    test with synthetic boxes and no image wants.
+    """
     dets = [d for d in check.detections if d.label in SUBJECT_LABELS] + list(extra)
     attached = {id(d) for d in check.detections}
-    return [_candidate(check, d, attached=id(d) in attached)
-            for d in dedupe_vehicles(dets)]
+    out = [_candidate(check, d, attached=id(d) in attached)
+           for d in dedupe_vehicles(dets)]
+    if gray is not None:
+        for c in out:
+            c.focus_ratio = round(focus_ratio(gray, c.box), 3)
+    return out
 
 
 def candidates(check: PhotoCheck) -> list[Candidate]:
@@ -336,6 +353,69 @@ def part_view_subject_area() -> float:
     return float(value) if value else PART_VIEW_SUBJECT_AREA_FALLBACK
 
 
+# Below this, a box is sharply less in focus than the rest of its frame and is
+# the background rather than the subject. MEASURED: see
+# `scripts/calibrate_focus.py`, which builds the two distributions - boxes on
+# confident whole-vehicle frames, which should be in focus, against boxes under
+# the part-view area floor - and places the cut where the false-suppression rate
+# on the first is under 5%.
+#
+# This is the one rule in this module that does NOT consult the view tag, and
+# that is the point of it. 36.8% of the corpus is tagged into an exterior view
+# and the four exterior classes have median confidences of 0.34 to 0.55 - they
+# are where a zero-shot classifier puts frames it cannot place. A Ford dashboard
+# in `tr_truckmarket/14299/011.jpg` is tagged `exterior_front` at 0.38 and a
+# stripped engine bay in `mascus/83AEA622/008.jpg` is tagged `exterior_rear` at
+# 0.39. Every view-gated rule below misses both. Focus does not.
+# MEASURED at 0.55 by scripts/calibrate_focus.py over 300 corpus frames: the
+# largest cut whose false-suppression rate on confident whole-vehicle subject
+# boxes stays under 5%. 0.62, which was the first guess, costs 7% there.
+#
+# Be honest about what this buys. It is PRECISE and it is NOT high-recall: at
+# 0.55 it catches 11.5% of small boxes on confident part views and only 2.0% of
+# the small boxes that carry no part-view tag at all. What it does catch is the
+# worst of them - `us_selectrucks/232615/010.jpg`, an engine bay whose box was a
+# lorry behind it at ratio 0.52, and `.../256409/014.jpg`, a dashboard whose box
+# was a truck through the windscreen at 0.50. Most off-tag small boxes are
+# genuinely in focus (median ratio 1.98) and are other trucks on a dealer lot,
+# which the area floor already handles.
+#
+# So this rule is not the answer to the view tag being unreliable. It is a cheap
+# second opinion that survives the tag being wrong, and the tag still needs
+# fixing on its own account.
+FOCUS_SCENERY_RATIO = 0.55
+# Regions smaller than this cannot carry a meaningful Laplacian variance.
+FOCUS_MIN_PIXELS = 400
+
+
+def focus_ratio(gray, box: list[float]) -> float:
+    """Sharpness inside `box` over the mean sharpness of the frame around it.
+
+    Laplacian variance, the same statistic `gate.capture_metrics` already scores
+    a whole frame with - reused rather than reinvented so a region score and a
+    frame score mean the same thing. Returns 1.0, which is neutral, whenever
+    there is not enough of either region to measure.
+    """
+    if gray is None:
+        return 1.0
+    import cv2
+    h, w = gray.shape[:2]
+    x1, y1, x2, y2 = (int(v) for v in box)
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    if (x2 - x1) * (y2 - y1) < FOCUS_MIN_PIXELS:
+        return 1.0
+    inside = gray[y1:y2, x1:x2]
+    strips = [gray[:y1, :], gray[y2:, :], gray[y1:y2, :x1], gray[y1:y2, x2:]]
+    strips = [t for t in strips if t.size >= FOCUS_MIN_PIXELS]
+    if not strips:
+        return 1.0          # the box IS the frame; nothing to compare against
+    outside = float(np.mean([cv2.Laplacian(t, cv2.CV_64F).var() for t in strips]))
+    if outside <= 1e-9:
+        return 1.0
+    return float(cv2.Laplacian(inside, cv2.CV_64F).var() / outside)
+
+
 def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bool:
     """On a close-up of one component, a small vehicle box is the yard behind it.
 
@@ -351,6 +431,15 @@ def is_scenery(check: PhotoCheck, c: Candidate, identity: SubjectIdentity) -> bo
     frame, and `.../014.jpg` a dashboard whose subject box was a truck seen
     through the windscreen at 3% of the frame.
     """
+    # Focus first, and deliberately before the view tag is consulted. A box
+    # markedly less sharp than the frame around it is the yard behind the
+    # subject, and that is true whether or not the classifier managed to call
+    # this frame a close-up. Measured on the two frames named above: the engine
+    # bay's background box scores 0.51 and the dashboard's 0.56, against 2.33
+    # and 7.07 for small boxes that really are in focus - so area and focus
+    # catch different failures and both are needed.
+    if c.focus_ratio < FOCUS_SCENERY_RATIO and c.area_frac < part_view_subject_area():
+        return True
     if check.view not in TRUCK_PART_VIEWS or check.view_conf < MIN_PART_VIEW_CONF:
         return False                      # not a close-up; not this rule's business
     if c.area_frac >= part_view_subject_area():

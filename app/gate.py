@@ -112,6 +112,9 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
     cap = thresholds()["capture"]
     checks: list[PhotoCheck] = []
     pils: list[Image.Image] = []
+    # Kept alongside `pils` so `subject.focus_ratio` can score a candidate box
+    # against the frame around it without decoding the image a second time.
+    grays: list[np.ndarray] = []
     ok_idx: list[int] = []
 
     for i, path in enumerate(paths):
@@ -129,6 +132,7 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
             check.reasons.append(f"too small ({pil.width}x{pil.height})")
 
         bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
         m = capture_metrics(bgr)
         for k, v in m.items():
             if hasattr(check, k):
@@ -140,6 +144,7 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
 
         checks.append(check)
         pils.append(pil)
+        grays.append(gray)          # appended with pils so the two cannot drift
         ok_idx.append(i)
 
     if not pils:
@@ -150,7 +155,7 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
     yolo = vision.yolo()
     preds = yolo.predict(pils, verbose=False, conf=0.05, device=vision.device())
     disqualifiers: list[tuple[int, str, float]] = []
-    for idx, r in zip(ok_idx, preds):
+    for idx, r, gray in zip(ok_idx, preds, grays):
         check = checks[idx]
         frame_area = float(check.width * check.height) or 1.0
         best_other = (None, 0.0, 0.0)
@@ -200,7 +205,7 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
         # carrying truck 0.71 / bus 0.44 / car 0.31 at the same pixels, and the
         # duplicates were being counted as competitors and cropped against.
         check.detections = subject_stage.dedupe_vehicles(check.detections)
-        check._candidates = subject_stage.build_candidates(check, pool)
+        check._candidates = subject_stage.build_candidates(check, pool, gray=gray)
 
     # --- view + content tags ---------------------------------------------
     tags = vision.clip().tag(pils)

@@ -1,0 +1,12 @@
+{
+  "method": "largest cut whose false-suppression rate on confident whole-vehicle subject boxes stays under 5%",
+  "false_suppress_max": 0.05,
+  "frames": 300,
+  "n_positive": 77,
+  "n_negative": 131,
+  "n_off_tag": 783,
+  "recommended": 0.55,
+  "shipped": 0.62,
+  "caught_negative_at_recommended": 0.1145,
+  "caught_off_tag_at_recommended": 0.0204
+}

@@ -37,7 +37,7 @@
     }
   },
   "new": {
-    "generated_at": "2026-09-13T00:23:25",
+    "generated_at": "2026-09-13T03:58:49",
     "algorithm": "new",
     "objective": "same-listing retrieval precision@1 on selected subject crops, subject to whole_vehicle_miss_rate no higher than the incumbent",
     "detector": "yolov8n.pt",

@@ -1681,3 +1681,63 @@ class SubjectCropGeometry(unittest.TestCase):
         c = self._check((200, 100, 700, 500), [("truck", 0.8, (0, 150, 180, 450))])
         c.subject_box = [200.0000001, 100, 700, 500]
         self.assertEqual(gate.competing_vehicles(c), 1)
+
+
+class FocusScenery(unittest.TestCase):
+    """A box less in focus than its frame is the yard, not the subject.
+
+    The one subject rule that does not consult the CLIP view tag. 36.8% of the
+    corpus carries an exterior tag and the four exterior classes have median
+    confidences of 0.34 to 0.55 - a Ford dashboard in the corpus is tagged
+    `exterior_front` at 0.38 and a stripped engine bay `exterior_rear` at 0.39.
+    Every view-gated rule misses both frames entirely.
+    """
+
+    def _gray(self, sharp_box=True):
+        """A 600x400 frame: noise everywhere, and a 120x80 patch at (60,40)
+        that is either noisy (sharp) or flat (blurred)."""
+        rng = np.random.default_rng(4)
+        g = rng.integers(0, 255, (400, 600), dtype=np.uint8)
+        if not sharp_box:
+            g[40:120, 60:180] = 128          # flat patch -> near-zero Laplacian
+        return g
+
+    def test_a_blurred_box_scores_below_one(self):
+        r = subject.focus_ratio(self._gray(sharp_box=False), [60, 40, 180, 120])
+        self.assertLess(r, subject.FOCUS_SCENERY_RATIO)
+
+    def test_a_sharp_box_scores_around_one(self):
+        r = subject.focus_ratio(self._gray(sharp_box=True), [60, 40, 180, 120])
+        self.assertGreater(r, subject.FOCUS_SCENERY_RATIO)
+
+    def test_no_image_is_neutral_never_suppressing(self):
+        self.assertEqual(subject.focus_ratio(None, [0, 0, 10, 10]), 1.0)
+
+    def test_a_box_filling_the_frame_is_neutral(self):
+        g = self._gray()
+        self.assertEqual(subject.focus_ratio(g, [0, 0, 600, 400]), 1.0)
+
+    def test_a_tiny_box_is_neutral(self):
+        self.assertEqual(subject.focus_ratio(self._gray(), [0, 0, 5, 5]), 1.0)
+
+    def test_focus_suppresses_without_any_part_view_tag(self):
+        """The reason this rule exists: it fires when the view tag is wrong."""
+        check = PhotoCheck(photo_id=0, path="x.jpg", filename="x.jpg")
+        check.width, check.height = 600, 400
+        check.view, check.view_conf = "exterior_front", 0.38   # the real mislabel
+        det = Detection(label="truck", confidence=0.6, box=[60, 40, 180, 120],
+                        area_frac=(120 * 80) / (600 * 400))
+        cand = subject._candidate(check, det)
+        cand.focus_ratio = 0.2
+        self.assertTrue(subject.is_scenery(check, cand, subject.NO_IDENTITY))
+
+    def test_a_sharp_small_box_on_a_mistagged_frame_survives(self):
+        """Focus and area catch different failures; neither subsumes the other."""
+        check = PhotoCheck(photo_id=0, path="x.jpg", filename="x.jpg")
+        check.width, check.height = 600, 400
+        check.view, check.view_conf = "exterior_front", 0.38
+        det = Detection(label="truck", confidence=0.6, box=[60, 40, 180, 120],
+                        area_frac=(120 * 80) / (600 * 400))
+        cand = subject._candidate(check, det)
+        cand.focus_ratio = 2.3          # small, but genuinely in focus
+        self.assertFalse(subject.is_scenery(check, cand, subject.NO_IDENTITY))
