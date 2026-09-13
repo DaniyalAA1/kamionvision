@@ -32,6 +32,38 @@ def _data_uri(path: Path) -> str:
     return "data:image/jpeg;base64," + base64.standard_b64encode(raw).decode("ascii")
 
 
+def _inline_fonts(css: str) -> str:
+    """Rewrite url(/static/assets/fonts/x.woff2) to a data URI.
+
+    Without this the frozen file falls back to system fonts, which is the one
+    thing an offline copy of a drawing should not do - the whole sheet is set
+    in a condensed technical face and a proportional substitute reflows it.
+    """
+    def sub(match: re.Match) -> str:
+        name = match.group(1)
+        path = WEB / "assets" / "fonts" / name
+        if not path.exists():
+            return match.group(0)
+        b64 = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+        return f'url("data:font/woff2;base64,{b64}")'
+
+    return re.sub(r'url\("/static/assets/fonts/([^"]+)"\)', sub, css)
+
+
+def _module_url(source: str) -> str:
+    """One ES module as a data: URL, with its imports made bare.
+
+    A data: URL has no base, so `./dom.js` inside an inlined module cannot
+    resolve. Rewriting every intra-app import to a bare `kamion:` specifier
+    lets the import map resolve it regardless of where the importing module
+    came from, which keeps the real module graph rather than concatenating the
+    files and hoping the names do not collide.
+    """
+    source = re.sub(r"from '\./(?:js/)?([a-z]+)\.js'", r"from 'kamion:\1'", source)
+    b64 = base64.standard_b64encode(source.encode("utf-8")).decode("ascii")
+    return f"data:text/javascript;base64,{b64}"
+
+
 def build_html(appraisal: Appraisal, *, title: str | None = None) -> str:
     payload = appraisal.to_dict()
 
@@ -47,15 +79,37 @@ def build_html(appraisal: Appraisal, *, title: str | None = None) -> str:
     payload["photo_urls"] = photos
 
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    css = (WEB / "styles.css").read_text(encoding="utf-8")
-    js = (WEB / "app.js").read_text(encoding="utf-8")
 
-    html = html.replace('<link rel="stylesheet" href="/static/styles.css">',
-                        f"<style>\n{css}\n</style>")
-    html = html.replace('<script src="/static/app.js"></script>',
-                        "<script>\nwindow.KAMION_APPRAISAL = "
-                        + json.dumps(payload, ensure_ascii=False)
-                        + ";\n</script>\n<script>\n" + js + "\n</script>")
+    # --- stylesheets, in the order the page links them ---
+    sheets = re.findall(r'<link rel="stylesheet" href="/static/(styles/[^"]+)">', html)
+    css = "\n".join((WEB / name).read_text(encoding="utf-8") for name in sheets)
+    css = _inline_fonts(css)
+    first = f'<link rel="stylesheet" href="/static/{sheets[0]}">'
+    html = html.replace(first, f"<style>\n{css}\n</style>", 1)
+    for name in sheets[1:]:
+        html = html.replace(f'<link rel="stylesheet" href="/static/{name}">', "", 1)
+
+    # --- the vendored animation library ---
+    motion = (WEB / "vendor" / "motion.min.js").read_text(encoding="utf-8")
+    html = html.replace('<script src="/static/vendor/motion.min.js"></script>',
+                        f"<script>\n{motion}\n</script>", 1)
+
+    # --- the module graph, plus the payload and the drawing ---
+    imports = {f"kamion:{m.stem}": _module_url(m.read_text(encoding="utf-8"))
+               for m in sorted((WEB / "js").glob("*.js"))}
+    entry = re.sub(r"from '\./js/([a-z]+)\.js'", r"from 'kamion:\1'",
+                   (WEB / "app.js").read_text(encoding="utf-8"))
+    elevation = (WEB / "assets" / "tractor-elevation.svg").read_text(encoding="utf-8")
+
+    bundle = (
+        '<script type="importmap">\n'
+        + json.dumps({"imports": imports}) + "\n</script>\n"
+        + "<script>\nwindow.KAMION_APPRAISAL = "
+        + json.dumps(payload, ensure_ascii=False) + ";\n"
+        + "window.KAMION_ELEVATION = " + json.dumps(elevation) + ";\n</script>\n"
+        + '<script type="module">\n' + entry + "\n</script>")
+    html = html.replace('<script type="module" src="/static/app.js"></script>', bundle, 1)
+
     if title:
         html = re.sub(r"<title>.*?</title>", f"<title>{title}</title>", html, count=1)
     return html
@@ -87,6 +141,27 @@ a.case.refused em { color:#e05b4f; }
 """
 
 
+def _index_faces() -> str:
+    """The two display faces, inlined, so the index is set like the reports.
+
+    The index is a sibling file in the output directory with no assets beside
+    it, so it cannot link the woff2 the way the sheet does.
+    """
+    wanted = [("Barlow", 400, "barlow-normal-400-latin.woff2"),
+              ("Barlow", 600, "barlow-normal-600-latin.woff2"),
+              ("Barlow Condensed", 600, "barlow-condensed-normal-600-latin.woff2")]
+    out = []
+    for family, weight, name in wanted:
+        path = WEB / "assets" / "fonts" / name
+        if not path.exists():
+            continue
+        b64 = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+        out.append(f'@font-face{{font-family:"{family}";font-weight:{weight};'
+                   f'font-display:swap;'
+                   f'src:url("data:font/woff2;base64,{b64}") format("woff2")}}')
+    return "".join(out)
+
+
 def write_index(entries: list[dict], out_dir: str | Path) -> Path:
     """An index over exported reports, so the backup is browsable on stage."""
     out_dir = Path(out_dir)
@@ -100,9 +175,7 @@ def write_index(entries: list[dict], out_dir: str | Path) -> Path:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>KamionVision — saved appraisals</title>"
-        '<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600'
-        '&family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">'
-        f"<style>{INDEX_CSS}</style></head><body><main>"
+        f"<style>{_index_faces()}{INDEX_CSS}</style></head><body><main>"
         "<h1>KamionVision — saved appraisals</h1>"
         "<p class=\"sub\">Offline copies of the rehearsed cases. Each opens with no "
         "server and no network.</p>" + "\n".join(rows) + "</main></body></html>")

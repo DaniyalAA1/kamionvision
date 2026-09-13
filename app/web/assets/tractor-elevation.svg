@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470"
+     fill="none" aria-hidden="true" class="elev">
+<!--
+  Side elevation of a 4x2 tractor unit. Front is left. Drawn for this screen
+  rather than traced from any one truck, but to real proportions at 1 m =
+  100 px: 5.9 m long, 3.85 m tall, 3.6 m wheelbase, 1.05 m wheels, fifth
+  wheel at 1.15 m. The short rear overhang is what makes it a tractor unit
+  and not a rigid - the thing the pricing stage refuses to guess at.
+
+  Every group carries a data-component matching one of the 33 values in
+  app/evidence.py COMPONENTS, so gate view coverage and vision-model findings
+  bind straight onto the drawing. Three components have no geometry of their
+  own and alias a panel they would be observed on: paint_finish ->
+  cab_exterior_panels, corrosion -> chassis_frame, fluid_leaks ->
+  undercarriage.
+
+  Two drafting conventions do real work here. The cab interior and the engine
+  are in phantom line: present, but not visible from outside. The AdBlue tank
+  is also phantom because on this layout it sits on the off side, behind the
+  fuel tank - you would not see it from this side at all.
+-->
+<g class="elev-chrome">
+  <line class="ground" x1="16" y1="400" x2="744" y2="400"/>
+  <g class="hatch">
+    <line x1="20"  y1="410" x2="32"  y2="400"/><line x1="56"  y1="410" x2="68"  y2="400"/>
+    <line x1="92"  y1="410" x2="104" y2="400"/><line x1="128" y1="410" x2="140" y2="400"/>
+    <line x1="164" y1="410" x2="176" y2="400"/><line x1="200" y1="410" x2="212" y2="400"/>
+    <line x1="236" y1="410" x2="248" y2="400"/><line x1="272" y1="410" x2="284" y2="400"/>
+    <line x1="308" y1="410" x2="320" y2="400"/><line x1="344" y1="410" x2="356" y2="400"/>
+    <line x1="380" y1="410" x2="392" y2="400"/><line x1="416" y1="410" x2="428" y2="400"/>
+    <line x1="452" y1="410" x2="464" y2="400"/><line x1="488" y1="410" x2="500" y2="400"/>
+    <line x1="524" y1="410" x2="536" y2="400"/><line x1="560" y1="410" x2="572" y2="400"/>
+    <line x1="596" y1="410" x2="608" y2="400"/><line x1="632" y1="410" x2="644" y2="400"/>
+    <line x1="668" y1="410" x2="680" y2="400"/><line x1="704" y1="410" x2="716" y2="400"/>
+  </g>
+  <line class="centre" x1="210" y1="288" x2="210" y2="430"/>
+  <line class="centre" x1="570" y1="288" x2="570" y2="430"/>
+  <line class="centre" x1="140" y1="348" x2="280" y2="348"/>
+  <line class="centre" x1="500" y1="348" x2="640" y2="348"/>
+</g>
+
+<!-- ============ chassis and running gear ============ -->
+
+<g class="zone" data-component="chassis_frame">
+  <rect x="100" y="282" width="562" height="18" rx="1"/>
+  <line x1="100" y1="291" x2="662" y2="291" class="thin"/>
+</g>
+
+<g class="zone" data-component="undercarriage">
+  <path d="M 306 300 L 306 314 L 340 314 L 340 300"/>
+  <path d="M 462 300 L 462 312 L 494 312 L 494 300"/>
+  <path d="M 628 300 L 628 312 L 658 312 L 658 300"/>
+  <line x1="120" y1="300" x2="120" y2="310"/>
+  <line x1="150" y1="300" x2="150" y2="310"/>
+</g>
+
+<g class="zone" data-component="air_suspension">
+  <rect x="532" y="300" width="26" height="24" rx="4"/>
+  <line x1="532" y1="308" x2="558" y2="308" class="thin"/>
+  <line x1="532" y1="316" x2="558" y2="316" class="thin"/>
+  <rect x="584" y="300" width="26" height="24" rx="4"/>
+  <line x1="584" y1="308" x2="610" y2="308" class="thin"/>
+  <line x1="584" y1="316" x2="610" y2="316" class="thin"/>
+</g>
+
+<g class="zone" data-component="air_tanks_lines">
+  <rect x="626" y="308" width="34" height="36" rx="17"/>
+  <line x1="643" y1="308" x2="643" y2="344" class="thin"/>
+</g>
+
+<g class="zone" data-component="mudflaps_guards">
+  <path d="M 514 308 A 60 60 0 0 1 626 308"/>
+  <path d="M 624 344 L 642 344 L 642 390 L 624 390 Z"/>
+</g>
+
+<!-- ============ tanks and driveline ============ -->
+
+<g class="zone" data-component="fairings_skirts">
+  <path d="M 310 284 L 494 284 L 494 304 L 310 304 Z"/>
+  <line x1="310" y1="294" x2="494" y2="294" class="thin"/>
+</g>
+
+<g class="zone" data-component="fuel_tank">
+  <rect x="314" y="308" width="124" height="54" rx="27"/>
+  <line x1="314" y1="322" x2="438" y2="322" class="thin"/>
+  <line x1="350" y1="308" x2="350" y2="362" class="thin"/>
+  <line x1="402" y1="308" x2="402" y2="362" class="thin"/>
+</g>
+
+<g class="zone phantom" data-component="adblue_tank">
+  <rect x="346" y="316" width="66" height="38" rx="10"/>
+</g>
+
+<g class="zone" data-component="exhaust_dpf">
+  <rect x="446" y="304" width="66" height="52" rx="5"/>
+  <line x1="464" y1="304" x2="464" y2="356" class="thin"/>
+  <line x1="479" y1="304" x2="479" y2="356" class="thin"/>
+  <line x1="494" y1="304" x2="494" y2="356" class="thin"/>
+</g>
+
+<g class="zone phantom" data-component="engine_bay">
+  <path d="M 120 244 L 252 244 L 252 288 L 236 300 L 152 300 L 120 288 Z"/>
+  <circle cx="232" cy="272" r="11"/>
+</g>
+
+<!-- ============ coupling ============ -->
+
+<g class="zone" data-component="fifth_wheel">
+  <path d="M 494 282 L 494 272 L 508 264 L 628 264 L 642 272 L 642 282 Z"/>
+  <path d="M 560 264 L 560 250 L 574 250 L 574 264" class="thin"/>
+  <line x1="494" y1="274" x2="642" y2="274" class="thin"/>
+</g>
+
+<g class="zone" data-component="coupling_airlines">
+  <path d="M 308 286 L 308 246"/>
+  <path d="M 308 246 a 9 7 0 1 1 18 0 a 9 7 0 1 1 -18 0
+                     m 0 12 a 9 7 0 1 1 18 0 a 9 7 0 1 1 -18 0
+                     m 0 12 a 9 7 0 1 1 18 0 a 9 7 0 1 1 -18 0" class="thin"/>
+  <path d="M 326 282 L 326 268"/>
+</g>
+
+<!-- ============ wheels ============ -->
+
+<g class="zone" data-component="steer_tires">
+  <circle cx="210" cy="348" r="52"/>
+  <circle cx="210" cy="348" r="44" class="thin"/>
+</g>
+<g class="zone" data-component="drive_tires">
+  <circle cx="570" cy="348" r="52"/>
+  <circle cx="570" cy="348" r="44" class="thin"/>
+  <circle cx="570" cy="348" r="48" class="thin"/>
+</g>
+<g class="zone" data-component="wheels_rims">
+  <circle cx="210" cy="348" r="30"/>
+  <circle cx="570" cy="348" r="30"/>
+</g>
+<g class="zone" data-component="brakes_hubs">
+  <circle cx="210" cy="348" r="12"/>
+  <circle cx="570" cy="348" r="12"/>
+  <circle cx="210" cy="348" r="4" class="thin"/>
+  <circle cx="570" cy="348" r="4" class="thin"/>
+</g>
+
+<!-- ============ cab shell ============ -->
+
+<g class="zone" data-component="cab_exterior_panels">
+  <path d="M 70 285 L 70 108 C 70 74 82 52 112 49 L 286 44
+           C 296 44 300 52 300 64 L 300 285 Z"/>
+</g>
+
+<g class="zone" data-component="roof_deflector">
+  <path d="M 206 50 L 292 45 C 306 44 310 26 296 24 L 214 28 Z"/>
+</g>
+
+<g class="zone" data-component="windscreen_glass">
+  <path d="M 84 114 C 84 90 92 70 116 66 L 198 62 L 196 138 L 86 143 Z"/>
+</g>
+
+<g class="zone" data-component="doors_handles">
+  <line x1="206" y1="56" x2="206" y2="284"/>
+  <line x1="270" y1="52" x2="270" y2="284"/>
+  <path d="M 210 62 L 264 59 L 264 138 L 210 141 Z"/>
+  <path d="M 276 58 L 294 57 L 294 130 L 276 131 Z"/>
+  <rect x="216" y="158" width="28" height="7" rx="3"/>
+</g>
+
+<g class="zone" data-component="grille_headlights">
+  <path d="M 72 180 L 72 248 L 132 245 L 132 178 Z"/>
+  <line x1="72" y1="196" x2="132" y2="194" class="thin"/>
+  <line x1="72" y1="212" x2="132" y2="210" class="thin"/>
+  <line x1="72" y1="228" x2="132" y2="226" class="thin"/>
+  <rect x="76" y="258" width="36" height="22" rx="2"/>
+</g>
+
+<g class="zone" data-component="front_bumper_valance">
+  <path d="M 66 252 L 66 290 L 152 290 L 152 250 Z"/>
+  <line x1="66" y1="266" x2="152" y2="265" class="thin"/>
+</g>
+
+<g class="zone" data-component="mirrors_visor">
+  <path d="M 71 126 L 46 120 L 44 134 L 71 140 Z"/>
+  <rect x="30" y="108" width="16" height="38" rx="3"/>
+  <line x1="38" y1="108" x2="38" y2="146" class="thin"/>
+</g>
+
+<g class="zone" data-component="cab_steps">
+  <path d="M 264 296 L 306 296 L 306 305 L 264 305 Z"/>
+  <path d="M 260 328 L 302 328 L 302 337 L 260 337 Z"/>
+  <path d="M 256 360 L 298 360 L 298 369 L 256 369 Z"/>
+</g>
+
+<!-- ============ cab interior, broken-out section ============ -->
+
+<g class="zone phantom" data-component="dashboard_instruments">
+  <path d="M 88 182 L 152 178 L 154 200 L 90 204 Z"/>
+</g>
+
+<g class="zone phantom" data-component="warning_lights">
+  <rect x="126" y="186" width="6" height="6"/>
+  <rect x="136" y="186" width="6" height="6"/>
+  <rect x="146" y="185" width="6" height="6"/>
+</g>
+
+<g class="zone phantom" data-component="steering_wheel_controls">
+  <path d="M 158 216 L 174 186"/>
+  <path d="M 164 182 L 186 179" />
+</g>
+
+<g class="zone phantom" data-component="cab_interior_seats">
+  <path d="M 188 166 L 206 164 L 206 220 L 190 222 Z"/>
+  <path d="M 188 222 L 228 220 L 228 234 L 188 236 Z"/>
+</g>
+
+<g class="zone phantom" data-component="bunk_sleeper">
+  <path d="M 238 196 L 294 192 L 294 210 L 238 214 Z"/>
+</g>
+
+<g class="zone phantom" data-component="cab_floor_trim">
+  <path d="M 90 252 L 294 248"/>
+  <path d="M 90 258 L 294 254" class="thin"/>
+</g>
+</svg>

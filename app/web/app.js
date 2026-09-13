@@ -1,74 +1,75 @@
-/* KamionVision demo screen.
- *
- * One job: make the pipeline legible while it runs. The gate finishes in a
- * couple of seconds and the vision call takes half a minute, so the run is
- * streamed over SSE and each stage lands as it completes rather than the
- * screen sitting blank until a price exists.
- */
-'use strict';
+/* Entry point: wiring, the verdict block, and the title block.
 
-const $ = (id) => document.getElementById(id);
-const el = (tag, cls, text) => {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = text;
-  return n;
-};
+   The run is streamed. The gate report now arrives as its own event about a
+   second in, so the drawing, the frames and the detector's boxes are all on
+   screen long before the price exists - see app/web/js/run.js. */
 
-const SYMBOL = { TRY: '₺', USD: '$', EUR: '€' };
-const money = (v, cur) => (SYMBOL[cur] || cur + ' ') + Math.round(v).toLocaleString('en-US');
-const titleise = (s) => s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+import { $, el, money, fixed, reduced, animate } from './js/dom.js';
+import * as net from './js/net.js';
+import * as run from './js/run.js';
+import * as frames from './js/frames.js';
+import * as elevation from './js/elevation.js';
+import { drawGauge } from './js/gauge.js';
+import { renderPanels } from './js/panels.js';
 
-let session = null;
 let stream = null;
-let photoUrls = {};
 
-/* ---------- rig status ---------- */
+/* ---------- title block ---------- */
 
 async function loadHealth() {
   try {
-    const h = await (await fetch('/api/health')).json();
-    const ready = h.backends.find((b) => b.ready && (!h.selected_backend || b.name === h.selected_backend));
-    const backendEl = $('rig-backend');
+    const h = await net.getHealth();
+    const ready = h.backends.find(
+      (b) => b.ready && (!h.selected_backend || b.name === h.selected_backend));
+    const vision = $('tb-vision');
     if (ready) {
-      backendEl.textContent = `${ready.name} · ${ready.model}`;
-      backendEl.className = 'ready';
+      vision.textContent = `${ready.name} / ${ready.model}`;
+      vision.className = 'mono ready';
+      $('masthead-state').textContent = '';
     } else {
       const blocked = h.backends.find((b) => b.account_blocked);
-      backendEl.textContent = blocked
-        ? `${blocked.name} account blocked` : 'no backend configured';
-      backendEl.className = 'broken';
-      backendEl.title = h.backends.map((b) => `${b.name}: ${b.detail}`).join('\n');
+      vision.textContent = blocked ? `${blocked.name} blocked` : 'none configured';
+      vision.className = 'mono broken';
+      $('masthead-state').textContent = blocked
+        ? `${blocked.name} account is blocked — ${blocked.detail}`
+        : 'No vision backend is configured, so only the gate will run.';
+      $('masthead-state').className = 'masthead-state broken';
     }
     const pm = h.price_model || {};
     if (pm.n_listings) {
-      $('rig-comps').innerHTML =
-        `<b>${pm.n_listings}</b> listings · ${pm.n_groups} specs`;
-      $('rig-cov').innerHTML =
-        `80% band held <b>${(pm.coverage_80 * 100).toFixed(1)}%</b>`;
-      $('rig-cov').title = `Measured on ${pm.coverage_n} held-out evaluations. `
-        + `R² ${pm.r2}, median error ${pm.median_ape}%.`;
+      $('tb-comps').textContent = `${pm.n_listings} listings, ${pm.n_groups} specs`;
+      $('tb-cov').replaceChildren(
+        el('b', null, `${(pm.coverage_80 * 100).toFixed(1)}%`),
+        document.createTextNode(` of ${pm.coverage_n}`));
+      $('tb-cov').title =
+        `The 80% comparable-asking band held the real asking price in `
+        + `${(pm.coverage_80 * 100).toFixed(1)}% of ${pm.coverage_n} held-out `
+        + `evaluations. Fit R² ${pm.r2}, median error ${pm.median_ape}%.`;
     }
-  } catch (e) { $('rig-backend').textContent = 'unreachable'; }
+  } catch {
+    $('tb-vision').textContent = 'unreachable';
+    $('tb-vision').className = 'mono broken';
+  }
 }
 
 async function loadSamples() {
   const list = $('sample-list');
   try {
-    const cases = await (await fetch('/api/samples')).json();
+    const cases = await net.getSamples();
     list.replaceChildren(...cases.map((c) => {
       const b = el('button', 'sample');
       b.type = 'button';
       b.dataset.expect = c.expect;
       b.disabled = !c.available;
-      b.append(el('span', 'sample-n', c.available ? `${c.n_photos}` : '—'),
+      b.append(el('span', 'sample-n', c.available ? String(c.n_photos) : '—'),
                el('span', 'sample-title', c.title),
-               el('span', 'sample-blurb',
-                  c.available ? c.blurb : 'fixtures missing — run python -m app.demo --build'));
+               el('span', 'sample-blurb', c.available
+                 ? c.blurb
+                 : 'fixtures missing — run python -m app.demo --build'));
       b.addEventListener('click', () => runSample(c));
       return b;
     }));
-  } catch (e) {
+  } catch {
     list.replaceChildren(el('p', 'sample-blurb', 'Could not load the rehearsed cases.'));
   }
 }
@@ -77,192 +78,69 @@ async function loadSamples() {
 
 function declaredParams() {
   const p = new URLSearchParams();
-  const year = $('f-year').value, km = $('f-km').value, make = $('f-make').value.trim();
-  const asking = $('f-asking').value;
-  if (year) p.set('year', year);
-  if (km) p.set('km', km);
-  if (make) p.set('make', make);
-  if (asking) p.set('asking', asking);
+  const set = (k, v) => { if (v) p.set(k, v); };
+  set('year', $('f-year').value);
+  set('km', $('f-km').value);
+  set('make', $('f-make').value.trim());
+  set('asking', $('f-asking').value);
   p.set('market', $('f-market').value);
   return p;
 }
 
+function showSkipped(skipped) {
+  const box = $('skipped');
+  if (!skipped || !skipped.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = skipped.length === 1
+    ? `${skipped[0].name} was not used: ${skipped[0].why}.`
+    : `${skipped.length} files were not used: `
+      + skipped.map((s) => `${s.name} (${s.why})`).join(', ') + '.';
+}
+
 async function runSample(c) {
-  const body = new FormData();
-  body.set('case', c.id);
-  const r = await fetch('/api/upload-sample', { method: 'POST', body });
-  if (!r.ok) { alert((await r.json()).detail); return; }
-  const data = await r.json();
-  const d = c.declared || {};
-  $('f-year').value = d.year || '';
-  $('f-km').value = d.km || '';
-  $('f-make').value = d.make || '';
-  $('f-asking').value = d.asking_price || '';
-  start(data.session);
+  try {
+    const data = await net.uploadSample(c.id);
+    const d = c.declared || {};
+    $('f-year').value = d.year || '';
+    $('f-km').value = d.km || '';
+    $('f-make').value = d.make || '';
+    $('f-asking').value = d.asking_price || '';
+    showSkipped(null);
+    start(data.session);
+  } catch (e) { fail(e.message); }
 }
 
 async function uploadFiles(files) {
-  const body = new FormData();
-  [...files].forEach((f) => body.append('files', f));
-  const r = await fetch('/api/upload', { method: 'POST', body });
-  if (!r.ok) { alert((await r.json()).detail); return; }
-  start((await r.json()).session);
+  try {
+    const data = await net.uploadFiles(files);
+    showSkipped(data.skipped);
+    start(data.session);
+  } catch (e) { fail(e.message); }
 }
 
-/* ---------- run ---------- */
-
-function setStage(step, state, detail, time) {
-  const li = document.querySelector(`.stages li[data-step="${step}"]`);
-  if (!li) return;
-  li.dataset.state = state;
-  if (detail != null) li.querySelector('.stage-detail').textContent = detail;
-  li.querySelector('.stage-time').textContent = time != null ? `${time.toFixed(2)}s` : '';
+function fail(message) {
+  $('masthead-state').textContent = message;
+  $('masthead-state').className = 'masthead-state broken';
 }
 
-function start(sid) {
-  session = sid;
+/* ---------- the run ---------- */
+
+function start(session) {
   if (stream) stream.close();
-  $('run').hidden = false;
-  $('result').hidden = true;
-  ['gate', 'evidence', 'price'].forEach((s) => setStage(s, 'waiting', 'waiting', null));
-  $('run').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-  stream = new EventSource(`/api/appraise/${sid}?${declaredParams()}`);
-  stream.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'stage') setStage(msg.step, 'running', msg.detail, null);
-    else if (msg.type === 'result') { stream.close(); render(msg.appraisal); }
-    else if (msg.type === 'error') {
+  run.begin();
+  stream = net.openStream(session, declaredParams(), {
+    gate: (m) => run.onGate(m),
+    stage: (m) => run.onStage(m),
+    result: (m) => { stream.close(); render(m.appraisal); },
+    error: (m) => {
       stream.close();
-      ['gate', 'evidence', 'price'].forEach((s) => setStage(s, 'skipped', '', null));
-      showRefusal('Something broke while appraising.', msg.message);
-    }
-  };
-  stream.onerror = () => { if (stream) stream.close(); };
-}
-
-/* ---------- the gauge ---------- */
-
-const NS = 'http://www.w3.org/2000/svg';
-const svg = (tag, attrs) => {
-  const n = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-  return n;
-};
-
-/* The price band drawn as a measuring scale: the comparables it was fit
- * against sit on the same axis as ticks, so "what is it comparing to" is
- * answered by the picture rather than by a sentence under it. */
-function drawGauge(price) {
-  const g = $('gauge');
-  g.replaceChildren();
-  const W = 1000, axisY = 96;
-  const comps = (price.comparables || [])
-    .map((c) => ({ c, v: (price.currency === 'TRY' ? c.price_try : c.price_usd) ?? c.price }))
-    .filter((d) => d.v != null)
-    .sort((a, b) => a.v - b.v);
-
-  const values = comps.map((d) => d.v);
-  const asking = price.asking ? price.asking.asking : null;
-  if (asking) values.push(asking);
-  const hasBaseline = price.baseline_low && price.baseline_high
-    && Math.abs(price.baseline_point - price.point) > 1;
-  const lo = Math.min(price.low, hasBaseline ? price.baseline_low : price.low, ...values);
-  const hi = Math.max(price.high, hasBaseline ? price.baseline_high : price.high, ...values);
-  const pad = (hi - lo) * 0.1 || hi * 0.1;
-  const min = lo - pad, max = hi + pad;
-  const x = (v) => 55 + ((v - min) / (max - min)) * (W - 110);
-
-  g.append(svg('line', { x1: 55, y1: axisY, x2: W - 55, y2: axisY,
-                         stroke: 'var(--steel-700)', 'stroke-width': 1 }));
-
-  // The comparables-only band, outlined. This is the band whose coverage was
-  // measured, so it stays on screen even once the condition adjustment has
-  // moved the filled band off it.
-  if (hasBaseline) {
-    g.append(svg('rect', { x: x(price.baseline_low), y: axisY - 38,
-                           width: x(price.baseline_high) - x(price.baseline_low),
-                           height: 76, fill: 'none', stroke: 'var(--haze-dim)',
-                           'stroke-width': 1, 'stroke-dasharray': '4 4' }));
-  }
-
-  // the condition-adjusted band
-  g.append(svg('rect', { x: x(price.low), y: axisY - 24, width: x(price.high) - x(price.low),
-                         height: 48, fill: 'var(--sodium)', opacity: .15 }));
-  for (const v of [price.low, price.high]) {
-    g.append(svg('line', { x1: x(v), y1: axisY - 24, x2: x(v), y2: axisY + 24,
-                           stroke: 'var(--sodium)', 'stroke-width': 2 }));
-  }
-  // Edge prices are anchored to the outside of the band so they cannot
-  // collide with each other on a narrow band.
-  const edge = (v, anchor) => {
-    const t = svg('text', { x: x(v), y: axisY - 46, fill: 'var(--sodium)',
-                            'text-anchor': anchor, 'font-family': 'var(--cond)',
-                            'font-size': 30, 'font-weight': 600 });
-    t.textContent = money(v, price.currency);
-    g.append(t);
-  };
-  edge(price.low, 'end');
-  edge(price.high, 'start');
-
-  // The seller's own number, marked separately from our estimate and coloured
-  // by whether it clears the comparable band - the one thing a buyer looks for
-  // first.
-  if (asking) {
-    const ax = x(asking);
-    const colour = price.asking.inside_comparable_band ? 'var(--signal)' : 'var(--flag)';
-    g.append(svg('line', { x1: ax, y1: axisY - 64, x2: ax, y2: axisY - 24,
-                           stroke: colour, 'stroke-width': 2, 'stroke-dasharray': '5 3' }));
-    g.append(svg('circle', { cx: ax, cy: axisY - 24, r: 4, fill: colour }));
-    const t = svg('text', { x: ax, y: axisY - 72, fill: colour, 'text-anchor': 'middle',
-                            'font-family': 'var(--cond)', 'font-size': 19 });
-    t.textContent = `seller asks ${money(asking, price.currency)}`;
-    g.append(t);
-  }
-
-  // the needle
-  const nx = x(price.point);
-  g.append(svg('path', { d: `M ${nx} ${axisY - 26} L ${nx - 8} ${axisY - 40} L ${nx + 8} ${axisY - 40} Z`,
-                         fill: 'var(--paper)' }));
-  g.append(svg('line', { x1: nx, y1: axisY - 26, x2: nx, y2: axisY + 26,
-                         stroke: 'var(--paper)', 'stroke-width': 2 }));
-
-  // Comparables as ticks on the same scale. Five 2020-2022 F-MAXes at similar
-  // mileage land almost on top of each other, so labels are placed greedily
-  // into the first row where they clear the previous label; a label with no
-  // room is dropped and its tick stays, which is better than an unreadable pile.
-  const rowEnds = [-Infinity, -Infinity, -Infinity];
-  comps.forEach(({ c, v }) => {
-    const px = x(v);
-    const label = `${c.year} · ${Math.round(c.km / 1000)}k`;
-    const half = label.length * 4.4 + 6;
-    const row = rowEnds.findIndex((end) => px - half > end);
-    const depth = 42 + (row < 0 ? 0 : row) * 19;
-    g.append(svg('line', { x1: px, y1: axisY + 26, x2: px, y2: axisY + depth - 6,
-                           stroke: 'var(--signal)', 'stroke-width': 2 }));
-    if (row < 0) return;
-    rowEnds[row] = px + half;
-    const t = svg('text', { x: px, y: axisY + depth + 12, fill: 'var(--signal)',
-                            'text-anchor': 'middle', 'font-family': 'var(--cond)',
-                            'font-size': 17 });
-    t.textContent = label;
-    g.append(t);
+      run.onError('Something broke while appraising.');
+      showRefusal('Something broke while appraising.', m.message);
+    },
   });
-
-  const caption = svg('text', { x: 55, y: axisY + 100, fill: 'var(--haze-dim)',
-                                'font-family': 'var(--cond)', 'font-size': 17 });
-  caption.textContent = hasBaseline
-    ? 'dashed outline: what comparable trucks are asking   ·   teal ticks: the listings priced against'
-    : 'teal ticks: the real listings this was priced against';
-  g.append(caption);
-
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    g.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
-              { duration: 420, easing: 'cubic-bezier(.2,.7,.3,1)' });
-  }
 }
 
-/* ---------- render ---------- */
+/* ---------- the verdict ---------- */
 
 function showRefusal(headline, detail, evidence) {
   $('result').hidden = false;
@@ -274,75 +152,26 @@ function showRefusal(headline, detail, evidence) {
   if (evidence) box.append(el('p', 'refusal-evidence', evidence));
 }
 
-function renderPhotos(a) {
-  const grid = $('photo-grid');
-  const checks = a.gate.photos || [];
-  $('photo-count').textContent =
-    `${a.gate.usable_photo_ids.length} used of ${checks.length}`;
-  grid.replaceChildren(...checks.map((c) => {
-    const b = el('button', 'thumb' + (c.usable ? '' : ' dropped'));
-    b.type = 'button';
-    b.id = `thumb-${c.photo_id}`;
-    b.title = c.usable
-      ? `${c.filename} — ${titleise(c.view)} (${c.quality_bucket})`
-      : `${c.filename} — dropped: ${c.reasons.join('; ')}`;
-    const img = el('img');
-    img.src = photoUrls[c.photo_id] || '';
-    img.alt = c.usable ? `${titleise(c.view)}` : `dropped: ${c.reasons.join('; ')}`;
-    img.loading = 'lazy';
-    b.append(img, el('span', 'thumb-tag',
-                     c.usable ? titleise(c.view) : 'dropped'));
-    b.addEventListener('click', () => openLightbox(c));
-    return b;
-  }));
-}
-
-function citePhoto(id, a) {
-  const check = (a.gate.photos || []).find((c) => c.photo_id === id);
-  const node = $(`thumb-${id}`);
-  if (!node) return;
-  node.classList.remove('flash');
-  void node.offsetWidth;
-  node.classList.add('flash');
-  node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  if (check) openLightbox(check);
-}
-
-function openLightbox(check) {
-  $('lightbox-img').src = photoUrls[check.photo_id] || '';
-  $('lightbox-img').alt = titleise(check.view);
-  $('lightbox-cap').textContent = check.usable
-    ? `${check.filename} — ${titleise(check.view)} · ${check.quality_bucket} capture`
-      + (check.truck_dominant ? ` · truck detected ${check.truck_conf.toFixed(2)}` : '')
-    : `${check.filename} — dropped: ${check.reasons.join('; ')}`;
-  $('lightbox').hidden = false;
-}
-
 function render(a) {
-  photoUrls = a.photo_urls || {};
+  frames.setSource(a.photo_urls, a.gate.photos, a.gate.decision);
   $('result').hidden = false;
   $('refusal').hidden = true;
   $('gauge-wrap').hidden = true;
   $('headline').textContent = a.headline;
 
-  for (const step of a.trace || []) setStage(step.step, 'done', step.detail, step.elapsed_s);
-  for (const s of ['gate', 'evidence', 'price']) {
-    const li = document.querySelector(`.stages li[data-step="${s}"]`);
-    if (li && li.dataset.state !== 'done') {
-      li.dataset.state = 'skipped';
-      li.querySelector('.stage-detail').textContent = 'not reached';
-    }
-  }
-
-  renderPhotos(a);
+  run.onResult(a);
+  frames.renderGrid(a.gate, frames.openLightbox);
 
   const ev = a.evidence, price = a.price;
 
   const fb = $('fallback-note');
   if (ev && ev.fell_back_from && ev.fell_back_from.length) {
     fb.hidden = false;
-    fb.innerHTML = `Answered by <b>${ev.backend} / ${ev.model}</b> after `
-      + `${ev.fell_back_from.length} backend(s) failed: ${ev.fell_back_from[0]}`;
+    fb.replaceChildren(
+      document.createTextNode('Answered by '),
+      el('b', null, `${ev.backend} / ${ev.model}`),
+      document.createTextNode(` after ${ev.fell_back_from.length} backend(s) failed: `
+                              + ev.fell_back_from[0]));
   } else fb.hidden = true;
 
   const askEl = $('asking-verdict');
@@ -351,8 +180,12 @@ function render(a) {
     askEl.hidden = false;
     askEl.className = 'asking-verdict '
       + (v.inside_comparable_band ? 'inline' : (v.vs_comparables_pct > 0 ? 'above' : 'below'));
-    askEl.innerHTML = `The seller is asking <b>${money(v.asking, v.currency)}</b> — `
-      + `<b>${v.label}</b>. ${v.summary}`;
+    askEl.replaceChildren(
+      document.createTextNode('The seller is asking '),
+      el('b', null, money(v.asking, v.currency)),
+      document.createTextNode(' — '),
+      el('b', null, v.label),
+      document.createTextNode(`. ${v.summary}`));
   } else askEl.hidden = true;
 
   if (a.status === 'refused') {
@@ -362,148 +195,56 @@ function render(a) {
   } else if (price && price.ok) {
     $('gauge-wrap').hidden = false;
     drawGauge(price);
-    const card = price.model_card;
-    const adjusted = Math.abs(price.point - price.baseline_point) > 1;
-    $('gauge-note').innerHTML =
-      (adjusted
-        ? `Condition moved the estimate <b>${price.adjustment.pct.toFixed(1)}%</b>, capped at `
-          + `±${price.adjustment.cap_pct.toFixed(1)}%. `
-        : '')
-      + `The asking band is an ${Math.round(price.interval_level * 100)}% interval — on held-out `
-      + `listings it contained the real asking price <b>${(card.coverage * 100).toFixed(1)}%</b> `
-      + `of the time (${card.coverage_n} evaluations). Fit R² ${card.r2}, median error `
-      + `${card.mae_pct}% across ${card.n_listings} listings collapsing to ${card.n_groups} `
-      + `distinct specs.`;
+    writeGaugeNote(price);
   } else if (price && !price.ok) {
     showRefusal(a.headline, price.reason, a.gate.truck_evidence);
   } else {
     showRefusal(a.headline, a.gate.headline, a.gate.truck_evidence);
   }
 
-  // identity
-  const idPanel = $('panel-identity');
-  if (ev && (ev.vehicle.make || ev.vehicle.odometer_km)) {
-    const v = ev.vehicle, dl = $('identity');
-    dl.replaceChildren();
-    const add = (k, val, read) => {
-      if (!val) return;
-      dl.append(el('dt', null, k));
-      dl.append(el('dd', read ? 'read' : null, val));
-    };
-    add('Make', [v.make, v.model].filter(Boolean).join(' '), true);
-    add('Cab', v.cab_type);
-    add('Axles', v.axle_config);
-    add('Generation', v.approx_year_range);
-    if (v.odometer_km) add('Odometer', `${v.odometer_km.toLocaleString('en-US')} km`, true);
-    if (v.badges_seen && v.badges_seen.length) add('Badges', v.badges_seen.join(', '));
-    idPanel.hidden = false;
-  } else idPanel.hidden = true;
+  renderPanels(a, run.elevationRoot());
+  stampTitleBlock(a);
+  $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
+}
 
-  // findings
-  const fPanel = $('panel-findings');
-  if (ev && ev.issues.length) {
-    $('findings-sub').textContent =
-      `Condition graded ${ev.condition_grade}, confidence ${ev.confidence.toFixed(2)}. `
-      + `Every line names the photo it came from — select one to see it.`;
-    const order = { major: 0, moderate: 1, minor: 2, cosmetic: 3 };
-    const list = [...ev.issues].sort((x, y) => order[x.severity] - order[y.severity]);
-    $('findings').replaceChildren(...list.map((i) => {
-      const li = el('li');
-      const b = el('button', 'finding');
-      b.type = 'button';
-      b.dataset.sev = i.severity;
-      const part = el('span', 'finding-part', titleise(i.component) + ' ');
-      part.append(el('em', null, `${i.severity} · ${i.price_impact} price impact`));
-      const check = (a.gate.photos || []).find((c) => c.photo_id === i.photo_id);
-      const cite = el('span', 'finding-cite');
-      cite.append(document.createTextNode('seen in '));
-      cite.append(el('b', null, check ? check.filename : `photo ${i.photo_id}`));
-      cite.append(document.createTextNode(` · confidence ${i.confidence.toFixed(2)}`));
-      b.append(el('span', 'finding-bar'), part,
-               el('span', 'finding-text', i.observation), cite);
-      b.addEventListener('click', () => citePhoto(i.photo_id, a));
-      li.append(b);
-      return li;
-    }));
-    fPanel.hidden = false;
-  } else fPanel.hidden = true;
+/* The calibration figure is pinned to the band it was measured on, and says
+   so in words, because the adjusted band carries no such guarantee. */
+function writeGaugeNote(price) {
+  const card = price.model_card || {};
+  const note = $('gauge-note');
+  const parts = [];
+  const push = (s) => parts.push(document.createTextNode(s));
+  const fig = (s) => parts.push(el('b', null, s));
 
-  // systems
-  const sPanel = $('panel-systems');
-  if (ev && Object.keys(ev.condition_summary).length) {
-    const dl = $('systems');
-    dl.replaceChildren();
-    for (const [k, v] of Object.entries(ev.condition_summary)) {
-      dl.append(el('dt', null, titleise(k)), el('dd', null, v));
-    }
-    sPanel.hidden = false;
-  } else sPanel.hidden = true;
+  if (Math.abs(price.point - price.baseline_point) > 1) {
+    push('What the photos found moved the estimate ');
+    fig(`${price.adjustment.pct >= 0 ? '+' : ''}${fixed(price.adjustment.pct, 1)}%`);
+    push(`, capped at ±${fixed(price.adjustment.cap_pct, 1)}% — one residual standard `
+         + 'deviation of the price model, which is a stated assumption. ');
+  }
+  push('The comparable-asking band is an ');
+  push(`${Math.round(price.interval_level * 100)}% interval, and that is the band `
+       + 'whose accuracy was measured: on held-out listings it contained the real '
+       + 'asking price ');
+  fig(`${(card.coverage * 100).toFixed(1)}%`);
+  push(` of the time over ${card.coverage_n} evaluations. Fit R² ${card.r2}, `
+        + `median error ${card.mae_pct}% across ${card.n_listings} listings `
+        + `collapsing to ${card.n_groups} distinct specs.`);
+  note.replaceChildren(...parts);
+}
 
-  // asks + gaps
-  const asks = a.requests || [];
-  $('panel-asks').hidden = !asks.length;
-  $('asks').replaceChildren(...asks.map((t) => el('li', null, t)));
-  const gaps = ev ? ev.coverage_gaps : [];
-  $('panel-gaps').hidden = !gaps.length;
-  $('gaps').replaceChildren(...gaps.map((t) => el('li', null, t)));
-
-  // why
-  const wPanel = $('panel-why');
-  if (price && price.ok) {
-    const dt = $('drivers');
-    dt.replaceChildren();
-    const head = el('tr');
-    head.append(el('th', null, 'Factor'), el('th', 'num', 'Value'),
-                el('th', 'num', 'Effect vs. the average comparable'));
-    dt.append(head);
-    for (const d of price.drivers.slice(0, 6)) {
-      const tr = el('tr');
-      tr.append(el('td', null, titleise(d.feature)),
-                el('td', 'num', d.value.toFixed(2)),
-                el('td', 'num ' + (d.pct_effect >= 0 ? 'pos' : 'neg'),
-                   `${d.pct_effect >= 0 ? '+' : ''}${d.pct_effect.toFixed(1)}%`));
-      dt.append(tr);
-    }
-    if (price.adjustment && price.adjustment.pct) {
-      const tr = el('tr');
-      tr.append(el('td', null, 'Condition (from the photos)'), el('td', 'num', ''),
-                el('td', 'num ' + (price.adjustment.pct >= 0 ? 'pos' : 'neg'),
-                   `${price.adjustment.pct >= 0 ? '+' : ''}${price.adjustment.pct.toFixed(1)}%`));
-      tr.title = price.adjustment.basis;
-      dt.append(tr);
-    }
-
-    const ct = $('comps');
-    ct.replaceChildren();
-    const ch = el('tr');
-    ch.append(el('th', null, 'Year'), el('th', null, 'Listing'),
-              el('th', 'num', 'km'), el('th', 'num', 'Asking'));
-    ct.append(ch);
-    for (const c of price.comparables) {
-      const tr = el('tr');
-      tr.append(el('td', null, String(c.year)),
-                el('td', null, `${c.make} ${c.model}`),
-                el('td', 'num', `${Math.round(c.km / 1000)}k`),
-                el('td', 'num price', money(c.price, c.currency)));
-      ct.append(tr);
-    }
-
-    const prov = $('provenance');
-    prov.replaceChildren();
-    for (const [k, v] of Object.entries(price.inputs_provenance || {})) {
-      const row = el('div', k.includes('conflict') ? 'conflict' : null);
-      row.append(el('span', null, titleise(k)), el('span', null, v));
-      prov.append(row);
-    }
-    $('widened').replaceChildren(...(price.widened || []).map((w) => el('li', null, w)));
-    wPanel.hidden = false;
-  } else wPanel.hidden = true;
-
-  const cav = price ? price.caveats || [] : [];
-  $('panel-caveats').hidden = !cav.length;
-  $('caveats').replaceChildren(...cav.map((t) => el('li', null, t)));
-
-  $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+function stampTitleBlock(a) {
+  const v = a.evidence ? a.evidence.vehicle : null;
+  if (v && (v.make || v.model)) {
+    const bits = [[v.make, v.model].filter(Boolean).join(' ')];
+    const spec = [v.cab_type, v.axle_config].filter(Boolean).join(' ');
+    if (spec) bits.push(spec);
+    if (v.approx_year_range) bits.push(v.approx_year_range);
+    $('tb-subject').textContent = bits.join(', ');
+  }
+  const fx = a.price && a.price.model_card ? a.price.model_card.fx : null;
+  if (fx) $('tb-fx').textContent = `${fx.usd_try} TRY/USD, ${fx.as_of}`;
+  if (a.version) $('tb-sheet').textContent = a.version;
 }
 
 /* ---------- wiring ---------- */
@@ -516,10 +257,10 @@ dz.addEventListener('keydown', (e) => {
 $('filepicker').addEventListener('change', (e) => {
   if (e.target.files.length) uploadFiles(e.target.files);
 });
-['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => {
+['dragenter', 'dragover'].forEach((type) => dz.addEventListener(type, (e) => {
   e.preventDefault(); dz.classList.add('over');
 }));
-['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, (e) => {
+['dragleave', 'drop'].forEach((type) => dz.addEventListener(type, (e) => {
   e.preventDefault(); dz.classList.remove('over');
 }));
 dz.addEventListener('drop', (e) => {
@@ -528,9 +269,11 @@ dz.addEventListener('drop', (e) => {
 
 $('reset').addEventListener('click', () => {
   if (stream) stream.close();
+  run.stop();
   $('run').hidden = true;
   $('result').hidden = true;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  elevation.reset(run.elevationRoot());
+  window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
 });
 
 $('lightbox-close').addEventListener('click', () => { $('lightbox').hidden = true; });
@@ -542,13 +285,17 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* A frozen export embeds the appraisal and has no API behind it: render it
- * straight away and hide the parts that would call a server. */
+ * straight away and drop the parts that would call a server. The drawing, the
+ * frames and the findings all still work, which is the point - a judge can
+ * click through it when the live run has failed. */
 if (window.KAMION_APPRAISAL) {
-  document.getElementById('intake').hidden = true;
-  document.getElementById('run').hidden = true;
-  document.getElementById('rig').hidden = true;
-  render(window.KAMION_APPRAISAL);
+  $('intake').hidden = true;
+  run.mount().then(() => {
+    run.showFrozen(window.KAMION_APPRAISAL);
+    render(window.KAMION_APPRAISAL);
+  });
 } else {
+  run.mount();
   loadHealth();
   loadSamples();
 }

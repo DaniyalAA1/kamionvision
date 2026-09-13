@@ -4,37 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KamionVision — what's this truck worth?</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230d1318'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23f0a23c' stroke-width='2'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Barlow+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1116'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23f0a23c' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles/fonts.css">
+<link rel="stylesheet" href="/static/styles/tokens.css">
+<link rel="stylesheet" href="/static/styles/base.css">
+<link rel="stylesheet" href="/static/styles/elevation.css">
+<link rel="stylesheet" href="/static/styles/sheet.css">
+<link rel="stylesheet" href="/static/styles/run.css">
+<link rel="stylesheet" href="/static/styles/result.css">
 </head>
 <body>
+
+<div class="sheet">
 
 <header class="masthead">
   <div class="masthead-id">
     <h1>KamionVision</h1>
     <p>Appraises a used tractor unit from photos. Prices it against real listings, or tells you it can't.</p>
   </div>
-  <dl class="rig" id="rig">
-    <div><dt>Vision</dt><dd id="rig-backend">checking…</dd></div>
-    <div><dt>Comparables</dt><dd id="rig-comps">—</dd></div>
-    <div><dt>Band accuracy</dt><dd id="rig-cov">—</dd></div>
-  </dl>
+  <p class="masthead-state" id="masthead-state"></p>
 </header>
 
 <main>
 
 <section class="intake" id="intake">
-  <div class="dropzone" id="dropzone" tabindex="0" role="button"
+  <div class="drawing-area" id="dropzone" tabindex="0" role="button"
        aria-label="Add photos of the truck">
     <input type="file" id="filepicker" multiple accept="image/*" hidden>
-    <p class="dropzone-lead">Drop photos of the truck</p>
-    <p class="dropzone-sub">or press to choose files — 3 or more, any quality</p>
+    <div class="elev-slot elev-hero" id="intake-elev" aria-hidden="true"></div>
+    <div class="drawing-prompt">
+      <p class="prompt-lead">Drop photos of the truck</p>
+      <p class="prompt-sub">or press to choose files — three or more, any quality</p>
+    </div>
   </div>
 
   <div class="intake-side">
+    <p class="skipped" id="skipped" hidden></p>
     <fieldset class="declared">
       <legend>What the seller says <span>(optional — the photos do the work)</span></legend>
       <label>Year <input type="number" id="f-year" min="1990" max="2027" placeholder="2020"></label>
@@ -55,11 +60,43 @@
 
 <section class="run" id="run" hidden>
   <ol class="stages" id="stages">
-    <li data-step="gate"><span class="stage-name">Gate</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
-    <li data-step="evidence"><span class="stage-name">Evidence</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
-    <li data-step="price"><span class="stage-name">Price</span><span class="stage-detail">waiting</span><span class="stage-time"></span></li>
+    <li data-step="gate"><span class="stage-name">Gate</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
+    <li data-step="evidence"><span class="stage-name">Evidence</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
+    <li data-step="price"><span class="stage-name">Price</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
   </ol>
-  <button class="reset" id="reset" type="button">Start over</button>
+
+  <div class="inspect">
+    <figure class="frame-view">
+      <div class="frame-stage" id="frame-stage">
+        <img id="frame-img" alt="">
+        <svg class="frame-boxes" id="frame-boxes" aria-hidden="true"></svg>
+        <div class="frame-chips" id="frame-chips" aria-hidden="true"></div>
+        <span class="scan" id="scan" aria-hidden="true"></span>
+      </div>
+      <figcaption class="frame-meta" id="frame-meta"></figcaption>
+    </figure>
+
+    <div class="coverage">
+      <div class="elev-slot" id="run-elev" role="img"
+           aria-label="Condition map of the tractor unit"></div>
+      <dl class="coverage-read" id="coverage-read"></dl>
+    </div>
+  </div>
+
+  <p class="narration" id="narration" aria-live="polite"></p>
+
+  <div class="strip-row">
+    <div class="strip" id="strip"></div>
+  </div>
+
+  <div class="run-foot">
+    <div class="progress" id="progress" hidden>
+      <span class="progress-label" id="progress-label">reading the frames</span>
+      <span class="progress-rule"><i id="progress-fill"></i></span>
+      <span class="progress-time num" id="clock">0.0s</span>
+    </div>
+    <button class="reset" id="reset" type="button">Start over</button>
+  </div>
 </section>
 
 <section class="result" id="result" hidden>
@@ -69,7 +106,7 @@
     <p class="fallback-note" id="fallback-note" hidden></p>
     <p class="asking-verdict" id="asking-verdict" hidden></p>
     <div class="gauge-wrap" id="gauge-wrap">
-      <svg class="gauge" id="gauge" viewBox="0 0 1000 215" preserveAspectRatio="none" role="img"></svg>
+      <svg class="gauge" id="gauge" viewBox="0 0 1000 250" role="img"></svg>
       <p class="gauge-note" id="gauge-note"></p>
     </div>
     <div class="refusal" id="refusal" hidden></div>
@@ -125,13 +162,41 @@
   </div>
 </section>
 
+</main>
+
+<!-- The title block, where a drawing records what it was drawn from and when.
+     Same job here: the corpus, the measured band coverage, the vision model
+     that answered, and the stamped exchange rate. -->
+<footer class="titleblock">
+  <div class="tb-cell tb-wide">
+    <dt>Subject</dt><dd id="tb-subject">used tractor unit, appraised from photographs</dd>
+  </div>
+  <div class="tb-cell">
+    <dt>Vision</dt><dd id="tb-vision" class="mono">checking…</dd>
+  </div>
+  <div class="tb-cell">
+    <dt>Comparables</dt><dd id="tb-comps" class="mono">—</dd>
+  </div>
+  <div class="tb-cell">
+    <dt>Band checked</dt><dd id="tb-cov" class="mono">—</dd>
+  </div>
+  <div class="tb-cell">
+    <dt>Rate</dt><dd id="tb-fx" class="mono">—</dd>
+  </div>
+  <div class="tb-cell">
+    <dt>Revision</dt><dd id="tb-sheet" class="mono">—</dd>
+  </div>
+</footer>
+
+</div><!-- /sheet -->
+
 <div class="lightbox" id="lightbox" hidden>
   <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close">×</button>
   <img id="lightbox-img" alt="">
   <p id="lightbox-cap"></p>
 </div>
 
-</main>
-<script src="/static/app.js"></script>
+<script src="/static/vendor/motion.min.js"></script>
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>

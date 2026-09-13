@@ -14,7 +14,9 @@ Run: .venv/bin/python -m unittest discover -s tests -v
 """
 from __future__ import annotations
 
+import base64
 import json
+import re
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -443,6 +445,243 @@ class PhotoSelection(unittest.TestCase):
         bad.usable = False
         picked = evidence.select_photos(GateReport(photos=[good, bad]), limit=10)
         self.assertEqual([c.photo_id for c in picked], [1])
+
+
+class GateEventContract(unittest.TestCase):
+    """The web screen paints the gate report while the vision call is still
+    running, so the pipeline has to hand it over mid-run rather than only in
+    the finished Appraisal."""
+
+    def _gate(self, decision=GateDecision.PASS, **over):
+        g = GateReport(decision=decision, headline="h",
+                       photos=[_check(0), _check(1)], usable_photo_ids=[0, 1],
+                       views_present=["tire_wheel"], **over)
+        return g
+
+    def _run(self, gate_report):
+        from app import pipeline
+        seen = []
+        ev = EvidenceReport()
+
+        def record_gate(g):
+            # Order matters: the callback is useless if it only fires once the
+            # vision call it is meant to cover has already returned.
+            seen.append(("gate", g, len(seen)))
+
+        def fake_evidence(gate, declared=None, *, backend=None):
+            seen.append(("evidence", None, len(seen)))
+            return ev
+
+        with unittest.mock.patch.object(pipeline.gate_stage, "run",
+                                        return_value=gate_report), \
+             unittest.mock.patch.object(pipeline.evidence_stage, "run",
+                                        side_effect=fake_evidence), \
+             unittest.mock.patch.object(pipeline.evidence_stage, "select_photos",
+                                        return_value=[_check(0)]):
+            result = pipeline.appraise([Path("a.jpg")], on_gate=record_gate)
+        return result, seen
+
+    def test_fires_once_with_the_report_before_evidence(self):
+        gate_report = self._gate()
+        _, seen = self._run(gate_report)
+        kinds = [s[0] for s in seen]
+        self.assertEqual(kinds.count("gate"), 1)
+        self.assertIs(seen[0][1], gate_report)
+        self.assertLess(kinds.index("gate"), kinds.index("evidence"))
+
+    def test_fires_on_a_refusal_too(self):
+        # The refused frame is the whole explanation, so the screen needs the
+        # report on the path that never reaches the vision call at all.
+        _, seen = self._run(self._gate(GateDecision.REFUSE_NOT_A_TRUCK))
+        self.assertEqual([s[0] for s in seen], ["gate"])
+
+    def test_absent_callback_changes_nothing(self):
+        from app import pipeline
+        with unittest.mock.patch.object(pipeline.gate_stage, "run",
+                                        return_value=self._gate(
+                                            GateDecision.REFUSE_NO_PHOTOS)):
+            result = pipeline.appraise([Path("a.jpg")])
+        self.assertEqual(result.status, "refused")
+
+    def test_the_vision_call_gets_fewer_frames_than_the_gate_passed(self):
+        # The screen names the frames one by one while it waits, and it reads
+        # them off the gate event rather than the usable list, because
+        # select_photos caps at MAX_EVIDENCE_PHOTOS. Counting usable frames
+        # would name frames that were never sent.
+        from app.config import MAX_EVIDENCE_PHOTOS
+        photos = []
+        for i in range(MAX_EVIDENCE_PHOTOS + 6):
+            c = _check(i, f"{i}.jpg")
+            c.view, c.capture_quality = "tire_wheel", 0.9
+            photos.append(c)
+        gate_report = GateReport(decision=GateDecision.PASS, photos=photos,
+                                 usable_photo_ids=[c.photo_id for c in photos])
+        sent = evidence.select_photos(gate_report)
+        self.assertEqual(len(sent), MAX_EVIDENCE_PHOTOS)
+        self.assertLess(len(sent), len(gate_report.usable_photo_ids))
+
+    def test_on_step_still_takes_exactly_two_arguments(self):
+        # app/cli.py and app/demo.py both pass a two-parameter callback. Adding
+        # a third positional argument to the pipeline's `note` call broke every
+        # CLI appraise, and a `lambda *a` test callback hid it.
+        from app import pipeline
+        calls = []
+
+        def two_arg_note(step, detail):
+            calls.append(step)
+
+        photos = [_check(0), _check(1)]
+        gate_report = GateReport(decision=GateDecision.PASS, headline="h",
+                                 photos=photos, usable_photo_ids=[0, 1])
+        with unittest.mock.patch.object(pipeline.gate_stage, "run",
+                                        return_value=gate_report), \
+             unittest.mock.patch.object(pipeline.evidence_stage, "run",
+                                        return_value=EvidenceReport()):
+            pipeline.appraise([Path("a.jpg")], on_step=two_arg_note)
+        self.assertIn("gate", calls)
+        self.assertIn("evidence", calls)
+
+
+class StaticAssets(unittest.TestCase):
+    """The screen serves fonts, modules and the elevation out of
+    subdirectories, which the old flat handler rejected."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        from app.server import app as server_app
+        self.client = TestClient(server_app)
+
+    def test_serves_a_nested_file(self):
+        self.assertEqual(self.client.get("/static/js/dom.js").status_code, 200)
+        self.assertEqual(
+            self.client.get("/static/assets/tractor-elevation.svg").status_code, 200)
+
+    def test_still_refuses_to_climb_out_of_the_web_root(self):
+        for path in ("/static/../config.py", "/static/../../README.md",
+                     "/static/js/../../config.py"):
+            self.assertEqual(self.client.get(path).status_code, 404, path)
+
+    def test_gate_event_names_the_frames_the_vision_call_will_get(self):
+        # The screen walks these frame by frame while it waits, so the list has
+        # to come from the same function the evidence stage uses.
+        import inspect
+
+        from app import server
+        src = inspect.getsource(server.appraise)
+        self.assertIn("evidence.select_photos(gate)", src)
+        self.assertIn("evidence_photo_ids", src)
+
+    def test_every_stylesheet_and_module_the_page_asks_for_resolves(self):
+        html = (Path("app/web/index.html")).read_text(encoding="utf-8")
+        refs = re.findall(r'(?:href|src)="/static/([^"]+)"', html)
+        self.assertTrue(refs)
+        for ref in refs:
+            self.assertEqual(self.client.get(f"/static/{ref}").status_code, 200, ref)
+
+
+class ElevationDrawing(unittest.TestCase):
+    """The drawing is only useful if its zones are the real component and view
+    vocabularies. A typo here would silently stop a finding from ever lighting
+    anything up."""
+
+    SVG = Path("app/web/assets/tractor-elevation.svg")
+    JS = Path("app/web/js/elevation.js")
+
+    # Conditions rather than parts: observed on a panel that is already drawn.
+    ALIASED = {"paint_finish", "corrosion", "fluid_leaks"}
+
+    def zones(self):
+        import xml.etree.ElementTree as ET
+        return [g.get("data-component")
+                for g in ET.parse(self.SVG).iter() if g.get("data-component")]
+
+    def test_no_zone_invents_a_component(self):
+        self.assertEqual([z for z in self.zones() if z not in evidence.COMPONENTS], [])
+
+    def test_every_component_has_a_zone_or_a_documented_alias(self):
+        drawn = set(self.zones())
+        missing = [c for c in evidence.COMPONENTS
+                   if c not in drawn and c not in self.ALIASED]
+        self.assertEqual(missing, [])
+
+    def test_each_zone_is_drawn_once(self):
+        z = self.zones()
+        self.assertEqual([x for x in set(z) if z.count(x) > 1], [])
+
+    def test_aliases_point_at_zones_that_exist(self):
+        src = self.JS.read_text(encoding="utf-8")
+        alias_block = src[src.index("const ALIAS = {"):]
+        alias_block = alias_block[:alias_block.index("};")]
+        targets = re.findall(r":\s*'([a-z_]+)'", alias_block)
+        self.assertEqual(set(re.findall(r"^\s*([a-z_]+):", alias_block, re.M)),
+                         self.ALIASED)
+        drawn = set(self.zones())
+        for t in targets:
+            self.assertIn(t, drawn)
+
+    def test_view_map_covers_the_whole_view_vocabulary(self):
+        from app.vision import VIEW_LABELS
+        src = self.JS.read_text(encoding="utf-8")
+        block = src[src.index("const VIEW_ZONES = {"):]
+        block = block[:block.index("\n};")]
+        mapped = re.findall(r"^\s{2}([a-z_0-9]+):", block, re.M)
+        self.assertEqual(sorted(mapped), sorted(VIEW_LABELS))
+
+    def test_view_map_only_names_drawn_zones(self):
+        src = self.JS.read_text(encoding="utf-8")
+        block = src[src.index("const VIEW_ZONES = {"):]
+        block = block[:block.index("\n};")]
+        named = set(re.findall(r"'([a-z_]+)'", block))
+        drawn = set(self.zones())
+        self.assertEqual(sorted(n for n in named if n not in drawn), [])
+
+
+class FrozenExport(unittest.TestCase):
+    """`app/export.py` inlines the screen into one offline file. Splitting the
+    front end into modules and a styles/ directory broke it once already, so
+    the contract is a test: nothing in the frozen file may point at a path the
+    server would have had to serve."""
+
+    def _appraisal(self):
+        gate_report = GateReport(decision=GateDecision.REFUSE_NOT_A_TRUCK,
+                                 headline="not a truck", photos=[],
+                                 usable_photo_ids=[], views_present=[])
+        return Appraisal(status="refused", headline="not a truck",
+                         gate=gate_report, version="test")
+
+    def test_frozen_file_references_nothing_the_server_would_serve(self):
+        from app import export
+        html = export.build_html(self._appraisal())
+        self.assertNotIn('href="/static/', html)
+        self.assertNotIn('src="/static/', html)
+        self.assertNotIn("fonts.googleapis.com", html)
+
+    def test_every_module_and_stylesheet_is_inlined(self):
+        from app import export
+        from app.config import WEB
+        html = export.build_html(self._appraisal())
+        for mod in sorted((WEB / "js").glob("*.js")):
+            self.assertIn(f'"kamion:{mod.stem}"', html, mod.name)
+        # the import map has to cover what the entry point actually imports
+        entry = (WEB / "app.js").read_text(encoding="utf-8")
+        for name in re.findall(r"from '\./js/([a-z]+)\.js'", entry):
+            self.assertIn(f'"kamion:{name}"', html, name)
+
+    def test_inlined_modules_have_no_unresolvable_relative_imports(self):
+        # A data: URL has no base, so a surviving './x.js' would fail to load.
+        from app import export
+        from app.config import WEB
+        for mod in sorted((WEB / "js").glob("*.js")):
+            rewritten = export._module_url(mod.read_text(encoding="utf-8"))
+            decoded = base64.standard_b64decode(
+                rewritten.split(",", 1)[1]).decode("utf-8")
+            self.assertEqual(re.findall(r"from '\./", decoded), [], mod.name)
+
+    def test_the_drawing_travels_with_the_file(self):
+        from app import export
+        html = export.build_html(self._appraisal())
+        self.assertIn("window.KAMION_ELEVATION", html)
+        self.assertIn("data-component", html)
 
 
 if __name__ == "__main__":

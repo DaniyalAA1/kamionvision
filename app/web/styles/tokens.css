@@ -1,0 +1,63 @@
+/* Every value the sheet is drawn from.
+
+   The colour contract is inherited and unchanged, because colour on this
+   screen is load-bearing rather than decorative:
+
+     sodium amber  a measured value - the price band, the calibration figure
+     teal          something verified from the photos
+     red           a refusal, and `major` severity only
+
+   One semantic is added: `ghost` - a dashed hairline meaning not
+   photographed, or not assessable from what was sent. Severity is expressed
+   with alpha and stroke weight on the hues above, never with a new hue, so
+   the rule still holds: if it is coloured, it means something. */
+
+:root {
+  /* the sheet and the plates drawn on it */
+  --ink:        #0b1116;
+  --ink-lift:   #101922;
+  --plate:      #131c23;
+  --plate-lift: #17222a;
+  --rule:       #1d2a34;
+  --rule-lift:  #2a3b47;
+  --line:       #3b5162;
+
+  /* text */
+  --paper:    #e9f0f4;
+  --haze:     #93a7b5;
+  --haze-dim: #6d8291;
+
+  /* semantics */
+  --sodium:     #f0a23c;
+  --sodium-dim: #8a5f26;
+  --signal:     #46b6a0;
+  --signal-dim: #245a50;
+  --flag:       #e05b4f;
+
+  /* the drafting grid, kept at the edge of visibility */
+  --grid-minor: rgba(147, 167, 181, .035);
+  --grid-major: rgba(147, 167, 181, .06);
+
+  --sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cond: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Azeret Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 1.25 modular scale off a 16px body */
+  --t-xs:   .75rem;
+  --t-sm:   .875rem;
+  --t-base: 1rem;
+  --t-md:   1.25rem;
+  --t-lg:   1.563rem;
+  --t-xl:   1.953rem;
+  --t-2xl:  2.441rem;
+
+  --s-1: .25rem; --s-2: .5rem;  --s-3: .75rem; --s-4: 1rem;
+  --s-5: 1.5rem; --s-6: 2rem;   --s-7: 3rem;   --s-8: 4rem;
+
+  --gut: clamp(1rem, 2.5vw, 2rem);
+  --radius: 2px;
+
+  /* one easing for everything mechanical, one for anything that settles */
+  --ease-draw: cubic-bezier(.2, .7, .3, 1);
+  --ease-out:  cubic-bezier(.16, 1, .3, 1);
+}

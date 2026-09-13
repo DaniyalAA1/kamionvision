@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
-from . import pipeline, report
+from . import evidence, pipeline, report
 from .config import HEIF_SUPPORT, IMAGE_SUFFIXES, IMAGES, REPO, WEB
 
 app = FastAPI(title="KamionVision", docs_url="/api/docs")
@@ -190,8 +190,14 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
                         for c in checks}
 
             def gate_done(gate):
+                # Which frames the vision call will actually be given. It is a
+                # view-diverse subset capped at MAX_EVIDENCE_PHOTOS, not every
+                # usable frame, and the screen names them one by one while it
+                # waits - so it has to be the real list, not a guess.
+                evidence_ids = [c.photo_id for c in evidence.select_photos(gate)]
                 events.put({"type": "gate", "gate": gate.to_dict(),
-                            "photo_urls": urls_for(gate.photos)})
+                            "photo_urls": urls_for(gate.photos),
+                            "evidence_photo_ids": evidence_ids})
 
             result = pipeline.appraise(photos, declared, market=market,
                                        backend=backend, on_step=note,

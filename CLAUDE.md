@@ -54,12 +54,13 @@ No linter, no CI. Dataset scripts self-verify by printing counts; `clean_dataset
 Two test layers for `app/`:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests    # 28 offline tests, ~0.5s, no API calls
-.venv/bin/python -m app.demo                      # 7 end-to-end cases, ~3 min, spends vision calls
+.venv/bin/python -m unittest discover -s tests    # 67 offline tests, ~0.5s, no API calls
+.venv/bin/python -m app.demo                      # 8 end-to-end cases, spends vision calls
 ```
 
 Run the offline suite on every edit; it covers JSON extraction, evidence-to-photo binding, the
-price interval and the capture thresholds — the things that have actually broken. `app.demo` is
+price interval, the capture thresholds, the `on_step`/`on_gate` callback contracts, the nested
+`/static/` route and the drawing's zone vocabulary — the things that have actually broken. `app.demo` is
 the real check but costs a vision call per case, so keep it for before a commit that matters.
 
 ## The appraisal system (`app/`)
@@ -77,8 +78,20 @@ app/
   pipeline.py    wires them together, emits a timed trace
   cli.py         doctor | appraise | serve | demo
   server.py      FastAPI + SSE, so the gate verdict paints before the VLM returns
-  web/           the demo screen
   calibrate_gate.py   derives models/gate_thresholds.json from the corpus
+  web/           the demo screen - static ES modules, no build step
+    index.html          the sheet: masthead, intake, run, result, title block
+    app.js              entry: wiring, verdict block, title block
+    js/dom.js           helpers; the Motion wrapper and the rAF value tween
+    js/net.js           health, samples, upload, the SSE stream
+    js/run.js           the run: stage rail, narration, clock, frame walk
+    js/elevation.js     the truck drawing's zone state machine
+    js/frames.js        contact strip, detection overlay, grid, lightbox
+    js/gauge.js         the price band drawn as a dimension annotation
+    js/panels.js        the seven result plates
+    styles/             tokens, base, sheet, run, result, elevation, fonts
+    assets/             tractor-elevation.svg, self-hosted woff2 + OFL
+    vendor/motion.min.js  Motion 13.2.0, MIT, vendored - never a CDN
 ```
 
 ```bash
@@ -139,6 +152,31 @@ app/
   first and keeps the rest as fallbacks, and `evidence.run` walks the whole chain. A fallback is
   recorded on `EvidenceReport.fell_back_from` and shown in the trace, the card and the UI — falling
   back is allowed, doing it quietly is not.
+- **The screen never reaches the network at run time.** Fonts are self-hosted
+  woff2 under `app/web/assets/fonts/`, Motion is vendored in `app/web/vendor/`.
+  A demo that depends on venue wifi for its typography is a demo that can fail
+  in the room. A test asserts every `/static/` reference in `index.html`
+  resolves; keep it that way rather than adding a CDN link.
+- **`pipeline.appraise`'s `on_step` takes exactly two arguments** (step, detail).
+  `cli.py` and `demo.py` both pass two-parameter callbacks, so adding a third
+  positional argument breaks every CLI appraise - and a `lambda *a` in a test
+  will hide it. Anything a caller needs beyond the string goes through
+  `on_gate` or a new callback, not by widening this one.
+- **`on_gate` fires once, before the refusal return.** It hands the finished
+  `GateReport` over about a second in so the screen can paint the real
+  detections, view coverage and frames during the ~50 s vision call instead of
+  hiding data it already has. It must fire on the refusal path too: on a
+  not-a-truck refusal that frame *is* the explanation.
+- **The drawing's zones are the real vocabularies, and tests pin them.**
+  `app/web/assets/tractor-elevation.svg` tags 30 zones with `data-component`
+  values from `evidence.COMPONENTS`; `paint_finish`, `corrosion` and
+  `fluid_leaks` have no geometry and alias a panel they are observed on.
+  `VIEW_ZONES` in `js/elevation.js` must cover exactly `vision.VIEW_LABELS`.
+  A typo silently stops a finding from ever lighting anything up, so
+  `ElevationDrawing` in the offline suite checks both directions.
+- **A detection box only gets the refusal colour when the *set* was refused for
+  not being a truck.** Truck detection is set-level; colouring a box red
+  because one frame looks odd would contradict the gate.
 - **HEIC is registered in `config.py` at import.** iPhones shoot it by default and the brief is
   "a seller with a phone". `config.IMAGE_SUFFIXES` is the single source of truth; the CLI folder
   walk and the web upload filter both read it, and a test asserts they agree.

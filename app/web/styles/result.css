@@ -1,0 +1,202 @@
+/* The result. Same seven plates in the same order as before, and the same
+   gauge data - redrawn in the sheet's own language. */
+
+.result { margin-top: var(--gut); }
+
+.headline {
+  font-family: var(--cond); font-weight: 600;
+  font-size: clamp(1.4rem, 3.2vw, var(--t-2xl));
+  line-height: 1.12; max-width: 36ch; letter-spacing: -.005em;
+}
+
+.fallback-note, .asking-verdict {
+  margin-top: var(--s-4); padding: var(--s-3) var(--s-4);
+  background: var(--plate); border-left: 2px solid var(--line);
+  max-width: 78ch; color: var(--haze); font-size: var(--t-sm);
+}
+.fallback-note { border-left-color: var(--sodium); }
+.fallback-note b { color: var(--sodium); font-weight: 500; }
+.asking-verdict { font-size: var(--t-base); }
+.asking-verdict b { color: var(--paper); font-weight: 500; }
+.asking-verdict.above  { border-left-color: var(--flag); }
+.asking-verdict.above b { color: var(--flag); }
+.asking-verdict.below  { border-left-color: var(--sodium); }
+.asking-verdict.inline { border-left-color: var(--signal); }
+.asking-verdict.inline b { color: var(--signal); }
+
+/* ---------- the gauge, drawn as a dimension annotation ----------
+   The comparable-asking band is the basic dimension: extension lines, a
+   dimension line with arrow terminators, the figure set into a gap. The
+   condition-adjusted band is that same dimension re-drawn beneath it, with
+   the movement called out on a leader. Keeping them as two separate
+   dimensions is the point - the measured coverage belongs to the first one
+   only. */
+
+.gauge-wrap { margin-top: var(--s-5); }
+.gauge { width: 100%; height: 250px; display: block; overflow: visible; }
+.gauge .axis      { stroke: var(--rule-lift); stroke-width: 1; }
+.gauge .ext       { stroke: var(--line); stroke-width: 1; }
+.gauge .dim       { stroke: var(--haze-dim); stroke-width: 1; }
+.gauge .dim-adj   { stroke: var(--sodium); stroke-width: 1.5; }
+.gauge .term      { fill: var(--haze-dim); }
+.gauge .term-adj  { fill: var(--sodium); }
+.gauge .band-adj  { fill: var(--sodium); opacity: .12; }
+.gauge .label     { font-family: var(--cond); font-size: 17px; fill: var(--haze-dim); }
+.gauge .figure    { font-family: var(--mono); font-size: 25px; fill: var(--sodium); }
+.gauge .figure-basic { font-family: var(--mono); font-size: 16px; fill: var(--haze); }
+.gauge .tol       { font-family: var(--mono); font-size: 14px; fill: var(--sodium); }
+.gauge .point     { stroke: var(--paper); stroke-width: 1.5; }
+.gauge .point-tri { fill: var(--paper); }
+.gauge .comp      { stroke: var(--signal); stroke-width: 2; }
+.gauge .comp-label { font-family: var(--mono); font-size: 13px; fill: var(--signal); }
+.gauge .ask       { stroke-width: 2; stroke-dasharray: 5 3; }
+.gauge .ask-in    { stroke: var(--signal); }
+.gauge .ask-out   { stroke: var(--flag); }
+.gauge .ask-label { font-family: var(--cond); font-size: 16px; }
+
+.gauge-note {
+  color: var(--haze); font-size: var(--t-sm); margin-top: var(--s-3);
+  max-width: 80ch;
+}
+.gauge-note b { color: var(--sodium); font-weight: 500; font-family: var(--mono); }
+
+.refusal {
+  border-left: 2px solid var(--flag); padding: var(--s-3) var(--s-4);
+  margin-top: var(--s-5); background: var(--plate);
+}
+.refusal p { color: var(--haze); max-width: 74ch; }
+.refusal .refusal-evidence {
+  color: var(--haze-dim); font-size: var(--t-sm); margin-top: var(--s-2);
+}
+
+/* ---------- columns ---------- */
+
+.columns {
+  display: grid; gap: var(--gut); margin-top: var(--s-6);
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.photos h2 { margin-bottom: var(--s-2); }
+.photos .count {
+  color: var(--haze-dim); font-family: var(--mono); font-size: var(--t-xs);
+  font-weight: 400;
+}
+.photo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 2px;
+}
+.thumb {
+  position: relative; aspect-ratio: 4 / 3; padding: 0; cursor: pointer;
+  border: 1px solid var(--rule-lift); overflow: hidden; background: var(--plate);
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.dropped img { opacity: .25; filter: grayscale(1); }
+.thumb.dropped::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(45deg, transparent 0 4px,
+              rgba(224, 91, 79, .3) 4px 5px);
+}
+.thumb.cited { border-color: var(--sodium); }
+.thumb.flash { animation: flash 1.1s ease-out; }
+@keyframes flash {
+  0%, 40% { box-shadow: 0 0 0 3px var(--sodium); }
+  100%    { box-shadow: 0 0 0 0 transparent; }
+}
+.thumb-tag {
+  position: absolute; inset: auto 0 0 0; font-size: .6rem; line-height: 1.5;
+  font-family: var(--cond); background: rgba(11, 17, 22, .85);
+  color: var(--haze); padding: 0 .25rem; text-align: left;
+}
+
+/* ---------- plates ---------- */
+
+.panels { display: grid; gap: var(--s-5); align-content: start; }
+.panel {
+  background: var(--plate); border: 1px solid var(--rule);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+.panel > h2 {
+  padding-bottom: var(--s-2); margin-bottom: var(--s-3);
+  border-bottom: 1px solid var(--rule);
+}
+.panel-quiet { background: transparent; border-style: dashed; }
+.panel-sub {
+  color: var(--haze-dim); font-size: var(--t-sm); margin: calc(var(--s-3) * -1) 0 var(--s-3);
+}
+
+.identity, .systems {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4);
+  margin: 0;
+}
+.identity dt, .systems dt { font-family: var(--cond); color: var(--haze-dim); }
+.identity dd, .systems dd { margin: 0; }
+.systems dd { color: var(--haze); font-size: var(--t-sm); }
+.identity dd.read { color: var(--signal); }
+.identity dd.fig  { font-family: var(--mono); }
+
+.findings { list-style: none; margin: 0; padding: 0; display: grid; }
+.finding {
+  display: grid; grid-template-columns: 3px 1fr; gap: 0 var(--s-3);
+  padding: var(--s-3) 0; border: 0; border-top: 1px solid var(--rule);
+  width: 100%; text-align: left; background: none; cursor: pointer;
+  transition: background .12s;
+}
+.findings li:first-child .finding { border-top: 0; }
+.finding:hover { background: var(--plate-lift); }
+.finding-bar { grid-row: 1 / 4; background: var(--line); }
+.finding[data-sev="major"]    .finding-bar { background: var(--flag); }
+.finding[data-sev="moderate"] .finding-bar { background: var(--sodium); }
+.finding[data-sev="minor"]    .finding-bar { background: var(--sodium-dim); }
+.finding[data-sev="cosmetic"] .finding-bar { background: var(--line); }
+.finding-part { font-family: var(--cond); font-size: var(--t-base); }
+.finding-part em {
+  font-style: normal; color: var(--haze-dim); font-size: var(--t-xs);
+  margin-left: var(--s-2);
+}
+.finding-text { color: var(--haze); font-size: var(--t-sm); max-width: 76ch; }
+.finding-cite { color: var(--haze-dim); font-size: var(--t-xs); margin-top: var(--s-1); }
+.finding-cite b { color: var(--sodium); font-weight: 400; font-family: var(--mono); }
+
+.asks, .gaps, .caveats, .widened {
+  margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-2);
+}
+.asks li { color: var(--paper); }
+.asks li::marker { color: var(--sodium); }
+.gaps li, .caveats li, .widened li { color: var(--haze); font-size: var(--t-sm); }
+.widened { margin-top: var(--s-3); }
+
+.drivers, .comps { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.drivers td, .comps td, .comps th, .drivers th {
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  border-bottom: 1px solid var(--rule); text-align: left;
+}
+.comps th, .drivers th {
+  font-family: var(--cond); color: var(--haze-dim); font-weight: 500;
+}
+.drivers td.num, .comps td.num, .drivers th.num, .comps th.num { text-align: right; }
+.drivers td.num, .comps td.num { font-family: var(--mono); }
+.drivers td.pos { color: var(--signal); }
+.drivers td.neg { color: var(--flag); }
+.comps td.price { color: var(--sodium); }
+.panel h3 { margin-top: var(--s-5); margin-bottom: var(--s-2); }
+.provenance { margin-top: var(--s-4); display: grid; gap: var(--s-1); font-size: var(--t-sm); }
+.provenance div { display: grid; grid-template-columns: 7rem 1fr; gap: var(--s-3); }
+.provenance span:first-child { color: var(--haze-dim); font-family: var(--cond); }
+.provenance .conflict span:first-child, .provenance .conflict { color: var(--flag); }
+
+/* ---------- lightbox ---------- */
+
+.lightbox {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-content: center;
+  gap: var(--s-3); padding: var(--s-7); background: rgba(6, 10, 13, .94);
+}
+.lightbox img { max-width: min(1100px, 92vw); max-height: 78vh; object-fit: contain; }
+.lightbox p { color: var(--haze); text-align: center; font-size: var(--t-sm); }
+.lightbox-close {
+  position: absolute; top: var(--s-4); right: var(--s-5); font-size: 2rem;
+  line-height: 1; background: none; border: 0; color: var(--haze); cursor: pointer;
+}
+
+@media (max-width: 1000px) {
+  .columns { grid-template-columns: 1fr; }
+}
