@@ -206,7 +206,7 @@ class Correction(_Dict):
     it is not allowed to do so where nobody can see it.
     """
     # reconcile: unsupported_detail | identity_conflict | coverage_restored
-    #            | odometer_recovered | odometer_conflict
+    #            | odometer_recovered | odometer_conflict | odometer_overridden
     #            | vin_recovered | vin_conflict
     #            | wmi_conflict | generation_conflict
     # evidence:  severity_calibrated | severity_raise_clamped

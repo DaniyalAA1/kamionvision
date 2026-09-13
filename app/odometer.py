@@ -43,6 +43,13 @@ CROP_PAD = 0.08
 CROP_MAX_AREA_FRAC = 0.50
 CROP_MIN_SIDE_PX = 80
 
+# Legibility floor. A token OCR is less than half sure of is not a reading, it
+# is a guess at smeared or partly-occluded digits - and a wrong six-figure
+# mileage is worse than none. Below this the reader abstains and says why rather
+# than emit the digits it is unsure of; the candidate is still kept on the result
+# so a caller can show "I saw something here but could not read it".
+MIN_CONFIDENCE = 0.50
+
 # A token like "242780km", "242780mi" or "242780miles": optional leading zero,
 # 4-7 digits, then a bare unit. The trailing-end anchor rejects "km/h", "kmtoE"
 # and "km/l"; requiring pure digits rejects decimal trip figures.
@@ -170,8 +177,17 @@ def _select(tokens) -> OdometerRead:
         return res
 
     best = res.candidates[0]
-    res.km, res.confidence, res.text = best.km, best.ocr_conf, best.text
-    res.box, res.rule = best.box, best.rule
+    # Legibility gate. Report the confidence either way, but do not hand back a
+    # mileage the OCR was not sure of - abstain and name the number we saw.
+    res.confidence, res.text, res.box, res.rule = (
+        best.ocr_conf, best.text, best.box, best.rule)
+    if best.ocr_conf < MIN_CONFIDENCE:
+        res.reason = (f"a possible '{best.rule}' odometer token ({best.km:,} km) was "
+                      f"read at OCR confidence {best.ocr_conf:.2f}, below the {MIN_CONFIDENCE:.2f} "
+                      f"legibility floor - the dashboard is not clear enough to trust, "
+                      f"so no mileage is claimed")
+        return res
+    res.km = best.km
     res.reason = (f"read {best.km:,} km from a '{best.rule}' token at OCR confidence "
                   f"{best.ocr_conf:.2f}"
                   + (f"; {len(res.candidates)} candidates, highest kept"
