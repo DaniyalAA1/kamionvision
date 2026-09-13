@@ -2,8 +2,8 @@
 
    The palette is the landing page's, not a second one. `styles/landing.css`
    ships its own `:root` because it is a standalone page that loads nothing
-   else, so these values are deliberately a mirror of it - cream paper, dark
-   green ink, the orange accent - and `tests/test_offline.py::BrandPalette`
+   else, so these values are deliberately a mirror of it - cool paper, navy
+   ink, the Kamion blue accent - and `tests/test_offline.py::BrandPalette`
    asserts the two agree so they cannot drift into two products. Change a brand
    colour in both, or the test fails.
 
@@ -19,39 +19,38 @@
    read as a finding. */
 
 :root {
+  /* Kamion website CTA #0085ff and heading #092256, verified 2026-09-13. */
   /* --- the brand, shared with the landing page --- */
-  --lot:       #f7f5ee;   /* landing --paper */
-  --ink:       #243b32;   /* landing --ink   */
-  --signal:    #e86d3c;   /* landing --orange */
-  --edge:      #d6d9cc;   /* landing --line  */
+  --lot:       #f6f9ff;   /* landing --paper */
+  --ink:       #092256;   /* landing --ink   */
+  --signal:    #0085ff;   /* landing --orange */
+  --edge:      #d5dfed;   /* landing --line  */
 
   /* --- derived ground --- */
-  --lot-deep:  #eeeee5;
-  --card:      #fffefa;
-  --edge-soft: #e4e6db;
-  /* The landing's --muted (#758176) is a 3.9:1 on cream, which is fine for a
-     9px eyebrow and not for a paragraph. This screen has paragraphs. */
-  --steel:     #677365;
-  --steel-dim: #7d8374;
+  --lot-deep:  #edf3fb;
+  --card:      #ffffff;
+  --edge-soft: #e3ebf5;
+  /* Muted blue-grey text on the light surfaces. */
+  --steel:     #52657f;
+  --steel-dim: #60718a;
 
-  /* The accent at text sizes. #e86d3c on cream is a 2.9:1 contrast, which is
-     fine for a 26px bar and not fine for a 15px link. */
-  --signal-ink:  #b8521d;
+  /* Darker blue for small links; the brand blue is reserved for accents. */
+  --signal-ink:  #0062bd;
 
-  /* --- the dark stage the run happens on: the same green, deepened --- */
-  --stage:       #1c2f27;
-  --stage-lift:  #263d33;
-  --stage-rule:  #3a5449;
-  --stage-text:  #eef1e7;
-  --stage-haze:  #9aab9a;
+  /* --- the dark stage the run happens on: navy, deepened --- */
+  --stage:       #081b43;
+  --stage-lift:  #102b56;
+  --stage-rule:  #35517a;
+  --stage-text:  #eef5ff;
+  --stage-haze:  #a8bddb;
 
   /* --- the other semantics --- */
-  --verified:      #4f6545;
+  --verified:      #2464a0;
   --caution:       #a8701e;
   --stop:          #a93226;
 
-  /* on the dark stage the same semantics have to lift off deep green */
-  --verified-lit: #8fc47a;
+  /* on the dark stage the same semantics have to lift off deep navy */
+  --verified-lit: #8ac8ff;
   --caution-lit:  #e8b45c;
   --stop-lit:     #f2705c;
 
@@ -82,5 +81,5 @@
   --ease-draw: cubic-bezier(.2, .7, .3, 1);
   --ease-out:  cubic-bezier(.16, 1, .3, 1);
 
-  --lift: 0 1px 2px rgba(36, 59, 50, .05), 0 8px 24px -12px rgba(36, 59, 50, .2);
+  --lift: 0 1px 2px rgba(9, 34, 86, .05), 0 8px 24px -12px rgba(9, 34, 86, .2);
 }

@@ -145,7 +145,7 @@ a { color: inherit; }
 }
 .run #follow-live[aria-pressed="true"] {
   color: var(--verified-lit);
-  border-color: #8fc47a55;
+  border-color: #8ac8ff55;
 }
 
 /* ---------- intake ---------- */
@@ -240,7 +240,7 @@ a { color: inherit; }
 }
 .dropzone:hover .dz-cta,
 .dropzone:focus-visible .dz-cta,
-.dropzone.over .dz-cta { background: var(--signal); }
+.dropzone.over .dz-cta { background: var(--signal); color: var(--stage); }
 
 .skipped {
   margin-top: var(--s-3);

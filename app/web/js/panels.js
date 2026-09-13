@@ -292,7 +292,7 @@ function working(a, ev, price) {
         + `${card.n_listings} listings collapsing to ${card.n_groups} distinct specs.`));
       accuracy.push(p);
       accuracy.push(el('p', 'work-note', 'That figure belongs to the pale bar only. '
-        + 'The red bar includes condition and any confirmed history adjustment, and no one '
+        + 'The blue bar includes condition and any confirmed history adjustment, and no one '
         + 'has measured how often that one is right.'));
     }
     // The cap and the weights are not the same kind of number. This panel used
