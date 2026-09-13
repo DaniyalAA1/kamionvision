@@ -356,6 +356,11 @@ class RegeneratingTheRegionChangesNothing(StoryFixture):
         source = REPO / "data" / "reference" / "story_appraisal.json"
         if not source.is_file():
             self.skipTest("the source appraisal is not committed")
+        # freeze_story.py defaults to demo/tr_clean, which `--build` produces and
+        # .gitignore keeps out of the repo; on a checkout without it, --check
+        # exits on "no such photo folder" before it can compare anything.
+        if not (REPO / "demo" / "tr_clean").is_dir():
+            self.skipTest("demo fixtures not built (python -m app.demo --build)")
         result = subprocess.run(
             [sys.executable, str(REPO / "scripts" / "freeze_story.py"),
              str(source), "--check"],
