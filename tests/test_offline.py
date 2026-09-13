@@ -15,6 +15,7 @@ Run: .venv/bin/python -m unittest discover -s tests -v
 from __future__ import annotations
 
 import base64
+import collections
 import json
 import re
 import unittest
@@ -2429,6 +2430,84 @@ class ViewPromptEnsemble(unittest.TestCase):
             self.assertNotIn("for k, _ in VIEW_PROMPTS", src, str(rel))
             self.assertNotRegex(src, r"VIEW_PROMPTS\[[^\]]+\]\[0\]", str(rel))
         self.assertGreater(checked, 0, "the scan found nothing; it has stopped working")
+
+
+class SteeringWheelSplitMeasurement(unittest.TestCase):
+    """The 160 hand labels behind `data/reference/steering_wheel_card.md`.
+
+    Splitting `dashboard_odometer` into a dashboard class and a steering class
+    was measured and rejected: the new class scored 32.4% precision on held-out
+    data while dropping genuine dashboard frames from 64.1% to 43.6%, and it
+    cost 5 of 200 vehicles a REQUIRED view. These tests pin the basis of that
+    measurement, not the conclusion - if the labels change, the card's numbers
+    are no longer about this file and `probe_steering_wheel_view.py` has to be
+    re-run rather than re-quoted.
+    """
+
+    LEGAL = {"steering", "gauges", "dash_general", "not_interior_dash"}
+
+    @classmethod
+    def setUpClass(cls):
+        from app import config
+        path = config.DATA / "reference" / "steering_wheel_labels.jsonl"
+        cls.rows = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_the_labelled_sample_is_the_one_the_card_reports(self):
+        self.assertEqual(len(self.rows), 160)
+        self.assertEqual(len({r["image_id"] for r in self.rows}), 160,
+                         "a duplicated frame would be counted twice")
+        counts = collections.Counter(r["label"] for r in self.rows)
+        self.assertEqual(dict(counts), {"steering": 33, "gauges": 15,
+                                        "dash_general": 70, "not_interior_dash": 42})
+
+    def test_every_label_is_one_of_the_four_documented_ones(self):
+        for r in self.rows:
+            self.assertIn(r["label"], self.LEGAL, r["image_id"])
+            self.assertIn(r["sample"], {"random", "retrieved"}, r["image_id"])
+            self.assertIn(r["split"], {"dev", "test"}, r["image_id"])
+            self.assertTrue(r["note"].strip(), f"{r['image_id']} has no note")
+
+    def test_the_base_rate_is_measured_on_the_random_pass_only(self):
+        """The retrieved pass over-samples the rare class by construction, so a
+        base rate read off all 160 rows would be meaningless."""
+        rand = [r for r in self.rows if r["sample"] == "random"]
+        self.assertEqual(len(rand), 48)
+        steering = sum(r["label"] == "steering" for r in rand)
+        self.assertEqual(steering, 2, "the card quotes 2 of 48, 4.2%")
+
+    def test_no_truck_straddles_the_dev_test_boundary(self):
+        """Same rule as the price folds and the corpus splits: one vehicle
+        contributes many near-identical frames, so splitting on frames leaks
+        them across the boundary and scores memorisation."""
+        by_listing = collections.defaultdict(set)
+        for r in self.rows:
+            by_listing[r["image_id"].rsplit("_", 1)[0]].add(r["split"])
+        straddling = {k: v for k, v in by_listing.items() if len(v) > 1}
+        self.assertEqual(straddling, {}, f"{len(straddling)} listings straddle")
+
+    def test_both_halves_carry_the_rare_class(self):
+        for split in ("dev", "test"):
+            n = sum(r["label"] == "steering" and r["split"] == split
+                    for r in self.rows)
+            self.assertGreaterEqual(n, 5, f"{split} has {n} steering frames")
+
+    def test_tag_and_score_bank_share_one_scoring_path(self):
+        """`score_bank` exists so a candidate taxonomy is scored by the SAME
+        max-pooled, logit-scaled arithmetic `tag` uses. A second copy of that
+        arithmetic is how a candidate gets measured as better than it is, so
+        `index_reduce` may appear in exactly one place in vision.py."""
+        import inspect
+
+        from app import vision
+        for name in ("grouped_bank", "pooled_softmax", "score_bank"):
+            self.assertTrue(callable(getattr(vision.ClipTagger, name, None)),
+                            f"ClipTagger.{name} is gone; the probe script calls it")
+        src = inspect.getsource(vision)
+        self.assertEqual(src.count("index_reduce("), 1,
+                         "the pooling arithmetic has been duplicated")
+        self.assertIn("pooled_softmax(feats, self.view_bank",
+                      inspect.getsource(vision.ClipTagger.tag),
+                      "tag() has stopped going through the shared path")
 
 
 class InspectionOverlay(unittest.TestCase):
