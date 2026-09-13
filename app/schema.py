@@ -111,6 +111,8 @@ class PhotoCheck(_Dict):
     # a genuine vehicle photo between them, so a legitimate cab interior can
     # top out at 0.4 on any single one of them.
     keep_mass: float = 0.0
+    body_tag: str = "unknown"
+    body_tag_conf: float = 0.0
     # The L2-normalised CLIP image embedding, carried for app.perception and
     # dropped on serialisation. Computed by ClipTagger.tag either way.
     _embedding: Any = None
@@ -140,6 +142,12 @@ class GateReport(_Dict):
     subject_method: str = ""        # recurring_vehicle | single_frame | none
     subject_consistency: float = 0.0    # mean cosine of the chosen crops
     subject_frames: int = 0             # frames that agreed with the prototype
+    # CLIP clusters among whole-vehicle seed crops. Calibrated before it may
+    # block pricing; 0 means "not computed or not enough seeds".
+    subject_clusters: int = 0
+    # Zero-shot tractor vs rigid, pooled over whole-vehicle frames only.
+    body_tag: str = "unknown"
+    body_tag_conf: float = 0.0
     # Coverage can be too thin to defend a number while still being rich
     # enough to describe condition. That case re-asks instead of refusing.
     blocks_pricing: bool = False

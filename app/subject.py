@@ -644,7 +644,7 @@ def _prototype(seeds: list[Candidate]) -> np.ndarray | None:
 
 
 def _clusters(winners: list[Candidate]) -> int:
-    """Single-link agglomerative at CLUSTER_COSINE. Reported, never enforced."""
+    """Single-link agglomerative at CLUSTER_COSINE."""
     embs = [w.emb for w in winners if w.emb is not None]
     if not embs:
         return 0
@@ -657,6 +657,30 @@ def _clusters(winners: list[Candidate]) -> int:
         else:
             hit.append(e)
     return len(groups)
+
+
+def cluster_seed_winners(winners: list[Candidate], checks: list[PhotoCheck],
+                         seeded_from: list[int] | None) -> int:
+    """How many distinct vehicles the whole-vehicle seeds look like.
+
+    Front vs rear of one F-MAX can split `_clusters` on every winner, including
+    tire close-ups. Pricing may only look at this seed-restricted count.
+    """
+    if not winners or not seeded_from:
+        return 0
+    by_id = {c.photo_id: c for c in checks}
+    seeds = set(seeded_from)
+    picked = []
+    for w in winners:
+        check = by_id.get(w.photo_id)
+        if check is None or w.emb is None:
+            continue
+        if w.photo_id not in seeds:
+            continue
+        if check.view not in WHOLE_VEHICLE_VIEWS:
+            continue
+        picked.append(w)
+    return _clusters(picked)
 
 
 def ground(checks: list[PhotoCheck], embed=None) -> SubjectIdentity:
@@ -697,7 +721,7 @@ def ground(checks: list[PhotoCheck], embed=None) -> SubjectIdentity:
         sims = [w.sim_abs for w in winners if w.emb is not None]
         identity.mean_sim = round(float(np.mean(sims)), 3) if sims else 0.0
         identity.frames_agreeing = sum(1 for s in sims if s >= identity.mean_sim * 0.85)
-        identity.clusters = _clusters(winners)
+        identity.clusters = cluster_seed_winners(winners, checks, identity.seeded_from)
     return identity
 
 

@@ -38,6 +38,20 @@ from .subject import (MIN_PART_VIEW_CONF, TRUCK_PART_VIEWS,  # noqa: F401
 
 MIN_SIDE = 200
 
+
+def _pool_body_tag(report: GateReport, checks: list[PhotoCheck]) -> None:
+    """One set-level tractor/rigid tag from whole-vehicle frames only."""
+    rows = [c for c in checks
+            if c.usable and c.view in WHOLE_VEHICLE_VIEWS
+            and c.body_tag and c.body_tag != "unknown"]
+    if not rows:
+        return
+    from collections import Counter
+    winner = Counter(c.body_tag for c in rows).most_common(1)[0][0]
+    confs = sorted(c.body_tag_conf for c in rows if c.body_tag == winner)
+    report.body_tag = winner
+    report.body_tag_conf = round(confs[len(confs) // 2], 3)
+
 VIEW_REQUESTS = {
     "exterior_front_34": "a three-quarter front shot of the whole tractor, so the cab and one full side are both visible",
     "exterior_side": "a straight side-on shot of the tractor",
@@ -214,6 +228,9 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
         check.view, check.view_conf = tag["view"], round(tag["view_conf"], 3)
         check.content, check.content_conf = tag["content"], round(tag["content_conf"], 3)
         check.keep_mass = round(tag["keep_mass"], 3)
+        if "body" in tag:
+            check.body_tag = tag["body"]
+            check.body_tag_conf = round(tag["body_conf"], 3)
         check._embedding = tag["embedding"]
         # keep_mass is the share of probability across the three "keep"
         # phrasings; a genuine vehicle photo splits between them and so can
@@ -259,7 +276,9 @@ def run(paths: list[Path]) -> GateReport:
     report.subject_method = identity.method
     report.subject_consistency = identity.mean_sim
     report.subject_frames = identity.frames_agreeing
+    report.subject_clusters = identity.clusters
     report.subject_evidence = subject_stage.evidence_sentence(identity, checks)
+    _pool_body_tag(report, checks)
     usable = [c for c in checks if c.usable]
     report.usable_photo_ids = [c.photo_id for c in usable]
 

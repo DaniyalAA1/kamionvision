@@ -101,6 +101,22 @@ VIEW_PROMPTS = {
         "a small area of a vehicle panel showing a defect"],
 }
 
+# Zero-shot body type. Separate from views: a dashboard is not a body-type
+# signal, and pooling here is only meaningful on whole-vehicle frames.
+BODY_PROMPTS = {
+    "tractor_unit": [
+        "a semi truck tractor unit with a fifth wheel coupling and no cargo box",
+        "a cab-over lorry tractor, chassis ending at the fifth wheel",
+        "a truck-tractor designed to pull a semi trailer"],
+    "rigid": [
+        "a rigid box truck with a cargo body behind the cab",
+        "a straight truck with an integrated box van body",
+        "a dump truck or tipper with a cargo bed, not a tractor unit"],
+    "other": [
+        "a passenger car, van or motorcycle, not a heavy truck"],
+}
+BODY_LABELS = list(BODY_PROMPTS)
+
 CONTENT_PROMPTS = [
     ("keep", "a photograph of a truck or lorry"),
     ("keep", "a close-up photograph of part of a vehicle"),
@@ -170,6 +186,7 @@ class ClipTagger:
                     torch.tensor(owner, device=self.device))
 
         self.view_bank, self.view_owner = grouped_bank(VIEW_PROMPTS)
+        self.body_bank, self.body_owner = grouped_bank(BODY_PROMPTS)
         self.content_bank = bank(CONTENT_PROMPTS)
         self.logit_scale = self.model.logit_scale.exp().item()
 
@@ -205,14 +222,22 @@ class ClipTagger:
             per_class = per_class.index_reduce(
                 1, self.view_owner, sims, "amax", include_self=False)
             view = (self.logit_scale * per_class).softmax(dim=-1).cpu().numpy()
+            body_sims = feats @ self.body_bank.T
+            body_class = torch.full((body_sims.shape[0], len(BODY_LABELS)),
+                                    float("-inf"), device=body_sims.device)
+            body_class = body_class.index_reduce(
+                1, self.body_owner, body_sims, "amax", include_self=False)
+            body = (self.logit_scale * body_class).softmax(dim=-1).cpu().numpy()
             content = (self.logit_scale * feats @ self.content_bank.T).softmax(dim=-1).cpu().numpy()
         emb = feats.cpu().numpy().astype(np.float32)
         out = []
-        for v, c, e in zip(view, content, emb):
-            vi, ci = int(np.argmax(v)), int(np.argmax(c))
+        for v, b, c, e in zip(view, body, content, emb):
+            vi, bi, ci = int(np.argmax(v)), int(np.argmax(b)), int(np.argmax(c))
             out.append({
                 "view": VIEW_LABELS[vi],
                 "view_conf": float(v[vi]),
+                "body": BODY_LABELS[bi],
+                "body_conf": float(b[bi]),
                 "content": CONTENT_PROMPTS[ci][0],
                 "content_conf": float(c[ci]),
                 # The embedding these tags were derived from. Already computed;

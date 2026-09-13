@@ -634,6 +634,92 @@ class PricingBlockers(unittest.TestCase):
         from app.pipeline import pricing_blocker
         self.assertIsNone(pricing_blocker(None))
 
+    def test_gate_report_records_subject_clusters(self):
+        g = GateReport(subject_clusters=2)
+        self.assertEqual(g.to_dict()["subject_clusters"], 2)
+
+    def test_clip_clusters_block_pricing_when_calibrated(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(subject_clusters=3)
+        blocked = pricing_blocker(self.make(), gate=gate_rep, min_clusters=2)
+        self.assertIsNotNone(blocked)
+        self.assertIn("more than one truck", blocked[0].lower())
+
+    def test_clip_clusters_do_not_block_below_threshold(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(subject_clusters=1)
+        self.assertIsNone(pricing_blocker(self.make(), gate=gate_rep, min_clusters=2))
+
+    def test_missing_threshold_does_not_block(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(subject_clusters=9)
+        self.assertIsNone(pricing_blocker(self.make(), gate=gate_rep, min_clusters=None))
+
+    def test_confident_rigid_tag_blocks_pricing(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(body_tag="rigid", body_tag_conf=0.80)
+        blocked = pricing_blocker(self.make(body_type=None, confidence=0.0), gate=gate_rep)
+        self.assertIsNotNone(blocked)
+        self.assertIn("rigid", blocked[0].lower())
+
+    def test_low_confidence_rigid_tag_does_not_block(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(body_tag="rigid", body_tag_conf=0.20)
+        self.assertIsNone(pricing_blocker(
+            self.make(body_type=None, confidence=0.0), gate=gate_rep))
+
+    def test_tractor_tag_does_not_block(self):
+        from app.pipeline import pricing_blocker
+        gate_rep = GateReport(body_tag="tractor_unit", body_tag_conf=0.99)
+        self.assertIsNone(pricing_blocker(self.make(), gate=gate_rep))
+
+
+class SeedClusters(unittest.TestCase):
+    """Mixed-listing CLIP count uses whole-vehicle seeds, not every winner."""
+
+    def _cand(self, photo_id, emb):
+        from app.subject import Candidate
+        return Candidate(
+            photo_id=photo_id,
+            det=Detection(label="truck", confidence=0.9, box=[0, 0, 10, 10],
+                          area_frac=0.3),
+            label="truck", confidence=0.9, box=[0, 0, 10, 10],
+            area_frac=0.3, centre_hit=True, far=0.1, clipped_sides=0,
+            min_side_px=100, emb=emb)
+
+    def _check(self, photo_id, view):
+        c = _check(photo_id)
+        c.view = view
+        return c
+
+    def test_two_dissimilar_seed_exteriors_are_two_clusters(self):
+        a = np.array([1.0, 0.0], dtype=np.float32)
+        b = np.array([0.0, 1.0], dtype=np.float32)
+        n = subject.cluster_seed_winners(
+            [self._cand(1, a), self._cand(2, b)],
+            [self._check(1, "exterior_front"), self._check(2, "exterior_side")],
+            seeded_from=[1, 2])
+        self.assertEqual(n, 2)
+
+    def test_similar_seed_exteriors_are_one_cluster(self):
+        a = np.array([1.0, 0.0], dtype=np.float32)
+        b = np.array([0.99, 0.01], dtype=np.float32)
+        b = b / np.linalg.norm(b)
+        n = subject.cluster_seed_winners(
+            [self._cand(1, a), self._cand(2, b)],
+            [self._check(1, "exterior_front"), self._check(2, "exterior_side")],
+            seeded_from=[1, 2])
+        self.assertEqual(n, 1)
+
+    def test_tire_winners_do_not_count_as_a_second_vehicle(self):
+        a = np.array([1.0, 0.0], dtype=np.float32)
+        b = np.array([0.0, 1.0], dtype=np.float32)
+        n = subject.cluster_seed_winners(
+            [self._cand(1, a), self._cand(2, b)],
+            [self._check(1, "exterior_front"), self._check(2, "tire_wheel")],
+            seeded_from=[1, 2])
+        self.assertEqual(n, 1)
+
 
 class BackendChain(unittest.TestCase):
     """Ordering logic only, against stub backends.

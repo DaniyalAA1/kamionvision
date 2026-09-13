@@ -13,6 +13,7 @@ thin wrapper" a claim you can check rather than assert.
 """
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -41,14 +42,59 @@ MISSING_VIEW_WIDENING = 1.12
 # the body type the vision model read off the vehicle.
 PRICEABLE_BODY_TYPES = {"tractor_unit", None, "", "unknown"}
 BODY_TYPE_CONFIDENCE = 0.55
+# Gate-time CLIP rigid tag. Only blocks at this confidence; below it the VLM
+# identity pass remains the body-type signal. Measured later against the 200
+# known tractors — until then a missing artifact means this path does not fire
+# unless a test passes min_clusters / uses the constant directly.
+BODY_TYPE_GATE_CONF = 0.80
 
 
-def pricing_blocker(ev) -> tuple[str, str] | None:
+def mixed_cluster_threshold() -> int | None:
+    """min_clusters_to_flag from the calibration artifact, or None.
+
+    Absent, incomplete, or not measured on all 200 known-single vehicles: do
+    not block. Same posture as a missing perception.json.
+    """
+    from .config import MODELS
+    path = MODELS / "mixed_vehicle_thresholds.json"
+    if not path.exists():
+        return None
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    flag = d.get("min_clusters_to_flag")
+    if not flag or d.get("n_vehicles") != 200:
+        return None
+    if float(d.get("false_positive_rate") or 1) > 0.005:
+        return None
+    return int(flag)
+
+
+def pricing_blocker(ev, gate=None, min_clusters=None) -> tuple[str, str] | None:
     """Reasons the comparables cannot honestly price what the photos show.
 
     Returns (headline, reason) or None. Kept pure and separate from `appraise`
     so both conditions can be tested without spending a vision call.
     """
+    if min_clusters is None and gate is not None:
+        min_clusters = mixed_cluster_threshold()
+    if gate is not None and min_clusters and gate.subject_clusters >= min_clusters:
+        return (("These photos look like more than one truck. "
+                 "Send one set of the vehicle you are selling.",
+                 "CLIP appearance clusters among whole-vehicle frames split this "
+                 "set, so there is nothing coherent to price."))
+
+    if gate is not None and (not ev or not getattr(ev, "vehicle", None)
+                             or not ev.vehicle.body_type):
+        if (gate.body_tag == "rigid"
+                and gate.body_tag_conf >= BODY_TYPE_GATE_CONF):
+            return (f"This looks like a rigid. I can describe its condition, but I have "
+                    f"no comparable rigids to price it against.",
+                    "the photos show a rigid, not a tractor unit. Every comparable this "
+                    "model was fit on is a tractor unit, so it has nothing honest to price "
+                    "a rigid against. The condition notes below still stand.")
+
     if ev is None:
         return None
 
@@ -129,6 +175,15 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
                          GateDecision.REFUSE_NO_PHOTOS):
         result.status = "refused"
         result.headline = gate.headline
+        result.elapsed_s = round(time.time() - t0, 2)
+        return result
+
+    early = pricing_blocker(None, gate=gate)
+    if early:
+        headline, reason = early
+        result.status = "need_more_photos"
+        result.headline = headline
+        result.requests.insert(0, "one set of photos of the single truck you are selling")
         result.elapsed_s = round(time.time() - t0, 2)
         return result
 
