@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -382,6 +383,32 @@ def judge_asking_price(asking: float, est: PriceEstimate) -> AskingVerdict:
 
 # --- the estimate ---------------------------------------------------------
 
+# Assumed, not measured: this corpus has no listings with a missing year or
+# odometer, so the cost of imputing one cannot be fitted. 1.60x per missing
+# input is deliberately larger than the measured 1.85x unknown-brand widening
+# applied per-term, because age and distance carry more of the price than brand.
+MISSING_INPUT_WIDENING = 1.60
+
+
+def imputed_year(model: "PriceModel") -> int:
+    """The fleet-typical year: the training mean of log1p(age), undone."""
+    try:
+        mean_log1p_age = model.mean[model.columns.index("log1p_age")]
+        age = math.expm1(float(mean_log1p_age))
+    except (ValueError, IndexError, TypeError):
+        age = 5.0
+    return int(round(date.today().year - max(0.0, age)))
+
+
+def imputed_km(model: "PriceModel") -> int:
+    """The fleet-typical distance: the training mean of log(km), undone."""
+    try:
+        mean_log_km = model.mean[model.columns.index("log_km")]
+        return int(round(math.exp(float(mean_log_km))))
+    except (ValueError, IndexError, TypeError, OverflowError):
+        return 300_000
+
+
 def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
              vehicle_model: str | None = None,
              evidence: EvidenceReport | None = None,
@@ -393,11 +420,36 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     est = PriceEstimate(interval_level=level)
     est.currency = "TRY" if str(market).upper() == "TR" else "USD"
 
-    if year is None or km is None:
-        est.ok = False
-        est.reason = ("no usable year or kilometre reading - neither the seller nor "
-                      "the photos supplied one, and age and mileage are most of the price")
-        return est
+    # A missing year or kilometre reading is not a refusal. Age and mileage are
+    # most of the price, so not having them is expensive - but "I cannot tell
+    # you anything" is worse for the person holding the phone than "here is the
+    # fleet-typical figure, and here is how much wider the band is because of
+    # it". Both are imputed from the TRAINING MEAN of the column the model was
+    # actually fitted on (standardising to zero, so the term contributes
+    # nothing), the substitution is recorded in provenance, and each missing
+    # input widens the band by an ASSUMED factor - this corpus cannot measure
+    # the cost of an absent input, so the number is stated, not claimed.
+    provenance = dict(provenance or {})
+    extra_widening = list(extra_widening or [])
+    if year is None:
+        year = imputed_year(model)
+        provenance["year"] = (f"no year stated and none readable from the photos - "
+                              f"priced at the fleet-typical {year}, which is the "
+                              f"training mean of the age term")
+        extra_widening.append(
+            ("neither the seller nor the photos supplied a year, so the age term "
+             "falls back to the fleet-typical figure and the band widens 1.60x "
+             "(an assumption, not a measurement)", MISSING_INPUT_WIDENING))
+    if km is None:
+        km = imputed_km(model)
+        provenance["km"] = (f"no kilometre reading stated and no legible odometer in "
+                            f"the photos - priced at the fleet-typical "
+                            f"{int(km):,} km, the training mean of the distance term")
+        extra_widening.append(
+            ("no kilometre reading was available from either the seller or the "
+             "dashboard, so the distance term falls back to the fleet-typical "
+             "figure and the band widens 1.60x (an assumption, not a measurement)",
+             MISSING_INPUT_WIDENING))
 
     feats = F.row_features(year, km, make, market, vehicle_model=vehicle_model)
     vector = model.vector(feats)

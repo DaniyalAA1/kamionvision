@@ -465,12 +465,23 @@ class Pricing(unittest.TestCase):
         self.assertLessEqual(e.baseline_low, 2_550_000)
         self.assertGreaterEqual(e.baseline_high, 2_550_000)
 
-    def test_missing_inputs_decline_rather_than_guess(self):
-        for kw in ({"year": None}, {"km": None}):
-            with self.subTest(**kw):
-                e = self.estimate(**kw)
-                self.assertFalse(e.ok)
-                self.assertEqual(e.point, 0)
+    def test_missing_inputs_still_price_but_widen_and_say_so(self):
+        """A missing year or km is imputed to the fleet-typical figure, never a refusal.
+
+        The band has to pay for it and the provenance has to say where the
+        number came from - a substituted input that reads like a stated one is
+        the failure mode this test exists to stop.
+        """
+        full = self.estimate(year=2021, km=164374)
+        for field in ("year", "km"):
+            with self.subTest(field=field):
+                e = self.estimate(**{field: None})
+                self.assertTrue(e.ok)
+                self.assertGreater(e.point, 0)
+                self.assertGreater(e.high - e.low, full.high - full.low)
+                self.assertIn("fleet-typical", e.inputs_provenance[field])
+                self.assertTrue(any("an assumption, not a measurement" in w
+                                    for w in e.widened))
 
     def test_unknown_brand_widens_the_band(self):
         known = self.estimate(make="FORD")
