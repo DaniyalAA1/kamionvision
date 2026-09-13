@@ -1,0 +1,4 @@
+# findings_golden.json lands here: the cached pass-B responses for 3 vehicles,
+# committed, so tests/test_eval.py can replay parse -> merge -> rollup -> grade
+# -> price end to end with zero network. It needs REAL responses, so it is
+# written by the baseline collection step, not by the harness build.

@@ -1,0 +1,2 @@
+# Scorecards live here and are committed - see .gitignore, where eval/runs/ is
+# re-included past the blanket runs/ rule. The response cache under eval/cache/ is not.

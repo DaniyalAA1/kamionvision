@@ -28,3 +28,9 @@ demo_reports/
 
 # Derived CLIP embedding cache (14 MB, rebuild: python scripts/cache_embeddings.py)
 data/metadata/embeddings.npz
+
+# The eval harness. The response cache is rebuildable and ~15 MB per model; the
+# scorecards are the record and must travel with the repo, so `eval/runs/` is
+# re-included past the blanket `runs/` rule above.
+eval/cache/
+!eval/runs/
