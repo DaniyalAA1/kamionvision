@@ -41,9 +41,10 @@ uv pip install --python .venv/bin/python <pkg>     # how deps got in
 ```
 
 In use: torch 2.14 (MPS on this machine), open_clip_torch, ultralytics, opencv-python-headless,
-albumentations, imagehash, pillow, requests, numpy, pandas, scikit-learn, fastapi, uvicorn, and the
-three vision SDKs (openai, anthropic, cursor-sdk). `harvest_mascus.py` shells out to the
-**`firecrawl` CLI** (homebrew), not a Python package.
+albumentations, imagehash, pillow, requests, numpy, pandas, scikit-learn, fastapi, uvicorn,
+rapidocr-onnxruntime + onnxruntime (the offline odometer OCR), and the three vision SDKs (openai,
+anthropic, cursor-sdk). `harvest_mascus.py` shells out to the **`firecrawl` CLI** (homebrew), not a
+Python package.
 
 Credentials load from `.env` at the repo root via `app/config.py` (see `.env.example`). Nothing
 reads a key at import time, so `app.cli doctor` works with none set and tells you what is missing.
@@ -54,7 +55,7 @@ No linter, no CI. Dataset scripts self-verify by printing counts; `clean_dataset
 Two test layers for `app/`:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests    # 67 offline tests, ~0.5s, no API calls
+.venv/bin/python -m unittest discover -s tests    # 102 offline tests, ~0.5s, no API calls
 .venv/bin/python -m app.demo                      # 8 end-to-end cases, spends vision calls
 ```
 
@@ -73,7 +74,8 @@ app/
   gate.py        stage 1: refuse / re-ask / pass, deterministic, ~1s
   perception/    stage 1b: three heads trained on the corpus (heads.py, train.py)
   evidence.py    stage 2: one structured vision call over a closed component enum
-  reconcile.py   stage 2b: cross-checks the VLM against the heads, records every change
+  odometer.py    an offline OCR (RapidOCR) that reads the dashboard mileage; reconcile's fourth rule
+  reconcile.py   stage 2b: cross-checks the VLM against the heads and the OCR read, records every change
   vlm/           backends: openai (GPT-5.6), cursor (Agent SDK), anthropic
   pricing/       stage 3: features, ridge fit + calibration (train.py), estimate
                  anchor.py: second route - published new price x fitted retention
@@ -84,13 +86,13 @@ app/
   calibrate_gate.py   derives models/gate_thresholds.json from the corpus
   web/           the demo screen - static ES modules, no build step
     index.html          the sheet: masthead, intake, run, result, title block
-    app.js              entry: wiring, verdict block, title block
+    app.js              entry: wiring, verdict block, the US-dollar band, title block
     js/dom.js           helpers; the Motion wrapper and the rAF value tween
     js/net.js           health, samples, upload, the SSE stream
     js/run.js           the run: stage rail, narration, clock, frame walk
     js/elevation.js     the truck drawing's zone state machine
     js/frames.js        contact strip, detection overlay, grid, lightbox
-    js/gauge.js         the price band drawn as a dimension annotation
+    js/gauge.js         the price band drawn as a dimension annotation (lira; the dollar equivalent sits under the headline)
     js/panels.js        the seven result plates
     styles/             tokens, base, sheet, run, result, elevation, fonts
     assets/             tractor-elevation.svg, self-hosted woff2 + OFL
@@ -199,6 +201,16 @@ app/
 - **A downgraded finding is still shown.** `reconcile.apply` lowers `Issue.confidence` and records
   a `Correction` carrying the before, the after and the reason; it never deletes. Same posture as
   `EvidenceReport.fell_back_from`: changing your mind is allowed, doing it quietly is not.
+- **The odometer is read a second time, by OCR, and reconciled in the open.** `app/odometer.py`
+  (RapidOCR, bundled ONNX, offline) reads the dashboard mileage independently of the VLM; `reconcile`'s
+  fourth rule supplies it when the VLM missed one (`odometer_recovered`, which then feeds the price
+  model a km it would otherwise lack, via the existing "read off the dashboard" widening — not a new
+  one), or widens the band 1.25× and shows both figures when the two disagree past 2% (`odometer_conflict`,
+  keeping the VLM figure as the priced one), and stays silent when they agree. Mileage is a first-class
+  hedonic term, unlike condition, so a checkable second reading of it is worth more than any damage
+  signal. Soft dependency: absent RapidOCR the rule no-ops, and it runs whether or not `perception.json`
+  is present, since it needs only the dashboard frames and the VLM's own read. It abstains rather than
+  emit a wrong six-figure mileage — a wrong odometer is worse than none.
 - **The identity head may not dispute a brand it was never trained on.** The corpus has no Scania;
   a head that has never seen one still names a class, at high confidence. `reconcile` only raises
   an identity conflict when the VLM's make is in the head's own class list. A test pins this.
