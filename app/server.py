@@ -9,11 +9,13 @@ sequence the room can watch.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import queue
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -30,12 +32,34 @@ SESSIONS.mkdir(parents=True, exist_ok=True)
 ALLOWED = IMAGE_SUFFIXES
 MAX_PHOTOS = 60
 MAX_BYTES = 25 * 1024 * 1024
+SESSION_TTL_SECONDS = 6 * 60 * 60
+
+_APPRAISAL_SLOT = threading.Semaphore(1)
+_APPRAISAL_COUNT_LOCK = threading.Lock()
+_APPRAISALS_IN_FLIGHT = 0
+
+
+def _expire_sessions(now: float | None = None) -> None:
+    """Remove session directories that have been idle for more than six hours."""
+    cutoff = (time.time() if now is None else now) - SESSION_TTL_SECONDS
+    for path in SESSIONS.iterdir():
+        try:
+            if path.is_dir() and path.stat().st_mtime < cutoff:
+                shutil.rmtree(path)
+        except OSError:
+            pass
+
+
+def _appraisals_in_flight() -> int:
+    with _APPRAISAL_COUNT_LOCK:
+        return _APPRAISALS_IN_FLIGHT
 
 
 @app.on_event("startup")
 def warm() -> None:
     """Pay the model load on boot, not on the first appraisal a judge watches."""
     from . import vision
+    _expire_sessions()
     threading.Thread(target=vision.warm, daemon=True).start()
 
 
@@ -68,6 +92,7 @@ def static(name: str) -> FileResponse:
 def health() -> dict:
     from . import vlm
     from .config import MAX_EVIDENCE_PHOTOS, BACKEND_OVERRIDE
+    from .perception import heads
     from .pricing import load_model
 
     out: dict = {"backends": [
@@ -76,6 +101,9 @@ def health() -> dict:
         for s in vlm.probe_all()]}
     out["selected_backend"] = BACKEND_OVERRIDE
     out["evidence_photos"] = MAX_EVIDENCE_PHOTOS
+    out["rapidocr"] = importlib.util.find_spec("rapidocr_onnxruntime") is not None
+    out["perception"] = heads.available()
+    out["appraisals_in_flight"] = _appraisals_in_flight()
     try:
         m = load_model()
         out["price_model"] = {
@@ -226,6 +254,12 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
     photos = pipeline.collect_photos(folder)
     if not photos:
         raise HTTPException(400, "session has no photos")
+    if not _APPRAISAL_SLOT.acquire(blocking=False):
+        raise HTTPException(429, "another appraisal is already running",
+                            headers={"Retry-After": "5"})
+    global _APPRAISALS_IN_FLIGHT
+    with _APPRAISAL_COUNT_LOCK:
+        _APPRAISALS_IN_FLIGHT += 1
 
     declared = {k: v for k, v in (("year", year), ("km", km), ("make", make),
                                   ("asking_price", asking))
@@ -264,9 +298,14 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
             payload["photo_urls"] = urls_for(result.gate.photos)
             payload["text_report"] = report.render_text(result)
             events.put({"type": "result", "appraisal": payload})
+            _expire_sessions()
         except Exception as exc:
             events.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
         finally:
+            global _APPRAISALS_IN_FLIGHT
+            with _APPRAISAL_COUNT_LOCK:
+                _APPRAISALS_IN_FLIGHT -= 1
+            _APPRAISAL_SLOT.release()
             events.put(None)
 
     threading.Thread(target=work, daemon=True).start()
