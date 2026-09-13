@@ -180,8 +180,11 @@ export function done(evidence) {
   $('thoughts').querySelectorAll('.thought-pending').forEach((n) => n.remove());
   $('thoughts').querySelectorAll('.thought').forEach((n) => n.classList.add('settled'));
   if (!evidence) {
-    $('rail-title').textContent = 'Stopped before the photos were read';
-    $('rail-sub').textContent = '';
+    /* The stage headline beside this one already says the run stopped, so
+       saying it twice in two headings wastes the only line the rail has left.
+       This one says the part that is worth knowing: nothing was spent. */
+    $('rail-title').textContent = 'No photo went to a vision model';
+    $('rail-sub').textContent = 'the checks that run first stopped it';
     return;
   }
   const n = (evidence.issues || []).length;

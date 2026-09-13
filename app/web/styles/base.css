@@ -150,15 +150,15 @@ a { color: inherit; }
 
 /* ---------- intake ---------- */
 
-/* Headline beside the dropzone rather than above it, so the wall of trucks -
-   which is the thing worth looking at - starts inside the first screenful
-   instead of below it. */
+/* Two halves: what this is on the left, what you do about it on the right.
+   The wall of trucks - the thing actually worth looking at - then starts
+   inside the first screenful instead of below it. */
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   gap: var(--s-7);
   align-items: end;
-  padding: var(--s-4) 0 var(--s-2);
+  padding: var(--s-6) 0 var(--s-2);
 }
 @media (max-width: 820px) { .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s-5); } }
 
@@ -170,10 +170,18 @@ a { color: inherit; }
 }
 .intake-head p { color: var(--steel); font-size: var(--t-md); max-width: 38ch; }
 
+.intake-do { min-width: 0; }
+
+/* This is the primary action on the screen and it used to be the palest thing
+   on it: a hairline dashed rectangle on near-white, with the actual control
+   written out as the words "or choose files". It now holds a button, and the
+   dashed edge is only the drop target around it. */
 .dropzone {
   display: grid;
   justify-items: center;
-  gap: .35rem;
+  align-content: center;
+  gap: .3rem;
+  min-height: 15rem;
   padding: var(--s-6) var(--s-5);
   background: var(--card);
   border: 1px dashed var(--edge);
@@ -183,10 +191,22 @@ a { color: inherit; }
 }
 .dropzone:hover, .dropzone.over { border-color: var(--signal); }
 .dropzone.over { transform: scale(1.006); background: #fff; }
-.dz-glyph { width: 48px; height: 34px; color: var(--steel-dim); margin-bottom: .3rem; }
+.dz-glyph { width: 48px; height: 34px; color: var(--steel-dim); margin-bottom: .45rem; }
 .dropzone.over .dz-glyph, .dropzone:hover .dz-glyph { color: var(--signal); }
-.dz-lead { font-weight: 600; font-size: var(--t-md); }
+.dz-lead { font-weight: 600; font-size: var(--t-lg); font-family: var(--cond); letter-spacing: -.02em; }
 .dz-sub { color: var(--steel); font-size: var(--t-sm); }
+.dz-cta {
+  margin-top: var(--s-4);
+  padding: .62rem 1.25rem;
+  background: var(--ink);
+  color: var(--lot);
+  border-radius: var(--radius);
+  font: 500 var(--t-sm)/1 var(--sans);
+  transition: background .18s;
+}
+.dropzone:hover .dz-cta,
+.dropzone:focus-visible .dz-cta,
+.dropzone.over .dz-cta { background: var(--signal); }
 
 .skipped {
   margin-top: var(--s-3);
@@ -194,7 +214,7 @@ a { color: inherit; }
   color: var(--caution);
 }
 
-.seller { margin-top: var(--s-4); }
+.seller { margin-top: var(--s-3); }
 .seller summary {
   cursor: pointer;
   font-size: var(--t-sm);

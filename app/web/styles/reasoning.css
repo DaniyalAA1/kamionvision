@@ -15,10 +15,26 @@
   overflow-y: auto;
   overflow-anchor: none;
   scrollbar-width: thin;
+  scrollbar-color: var(--stage-rule) transparent;
   padding-right: .2rem;
-  /* the rail fades out at its foot rather than stopping at a hard edge */
+  /* The rail fades out at its foot rather than stopping at a hard edge. The
+     fade is on the box, not on the content, so with a single short card - the
+     refusal note - it was fading out that card's own last line. The matching
+     bottom padding keeps text out of the faded band until there is enough of
+     it to scroll. */
+  padding-bottom: 28px;
   mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 28px), transparent 100%);
 }
+
+/* Same reason as the contact strip: a scrollbar drawn for a light page reads
+   as a pale rail down the side of the dark stage. */
+.thoughts::-webkit-scrollbar { width: 6px; }
+.thoughts::-webkit-scrollbar-track { background: transparent; }
+.thoughts::-webkit-scrollbar-thumb {
+  background: var(--stage-rule);
+  border-radius: var(--radius);
+}
+.thoughts:hover::-webkit-scrollbar-thumb { background: #4d6a5d; }
 
 .thought {
   display: block;

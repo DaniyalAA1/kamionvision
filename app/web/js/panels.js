@@ -115,7 +115,7 @@ function strengths(a, ev) {
     const li = el('li');
     const wrap = el('span');
     wrap.append(document.createTextNode(s.text));
-    wrap.append(el('span', null, ` — seen in photo ${photoOrdinal(s.photo_id)}`));
+    wrap.append(el('span', 'cite', ` — seen in photo ${photoOrdinal(s.photo_id)}`));
     li.append(partIcon('check'), wrap);
     return li;
   }));
@@ -262,7 +262,7 @@ function working(a, ev, price) {
         'The trucks it was compared against',
         table([['Year'], ['Listing'], ['km', 'num'], ['Asking', 'num']],
               price.comparables.map((c) => [
-                [c.year == null ? '—' : String(c.year), 'num'],
+                [c.year == null ? '—' : String(c.year)],
                 [`${c.make || ''} ${c.model || ''}`.trim()],
                 [kkm(c.km), 'num'],
                 [money(c.price, c.currency), 'num']])),

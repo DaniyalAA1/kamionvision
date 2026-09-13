@@ -85,13 +85,13 @@ export function drawBand(root, price) {
      range and the two numbers that bound it. */
   const label = (value, anchor, xPos) => root.append(svgText({
     x: xPos, y: BAR_Y + BAR_H + 38, 'text-anchor': anchor,
-    fill: 'var(--steel)', 'font-size': 22, 'font-family': 'var(--sans)' },
+    fill: 'var(--steel)', 'font-size': 20, 'font-family': 'var(--sans)' },
     money(value, price.currency)));
   label(price.baseline_low, 'start', x(price.baseline_low));
   label(price.baseline_high, 'end', x(price.baseline_high));
 
   root.append(svgText({
-    x: X0, y: H - 8, fill: 'var(--steel-dim)', 'font-size': 20,
+    x: X0, y: H - 8, fill: 'var(--steel-dim)', 'font-size': 16,
     'font-family': 'var(--sans)' },
     'The pale bar is what similar trucks are being asked for, and each tick '
     + 'is one of the listings behind it.'));

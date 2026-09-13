@@ -58,7 +58,7 @@ function setStep(step) {
   const here = order.indexOf(step);
   document.querySelectorAll('[data-step]').forEach((node) => {
     const index = order.indexOf(node.dataset.step);
-    const state = step === 'done' || index < here ? 'done'
+    const state = index < here ? 'done'
       : node.dataset.step === step ? 'active' : 'waiting';
     node.dataset.state = state;
     if (state === 'active') node.setAttribute('aria-current', 'step');
@@ -70,8 +70,30 @@ function setStep(step) {
       gate: 'Checking the photographs',
       evidence: 'Looking at each photo',
       price: 'Matching it against listings',
-      done: 'The photographs are read',
     }[step] || now.textContent;
+  }
+}
+
+/* Which stops actually happened, read off the appraisal rather than assumed.
+   A refusal stops after the gate, so closing the trail by marking all three
+   finished told a viewer the photographs had been read on the one screen whose
+   whole point is that they were not - and the refusal saying "no photo was
+   sent to a vision model" sat two inches below it. */
+function closeSteps(a) {
+  const ran = {
+    gate: true,
+    evidence: !!a.evidence,
+    price: !!(a.price && a.price.ok),
+  };
+  document.querySelectorAll('[data-step]').forEach((node) => {
+    node.dataset.state = ran[node.dataset.step] ? 'done' : 'skipped';
+    node.removeAttribute('aria-current');
+  });
+  const now = $('run-now');
+  if (now) {
+    now.textContent = a.evidence
+      ? 'The photographs are read'
+      : 'Stopped before the photographs were read';
   }
 }
 
@@ -206,15 +228,19 @@ export function onPhoto(msg) {
   elevation.setFindings(runElev, finding.issues || []);
 
   const total = evidenceIds.length || read;
-  progress(`${read} of ${total} photos read`, 0.12 + 0.8 * (read / Math.max(1, total)));
+  if (read >= total) {
+    progress('putting the findings together', 0.92);
+  } else {
+    progress(`${read} of ${total} photos read`, 0.12 + 0.8 * (read / Math.max(1, total)));
+  }
 }
 
 /* ---------- act 3: it answered ---------- */
 
 export function onResult(a) {
   stop();
-  progress('done', 1);
-  setStep('done');
+  progress(read ? `${read} photos read` : 'the checks finished', 1);
+  closeSteps(a);
   if (liveBtn()) liveBtn().hidden = true;
   const ev = a.evidence;
   if (ev) {

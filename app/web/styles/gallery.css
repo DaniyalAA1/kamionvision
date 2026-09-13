@@ -129,19 +129,24 @@
   color: var(--steel-dim);
   margin-right: .15rem;
 }
+/* Twenty outlined pills above the wall drew twenty boxes and the eye had to
+   read all of them before it reached a truck. The resting state is a filled
+   tint with no border, so the row reads as one soft band until you touch it;
+   choosing one still fills it with ink, which is the loudest thing the row
+   can do and belongs only to a filter that is on. */
 .chip {
   font: 500 var(--t-sm)/1 var(--cond);
   letter-spacing: .01em;
   color: var(--steel);
-  background: transparent;
-  border: 1px solid var(--edge);
+  background: var(--lot-deep);
+  border: 1px solid transparent;
   border-radius: var(--radius);
   padding: .42rem .8rem;
   cursor: pointer;
   white-space: nowrap;
   transition: color .16s, border-color .16s, background .16s;
 }
-.chip:hover { color: var(--ink); border-color: var(--steel-dim); }
+.chip:hover { color: var(--ink); border-color: var(--edge); background: var(--card); }
 .chip b { font-weight: 400; color: var(--steel-dim); margin-left: .3rem; }
 .chip[aria-pressed="true"] {
   color: var(--card); background: var(--ink); border-color: var(--ink);
@@ -282,12 +287,21 @@
 }
 
 @media (max-width: 600px) {
+  /* The heading and its count fought over one line and both lost: a two-line
+     "Or try one of these" beside a two-line count. */
+  .gallery-head { flex-wrap: wrap; gap: .35rem; }
+  .gallery-head h2 { font-size: 2rem; }
+  .gallery-count { margin-left: 0; flex-basis: 100%; }
   .gallery-search { flex-basis: 100%; }
   .seg-btn { padding: .45rem .6rem; font-size: var(--t-xs); }
-  .gallery-tools select { flex: 1; min-width: 0; }
-  .filter-lot,
-  .filter-lot + .filter-group {
-    flex-basis: 100%;
+  /* Squeezed onto the tabs' row the sort read "Recon" with the chevron sitting
+     on top of it. */
+  .gallery-tools select { flex: 1 1 100%; min-width: 0; }
+  /* One group per row. The rules between groups are for a single line of
+     filters; once the row wraps they hang off the left of a new line with
+     nothing on the other side of them. */
+  .filter-group { flex-basis: 100%; }
+  .filter-group + .filter-group {
     margin-left: 0;
     padding-left: 0;
     border-left: 0;
