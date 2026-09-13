@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import tempfile
 import time
@@ -22,6 +23,8 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from .. import gate as gate_stage
+from ..condition import (CONFIDENCE_UNPARSEABLE, IMPACT_RANK, SEVERITY_RANK,
+                         family_of)
 from ..schema import Issue, PhotoCheck, PhotoFinding, VehicleRead
 from . import prompts
 
@@ -254,7 +257,10 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
         shows=str(data.get("shows") or "").strip(),
         legible=bool(data.get("legible", True)),
         cropped=cropped,
-        strengths=[str(s).strip() for s in (data.get("strengths") or []) if str(s).strip()][:6],
+        # Uncapped, like `observations`. Truncating only the good news was
+        # itself a bias: a report that can list thirty faults and six virtues
+        # is not describing the same truck twice.
+        strengths=[str(s).strip() for s in (data.get("strengths") or []) if str(s).strip()],
         cannot_tell=[str(s).strip() for s in (data.get("cannot_tell") or []) if str(s).strip()][:6],
         odometer_km=_odometer(data.get("odometer_km")),
         confidence=_confidence(data.get("confidence"), 0.0),
@@ -266,11 +272,20 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
         observation = str(entry.get("observation") or "").strip()
         if not observation:
             continue
+        # Every default here rounds DOWN. An unreadable severity used to become
+        # "minor" and an unreadable impact "low", so a field nobody could parse
+        # was worth real money; an unreadable confidence became 0.5, which is
+        # where the weight table says the model half believes it. The honest
+        # state is "the model did not grade this finding" - kept, shown with
+        # its photograph, and weighted at zero.
+        severity = _clamp(entry.get("severity"), prompts.SEVERITIES, None)
+        impact = _clamp(entry.get("price_impact"), prompts.IMPACTS, None)
         finding.issues.append(Issue(
             photo_id=check.photo_id, component=component, observation=observation,
-            severity=_clamp(entry.get("severity"), prompts.SEVERITIES, "minor"),
-            confidence=_confidence(entry.get("confidence")),
-            price_impact=_clamp(entry.get("price_impact"), prompts.IMPACTS, "low"),
+            severity=severity or "cosmetic",
+            confidence=_confidence(entry.get("confidence"), CONFIDENCE_UNPARSEABLE),
+            price_impact=impact or "none",
+            ungraded=severity is None or impact is None,
             box=_observation_box(entry.get("box"), check, cropped=cropped)))
     return finding
 
@@ -353,18 +368,128 @@ def _tokens(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]{4,}", (text or "").lower()) if w not in _NOISE}
 
 
+# Below this many content words, containment is meaningless - every token of a
+# three-word note lands inside almost any long one.
+CONTAINMENT_MIN_TOKENS = 4
+# ASSUMED. Full containment of a short observation inside a long one scores
+# this, so it is strong evidence of one defect but not automatically a merge.
+CONTAINMENT_FACTOR = 0.75
+
+
 def _overlap(a: str, b: str) -> float:
-    """Jaccard over content words. 1.0 is the same sentence, 0.0 is unrelated."""
+    """How likely two observations are the same defect. 1.0 is certain.
+
+    Jaccard alone could not merge a short description with a long one, and the
+    fan-out produces wildly different lengths for one defect because each call
+    sees a different frame of it. Measured on a real pair - "outer shoulder
+    worn to the wear bars" against a twenty-word version of the same sentence -
+    Jaccard scores 0.23 and does not merge, while containment scores 1.00:
+    every content word of the short note is inside the long one. So the score
+    is the better of the two, with containment discounted.
+    """
+    left, right = (a or "").strip().lower(), (b or "").strip().lower()
+    if left and left == right:
+        return 1.0
     ta, tb = _tokens(a), _tokens(b)
     if not ta or not tb:
         return 0.0
-    return len(ta & tb) / len(ta | tb)
+    jaccard = len(ta & tb) / len(ta | tb)
+    if min(len(ta), len(tb)) < CONTAINMENT_MIN_TOKENS:
+        return jaccard
+    containment = len(ta & tb) / min(len(ta), len(tb))
+    return max(jaccard, CONTAINMENT_FACTOR * containment)
 
 
-# Above this, two observations on the same component are the same defect seen
-# twice. Set deliberately high: merging two genuinely different defects hides
-# one, which is worse than listing one twice.
+# Above this, two observations on the same component id are the same defect
+# seen twice. Set deliberately high: merging two genuinely different defects
+# hides one, which is worse than listing one twice. It stays where it was -
+# per-family saturation has already capped what an unmerged duplicate can cost,
+# so the price of under-merging has collapsed while the price of over-merging
+# has not moved.
 SAME_DEFECT = 0.42
+# ASSUMED, and higher, because across two component ids the id itself no longer
+# corroborates: `corrosion` and `chassis_frame` are one physical defect often
+# enough to be worth folding, and two different defects often enough that the
+# wording has to carry more of the argument.
+SAME_DEFECT_CROSS_ID = 0.50
+# ASSUMED. Corroborating witnesses here are the same model looking at the same
+# truck, so they are correlated and a plain noisy-OR would overstate them. Each
+# extra frame contributes this share of its own confidence.
+CORROBORATION_WEIGHT = 0.35
+CONFIDENCE_CEILING = 0.95
+
+
+def corroborated_rank(ranks: list[int]) -> int:
+    """The highest level two frames independently support.
+
+    Not the max, which is the exaggeration machine - one call in sixteen
+    calling a scuff `major` should not grade the truck. Not the median either,
+    which throws away a corroborated escalation. And not "whichever photo came
+    first", which is what the old merge kept by accident of ordering.
+
+      [minor, major]                  -> minor
+      [moderate, major]               -> moderate
+      [major, major]                  -> major
+      [minor, major, major]           -> major
+      [minor, minor, moderate, major] -> moderate
+    """
+    if len(ranks) == 1:
+        return ranks[0]
+    return max(r for r in sorted(set(ranks))
+               if sum(1 for x in ranks if x >= r) >= 2)
+
+
+def merged_confidence(confidences: list[float]) -> float:
+    """Discounted noisy-OR: 0.6 -> 0.60, twice -> 0.684, three times -> 0.750.
+
+    Monotone, bounded, and it never reaches 1.0. Merge is the only stage
+    allowed to move confidence UP, and only on corroboration; `reconcile` is
+    the only stage allowed to move it down, and it records a `Correction` each
+    time. Merge runs first, so the degradation head still gets the last word.
+    """
+    ordered = sorted((c for c in confidences
+                      if isinstance(c, (int, float)) and math.isfinite(c)), reverse=True)
+    if not ordered:
+        return 0.0
+    miss = 1.0 - ordered[0]
+    for extra in ordered[1:]:
+        miss *= 1.0 - CORROBORATION_WEIGHT * extra
+    return min(CONFIDENCE_CEILING, round(1.0 - miss, 3))
+
+
+def _same_defect(a: Issue, b: Issue) -> bool:
+    """One physical defect, described twice.
+
+    Gated on the component FAMILY rather than on an exact id. The 33-id enum
+    has real semantic overlap - `corrosion` / `chassis_frame` / `undercarriage`
+    are one place on the truck, as are `fluid_leaks` / `engine_bay` and
+    `paint_finish` / `cab_exterior_panels` - so requiring the ids to match
+    meant one defect reported under two of them could never merge, however
+    identically it was worded.
+    """
+    if family_of(a.component) != family_of(b.component):
+        return False
+    threshold = SAME_DEFECT if a.component == b.component else SAME_DEFECT_CROSS_ID
+    return _overlap(a.observation, b.observation) >= threshold
+
+
+def _resolve(survivor: Issue, group: list[Issue]) -> None:
+    """Give the survivor the severity, impact and confidence the group supports."""
+    graded = [i for i in group if not i.ungraded]
+    if graded:
+        survivor.ungraded = False
+        ranks = [SEVERITY_RANK[i.severity] for i in graded if i.severity in SEVERITY_RANK]
+        if ranks:
+            by_rank = {SEVERITY_RANK[s]: s for s in SEVERITY_RANK}
+            survivor.severity = by_rank[corroborated_rank(ranks)]
+            claimed = [by_rank[r] for r in sorted(set(ranks), reverse=True)]
+            survivor.severity_span = claimed if len(claimed) > 1 else []
+        impacts = [IMPACT_RANK[i.price_impact] for i in graded
+                   if i.price_impact in IMPACT_RANK]
+        if impacts:
+            by_impact = {IMPACT_RANK[k]: k for k in IMPACT_RANK}
+            survivor.price_impact = by_impact[corroborated_rank(impacts)]
+    survivor.confidence = merged_confidence([i.confidence for i in group])
 
 
 def merge_duplicates(flat: list[Issue], duplicates: list) -> list[Issue]:
@@ -376,14 +501,19 @@ def merge_duplicates(flat: list[Issue], duplicates: list) -> list[Issue]:
     drive tire on the first real run - which then read as three major findings
     and dragged the condition grade down with them. So the model's answer is
     taken first and a deterministic pass over content-word overlap runs behind
-    it, within a single component only.
+    it, within a component family.
 
-    The corroborating photos are recorded on `also_seen_in` rather than dropped
-    - "seen in three photos" is a trust signal a buyer can check, which is more
-    than a confidence decimal ever was.
+    The survivor keeps the photo it cites, because the report points a reader
+    at a frame and that must not move. It does NOT keep its own severity: it
+    takes the highest level two frames independently support, and the levels
+    that lost are printed on `severity_span` rather than discarded. The
+    corroborating photos land on `also_seen_in` - "seen in three photos" is a
+    trust signal a buyer can check, which is more than a confidence decimal
+    ever was.
     """
     merged_away: set[int] = set()
     extra: dict[int, list[int]] = {}
+    members: dict[int, list[int]] = {}
     for entry in duplicates or []:
         try:
             keep = int(entry.get("keep"))
@@ -400,22 +530,22 @@ def merge_duplicates(flat: list[Issue], duplicates: list) -> list[Issue]:
                 continue
             merged_away.add(idx)
             extra.setdefault(keep, []).append(flat[idx].photo_id)
+            members.setdefault(keep, []).append(idx)
 
     # Second pass: paraphrases of one defect the model did not pair up. Only
-    # within a component, and only above a high overlap, because collapsing two
+    # within a family, and only above a high overlap, because collapsing two
     # genuinely different defects loses one.
     survivors = [i for i in range(len(flat)) if i not in merged_away]
     for pos, i in enumerate(survivors):
         if i in merged_away:
             continue
         for j in survivors[pos + 1:]:
-            if j in merged_away or flat[j].component != flat[i].component:
-                continue
-            if _overlap(flat[i].observation, flat[j].observation) < SAME_DEFECT:
+            if j in merged_away or not _same_defect(flat[i], flat[j]):
                 continue
             merged_away.add(j)
             extra.setdefault(i, []).append(flat[j].photo_id)
             extra[i].extend(flat[j].also_seen_in or [])
+            members.setdefault(i, []).append(j)
 
     out = []
     for i, issue in enumerate(flat):
@@ -423,6 +553,8 @@ def merge_duplicates(flat: list[Issue], duplicates: list) -> list[Issue]:
             continue
         seen = [p for p in dict.fromkeys(extra.get(i, [])) if p != issue.photo_id]
         issue.also_seen_in = seen
+        if members.get(i):
+            _resolve(issue, [issue] + [flat[j] for j in members[i]])
         out.append(issue)
     return out
 

@@ -264,9 +264,18 @@ function bandNote(price) {
       + 'asked for. Nothing in the photos moved it.';
   }
   const dir = price.adjustment.pct >= 0 ? 'up' : 'down';
+  const why = price.adjustment.pct > 0
+    /* A number above the comparables is surprising, so it is explained where
+       it is shown rather than only inside the disclosure. The baseline is
+       average-condition ASKING prices, so a truck that is demonstrably better
+       than average belongs above it - and only a truck graded excellent gets
+       there. */
+    ? ' The comparables are what an average-condition truck is asked for, and '
+      + 'this one was photographed well enough to show it is better than that.'
+    : '';
   return `What the photos found moved the estimate ${dir} `
     + `${fixed(Math.abs(price.adjustment.pct), 1)}% from what comparable trucks `
-    + 'are being asked for.';
+    + 'are being asked for.' + why;
 }
 
 /* ---------- wiring ---------- */

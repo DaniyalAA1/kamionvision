@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from .. import condition as condition_stage
 from .. import vlm
 from ..config import (CLOSEUP_MAX_TOKENS, EVIDENCE_CONCURRENCY, IDENTITY_MAX_TOKENS,
                       MAX_EVIDENCE_PHOTOS, SYNTHESIS_MAX_TOKENS)
@@ -36,8 +37,6 @@ VIEW_PRIORITY = ["exterior_front_34", "tire_wheel", "dashboard_odometer", "exter
                  "interior_cab", "chassis_undercarriage", "fifth_wheel", "engine_bay",
                  "damage_detail", "exterior_front", "exterior_rear"]
 
-GRADE_BY_WORST = {"major": "poor", "moderate": "fair", "minor": "good", "cosmetic": "good"}
-SEVERITY_RANK = {"major": 3, "moderate": 2, "minor": 1, "cosmetic": 0}
 
 
 def select_photos(gate: GateReport, limit: int = MAX_EVIDENCE_PHOTOS) -> list:
@@ -147,16 +146,22 @@ def _fallback_synthesis(findings: list[PhotoFinding], flat: list) -> dict:
     """Roll the per-photo notes up without a model.
 
     Used when the synthesis call fails. Every observation already exists by
-    this point - pass C only groups and grades them - so losing that call
-    should cost the prose, not the findings.
+    this point - pass C only groups them - so losing that call should cost the
+    prose, not the findings.
+
+    It does not grade any more, and that is the point of the redesign. The old
+    rollup graded on `max(severity)` with `default=-1` and no `-1` key, so
+    sixteen spotless photos came back `unknown` while ONE cosmetic scuff
+    upgraded the same truck to `good` - finding a fault improved the grade. The
+    grade is now `app.condition.rollup`, on this path and on the happy path
+    alike, so the two differ only in prose, which is what this docstring always
+    claimed.
     """
     summary: dict[str, list[str]] = {}
     for issue in flat:
         key = prompts.COMPONENT_SUMMARY.get(issue.component)
         if key:
             summary.setdefault(key, []).append(issue.observation)
-    worst = max((SEVERITY_RANK.get(i.severity, 0) for i in flat), default=-1)
-    grade = {3: "poor", 2: "fair", 1: "good", 0: "good"}.get(worst, "unknown")
     gaps = []
     for finding in findings:
         gaps.extend(finding.cannot_tell)
@@ -164,12 +169,34 @@ def _fallback_synthesis(findings: list[PhotoFinding], flat: list) -> dict:
         "condition_summary": {
             k: ("; ".join(summary[k][:3]) if k in summary else "not visible in these photos")
             for k in prompts.SUMMARY_KEYS},
-        "condition_grade": grade,
+        "condition_grade": "",
         "coverage_gaps": list(dict.fromkeys(gaps))[:10],
         "headline": "",
         "confidence": 0.0,
         "duplicates": [],
     }
+
+
+def _parse_warnings(report: EvidenceReport, findings: list[PhotoFinding]) -> None:
+    """Say out loud what the parser could not read, and what it read too much of.
+
+    Neither of these truncates anything. An ungraded finding is still listed
+    with its photograph and weighs zero; a photo that returned thirty findings
+    keeps all thirty, because capping the list would delete evidence and
+    per-family saturation has already removed the incentive to pad it.
+    """
+    ungraded = report.condition.ungraded_findings if report.condition else 0
+    if ungraded:
+        report.parse_warnings.append(
+            f"{ungraded} finding(s) came back with a severity or price impact that "
+            f"is not in the enum; they are shown with their photo and weighted at "
+            f"zero rather than rounded up to minor")
+    for finding in findings:
+        if len(finding.issues) > condition_stage.FINDINGS_PER_PHOTO_WARN:
+            report.parse_warnings.append(
+                f"photo {finding.photo_id} returned {len(finding.issues)} findings; "
+                f"that is a list, not an inspection - none were dropped, but the "
+                f"subsystem they land on is capped")
 
 
 # --- the whole stage -------------------------------------------------------
@@ -247,10 +274,25 @@ def run(gate: GateReport, declared: dict | None = None, *,
 
     report.issues = passes.merge_duplicates(flat, data["duplicates"])
     report.condition_summary = data["condition_summary"]
-    report.condition_grade = data["condition_grade"]
+    # One rollup, two consumers. The grade below and the price multiplier in
+    # `pricing.condition_adjustment` are both functions of this object, so they
+    # cannot disagree about which truck is worse - which they used to, and in
+    # both directions.
+    report.condition = condition_stage.rollup(report.issues, findings, gate=gate)
+    report.condition_grade = report.condition.grade
+    # The synthesis pass still grades, and its answer is kept as a second
+    # opinion that is shown and not obeyed: the deterministic one wins because
+    # it is reproducible and testable. Same posture as `fell_back_from`.
+    report.condition_grade_model = data["condition_grade"]
+    if (report.condition_grade_model in prompts.GRADES
+            and report.condition_grade_model != report.condition_grade):
+        report.grade_disagreement = (
+            f"the synthesis pass graded this {report.condition_grade_model}; the "
+            f"deterministic rollup grades it {report.condition_grade}")
     report.coverage_gaps = data["coverage_gaps"] or list(dict.fromkeys(
         g for f in findings for g in f.cannot_tell))[:10]
     report.confidence = data["confidence"]
+    _parse_warnings(report, findings)
     if not report.raw_text:
         report.raw_text = notes
     report.elapsed_s = round(time.time() - t0, 2)

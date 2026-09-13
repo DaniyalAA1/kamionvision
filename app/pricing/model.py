@@ -10,10 +10,26 @@ Two things this deliberately is not:
     of held-out trucks it actually contained is stored in the model file and
     printed on the report.
 
-The condition adjustment is capped at one residual standard deviation, which
-is a measured quantity rather than a chosen one: it is the total variation in
-asking price that year, kilometres, brand and market do NOT explain. Condition
-cannot be worth more than everything we cannot see, so that is the ceiling.
+The condition adjustment is bounded by one out-of-fold residual standard
+deviation, and that split is three-way rather than two:
+
+  MEASURED   sigma itself, 0.0988 in log space, from 958 out-of-fold
+             evaluations over 84 listings collapsing to 24 distinct specs. It
+             is the variation in asking price that year, kilometres, brand and
+             market do NOT explain.
+  ASSUMED    the decision to cap condition at EXACTLY one sigma. The reasoning
+             - condition cannot be worth more than everything we cannot see -
+             is sound and no experiment picks 1 sigma over 0.5 or 2.
+  ASSUMED    every weight that decides where inside the cap a truck lands. See
+             `app.condition`, which owns them and labels them.
+
+The adjustment is two-sided. The comparable baseline is average-condition
+asking prices, so a demonstrably clean, well-photographed truck belongs above
+it - `strengths` were collected on all sixteen calls, rendered on three
+surfaces and worth exactly nothing until now. Two guards keep that honest, and
+both live in `app.condition`: merit is bounded by coverage in the arithmetic,
+so absence of evidence cannot become evidence of excellence, and one finding
+the model itself calls real cancels the premium outright.
 """
 from __future__ import annotations
 
@@ -25,6 +41,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .. import condition as C
+from ..condition import IMPACT_WEIGHT, SEVERITY_WEIGHT  # noqa: F401  (re-exported)
 from ..config import (FX_AS_OF, LISTINGS_CSV, PRICE_MODEL, USD_TRY,
                       euro_norm_for_year)
 from ..schema import (AskingVerdict, Comparable, ConditionAdjustment, EvidenceReport,
@@ -32,14 +50,28 @@ from ..schema import (AskingVerdict, Comparable, ConditionAdjustment, EvidenceRe
 from . import anchor
 from . import features as F
 
-# Severity and stated price impact combine multiplicatively, then scale by the
-# model's own confidence in the finding. A low-confidence major defect should
-# not move the price like a certain one.
-SEVERITY_WEIGHT = {"cosmetic": 0.15, "minor": 0.40, "moderate": 1.00, "major": 2.20}
-IMPACT_WEIGHT = {"none": 0.0, "low": 0.40, "medium": 1.00, "high": 2.00}
-# Issue-score at which the adjustment reaches ~76% of its cap. Six is roughly
-# four confident moderate/medium findings - a visibly tired but working truck.
-ADJUSTMENT_SCALE = 6.0
+# The weight tables live in `app.condition` with the rest of the rollup, so the
+# grade and the price cannot be computed from two different sets of numbers.
+SEVERITY_WEIGHT_BASIS = C.WEIGHTS_BASIS
+
+# --- how much wider the condition band is drawn than the comparable one -----
+# "Two bands, and they are not interchangeable" was asserted but the two were
+# drawn the SAME WIDTH, which quietly implied the condition band inherited the
+# measured 80.3%. Drawing it wider when the condition read is uncertain puts
+# the disclaimer in the geometry.
+#
+# ASSUMED: thin coverage widens up to 1.35x. The photographs not showing a
+# subsystem is uncertainty about the truck, not a defect on it.
+COVERAGE_WIDENING = 0.35
+# ASSUMED: the deterministic rollup and the synthesis pass reaching different
+# grades is a measurable disagreement between two graders of the same evidence.
+GRADE_DISAGREEMENT_WIDENING = {0: 1.00, 1: 1.08, 2: 1.20, 3: 1.20}
+# The condition band may never be narrower than the comparable band - the
+# mirror of the anchor's floor, and for the same reason: the measured 80.3%
+# belongs to the unwidened hedonic interval and nothing here has earned the
+# right to claim a tighter one.
+CONDITION_WIDENING_FLOOR = 1.0
+CONDITION_WIDENING_CAP = 1.50
 
 
 @dataclass
@@ -111,34 +143,127 @@ def load_model(path: Path = PRICE_MODEL) -> PriceModel:
 
 # --- condition adjustment -------------------------------------------------
 
+def rollup_for(evidence: EvidenceReport | None):
+    """The condition rollup the grade was taken from, or one computed to match.
+
+    Preferring the stored object is what makes "the grade and the price agree"
+    a fact rather than a hope: the evidence stage froze one rollup, graded from
+    it, and the price reads the same one.
+    """
+    if evidence is None:
+        return None
+    if evidence.condition is not None:
+        return evidence.condition
+    return C.rollup(evidence.issues, evidence.photo_findings)
+
+
 def condition_adjustment(evidence: EvidenceReport | None, cap_log: float) -> ConditionAdjustment:
-    cap_pct = round((1 - math.exp(-cap_log)) * 100, 1)
+    """Move the comparable baseline by what the photographs actually showed.
+
+    Two-sided, and bounded symmetrically IN PERCENT: the discount floor is
+    `exp(-sigma)`, and the premium ceiling is the same magnitude the other way
+    rather than `exp(+sigma)`, so the single cap figure printed on every
+    surface is true in both directions and the newer, less defensible direction
+    is the more conservative one.
+    """
+    cap_frac = 1 - math.exp(-cap_log)
+    cap_pct = round(cap_frac * 100, 1)
     adj = ConditionAdjustment(
         cap_pct=cap_pct,
+        cap_basis=(f"measured: one out-of-fold residual standard deviation of the "
+                   f"price model (+/-{cap_pct}%) - the variation in asking price "
+                   f"that year, kilometres, brand and market do not explain"),
+        weights_basis=SEVERITY_WEIGHT_BASIS,
         basis=(f"capped at one residual standard deviation of the price model "
                f"(+/-{cap_pct}%) - the variation in asking price that year, "
                f"kilometres, brand and market do not explain"),
     )
-    if evidence is None or not evidence.issues:
-        adj.drivers = ["no visible defects were reported - no adjustment applied"]
+    roll = rollup_for(evidence)
+    if roll is None:
+        adj.drivers = ["no photographs were read - no adjustment applied"]
         return adj
 
-    score = 0.0
-    drivers = []
-    for issue in evidence.issues:
-        weight = (SEVERITY_WEIGHT.get(issue.severity, 0.4)
-                  * IMPACT_WEIGHT.get(issue.price_impact, 0.4)
-                  * max(0.1, issue.confidence))
-        score += weight
-        if weight > 0.25:
-            drivers.append(f"{issue.component.replace('_', ' ')} "
-                           f"({issue.severity}, {issue.price_impact} impact)")
-
-    adj_log = -cap_log * math.tanh(score / ADJUSTMENT_SCALE)
-    adj.multiplier = round(math.exp(adj_log), 4)
+    issues = list(evidence.issues or [])
+    adj.coverage_pct = round(roll.coverage * 100, 1)
+    adj.merit_pct = round(roll.merit * 100, 1)
+    net = C.net_score(roll, issues)
+    adj.multiplier = round(1.0 + cap_frac * math.tanh(net), 4)
     adj.pct = round((adj.multiplier - 1) * 100, 1)
-    adj.drivers = drivers[:6] or ["only cosmetic findings - negligible effect"]
+    adj.direction = "premium" if adj.pct > 0 else "discount" if adj.pct < 0 else "none"
+
+    worst = sorted((f for f in roll.families if f.demerit > 0),
+                   key=lambda f: -f.demerit)
+    drivers = [f"{C.FAMILY_LABEL.get(f.family, f.family)} - {f.note.split(': ', 1)[-1]}"
+               for f in worst[:5]]
+    if adj.direction == "premium":
+        drivers.insert(0, f"{adj.merit_pct:.0f}% of the truck by value was photographed "
+                           f"legibly AND positively called sound")
+    elif not drivers:
+        drivers = ["nothing was found that carries a price - no adjustment applied"]
+    adj.drivers = drivers[:6]
+
+    if roll.ungraded_findings:
+        adj.notes.append(
+            f"{roll.ungraded_findings} finding(s) came back with a severity or price "
+            f"impact outside the enum; they are shown with their photo and weighted "
+            f"at zero rather than rounded up")
+    if roll.grade != "excellent" and roll.merit > 0:
+        if C.premium_block(roll, issues) <= 0.0:
+            adj.notes.append(
+                f"{adj.merit_pct:.0f}% of the truck was affirmed sound, but a finding "
+                f"the model itself rates real cancels the premium - a truck with one "
+                f"thing badly wrong is not paid a premium for the rest of it being "
+                f"clean")
+        elif C.coverage_gate(roll.coverage) <= 0.0:
+            adj.notes.append(
+                f"only {adj.coverage_pct:.0f}% of the truck by value was photographed "
+                f"legibly, which is too little to be paid for - absence of evidence is "
+                f"not evidence of excellence")
+        else:
+            adj.notes.append(
+                f"{adj.merit_pct:.0f}% of the truck was affirmed sound, but the "
+                f"comparable band is what an AVERAGE-condition truck is asked for, and "
+                f"only a truck this system will call excellent is priced above it")
     return adj
+
+
+def condition_widening(model: "PriceModel", evidence: EvidenceReport | None,
+                       adj: ConditionAdjustment) -> tuple[float, list[str]]:
+    """How much wider than the comparable band the condition band is drawn.
+
+    Floored at 1.0, always: the condition band can never be narrower than the
+    comparable-asking band it is derived from.
+    """
+    roll = rollup_for(evidence)
+    if roll is None or (not evidence.issues and roll.coverage <= 0.0):
+        return CONDITION_WIDENING_FLOOR, []
+
+    reasons: list[str] = []
+    f_cov = 1.0 + COVERAGE_WIDENING * (1.0 - min(1.0, max(0.0, roll.coverage)))
+    if f_cov > 1.005:
+        reasons.append(f"only {adj.coverage_pct:.0f}% of the truck by value was "
+                       f"photographed legibly, so the condition band widens "
+                       f"{f_cov:.2f}x (an assumption, not a measurement)")
+
+    f_dis = 1.0
+    model_grade = (evidence.condition_grade_model or "").strip()
+    if model_grade in C.GRADE_RANK and roll.grade in C.GRADE_RANK:
+        steps = abs(C.GRADE_RANK[model_grade] - C.GRADE_RANK[roll.grade])
+        f_dis = GRADE_DISAGREEMENT_WIDENING.get(steps, 1.20)
+        if f_dis > 1.0:
+            reasons.append(f"the synthesis pass graded this {model_grade} and the "
+                           f"deterministic rollup grades it {roll.grade}, so the "
+                           f"condition band widens {f_dis:.2f}x (an assumption)")
+
+    f_ret = float(model.widening.get("condition_read", 1.0) or 1.0)
+    if f_ret > 1.0:
+        reasons.append(f"repeat runs of the same photo set move the condition "
+                       f"multiplier enough to widen the band {f_ret:.2f}x "
+                       f"({model.widening.get('condition_read_basis', 'measured')})")
+
+    factor = min(CONDITION_WIDENING_CAP,
+                 max(CONDITION_WIDENING_FLOOR, f_cov * f_dis * f_ret))
+    return factor, (reasons if factor > 1.0 else [])
 
 
 # --- comparables ----------------------------------------------------------
@@ -281,14 +406,24 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
         factor *= f
         widened.append(label)
 
+    # Two factors from here on. `factor` is the SPEC band - unknown brand,
+    # anchor blend, missing inputs - and the measured 80.3% coverage stays
+    # welded to exactly the interval it was measured on. `factor_cond` is that
+    # band widened by how uncertain the condition READ is, and only the
+    # condition band uses it. The widening multiplies the offsets; it never
+    # touches how they were derived.
+    cond_factor, cond_reasons = condition_widening(model, evidence, adj)
+    factor_cond = factor * cond_factor
+    widened.extend(cond_reasons)
+
     # The model predicts log price in the NATIVE currency of the market it was
     # fit on - no FX inside the fit, because a conversion is an additive
     # constant in log space that the market dummy absorbs. So exp(mu) is TRY
     # for a Turkish query and USD for an American one, and the only conversion
     # happens here, for display.
     native = math.exp(mu + adj_log)
-    lo_native = math.exp(mu + adj_log + lo_off * factor)
-    hi_native = math.exp(mu + adj_log + hi_off * factor)
+    lo_native = math.exp(mu + adj_log + lo_off * factor_cond)
+    hi_native = math.exp(mu + adj_log + hi_off * factor_cond)
     to_usd = (1.0 / USD_TRY) if est.currency == "TRY" else 1.0
 
     est.point, est.low, est.high = (round(native, -3), round(lo_native, -3),

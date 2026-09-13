@@ -154,11 +154,19 @@ def condition_lines(appraisal: Appraisal, evidence: EvidenceReport) -> list[str]
         out.append(f"  {title}")
         for issue in sorted(group, key=lambda i: -SEVERITY_ORDER.get(i.severity, 0)):
             mark = SEVERITY_MARK.get(issue.severity, "  ")
-            out.append(f"   {mark} [{issue.severity}/{issue.price_impact} impact] "
-                       f"{issue.observation}")
+            band = ("reported, not graded" if issue.ungraded
+                    else f"{issue.severity}/{issue.price_impact} impact")
+            out.append(f"   {mark} [{band}] {issue.observation}")
             out.append(f"        seen in {_photo_label(appraisal, issue.photo_id)}"
                        + _corroboration(appraisal, issue)
                        + f" (confidence {issue.confidence:.2f})")
+            if issue.ungraded:
+                out.append("        the model returned a severity or price impact "
+                           "outside the enum, so this is shown and weighted at zero")
+            elif issue.severity_span:
+                out.append(f"        frames disagreed "
+                           f"({', '.join(issue.severity_span)}); graded "
+                           f"{issue.severity}, the level two frames support")
     for issue in remaining:
         out.append(f"   {SEVERITY_MARK.get(issue.severity, '  ')} "
                    f"[{issue.severity}] {issue.observation}")
@@ -195,11 +203,21 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
         L += [thin, "  WHAT IT IS WORTH", thin] + price_lines(price) + [""]
         if price.ok:
             adj = price.adjustment
-            if adj.pct:
+            if adj.pct or adj.coverage_pct:
                 L.append(f"  Condition adjustment: {adj.pct:+.1f}% "
-                         f"(cap ±{adj.cap_pct:.1f}%)")
+                         f"(cap ±{adj.cap_pct:.1f}%, {adj.direction})")
+                L.append(f"    {adj.coverage_pct:.0f}% of the truck by value was "
+                         f"photographed legibly; {adj.merit_pct:.0f}% of it was "
+                         f"positively called sound")
                 L.append(f"    driven by: {'; '.join(adj.drivers)}")
-                L.append(f"    {adj.basis}")
+                for note in adj.notes:
+                    L.append(f"    note: {note}")
+                # The cap and the weights are different kinds of number and the
+                # report says which is which. The repo used to call the cap an
+                # assumption here and a measurement in the code comment.
+                L.append(f"    {adj.cap_basis or adj.basis}")
+                if adj.weights_basis:
+                    L.append(f"    {adj.weights_basis}")
                 L.append("")
             if price.drivers:
                 L.append("  What moves this number (effect vs. the average comparable):")
@@ -235,6 +253,13 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
     if ev:
         L += [thin, f"  WHAT I CAN SEE   (grade: {ev.condition_grade}, "
                     f"confidence {ev.confidence:.2f})", thin]
+        if ev.condition and ev.condition.grade_reason:
+            L.append(f"  {ev.condition.grade_reason}")
+            L.append("")
+        if ev.grade_disagreement:
+            L.append(f"  NOTE  {ev.grade_disagreement}. The deterministic one is the "
+                     f"one priced; the band widens on the disagreement.")
+            L.append("")
         L += condition_lines(appraisal, ev)
         L.append("")
         L.append("  Summary by system:")
