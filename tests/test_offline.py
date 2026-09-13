@@ -1190,12 +1190,18 @@ class ScreenChrome(unittest.TestCase):
     def test_scan_is_lightweight_and_respects_reduced_motion(self):
         css = (self.STYLES / "run.css").read_text(encoding="utf-8")
         js = Path("app/web/js/run.js").read_text(encoding="utf-8")
-        self.assertIn("@keyframes optical-sweep", css)
+        self.assertIn("@keyframes scan-pixel", css)
         self.assertIn("prefers-reduced-motion: reduce", css)
-        self.assertIn(".scan.on::before { animation: none; }", css)
+        self.assertIn(".scan.on .scan-dot { animation: none; }", css)
+        self.assertIn("ensureScanDots", js)
+        self.assertIn("--diag", js)
         self.assertNotIn("fillScanGrid", js)
+        self.assertNotIn("scan-arm", js)
+        self.assertNotIn("setInterval(showActivePhoto", js)
         html = Path("app/web/index.html").read_text(encoding="utf-8")
         self.assertIn('id="scan"', html)
+        self.assertIn('id="scan-field"', html)
+        self.assertIn('id="scan-pop"', html)
         self.assertIn('id="scan-status" role="status"', html)
 
     def test_price_ranges_are_separate_and_directly_labelled(self):
@@ -1253,6 +1259,7 @@ class RunDocument(unittest.TestCase):
         self.assertNotIn("The photographs are read", html)
         self.assertIn('id="progress-label"', html)
         self.assertIn('id="scan-status" role="status"', html)
+        self.assertIn('id="scan-pop"', html)
         self.assertIn('id="thoughts"', html)
 
     def test_status_copy_does_not_restate_that_the_photos_are_read(self):
@@ -1274,6 +1281,25 @@ class RunDocument(unittest.TestCase):
         for phrase in ("Nothing to flag", "Nothing flagged", "Nothing wrong",
                        "Nothing was flagged"):
             self.assertNotIn(phrase, js, phrase)
+
+    def test_the_rail_does_not_fabricate_reading_placeholders(self):
+        # Three identical "Reading…" cards were the whole live rail while
+        # identity ran. The deck is the photographs themselves.
+        js = (self.WEB / "js/reasoning.js").read_text(encoding="utf-8")
+        self.assertNotIn("Reading…", js)
+        self.assertNotIn("thought-pending", js)
+        self.assertIn("export function identity(", js)
+        self.assertIn("export function reading(", js)
+        self.assertIn("export function showPop(", js)
+        self.assertIn("thought-deck", js)
+
+    def test_review_waits_for_the_box_before_the_next_photo(self):
+        js = (self.WEB / "js/run.js").read_text(encoding="utf-8")
+        self.assertIn("reasoning.showPop(finding)", js)
+        self.assertIn("const boxed", js)
+        self.assertNotIn("setInterval(showActivePhoto", js)
+        self.assertIn("A clean frame is silent",
+                      (self.WEB / "js/reasoning.js").read_text(encoding="utf-8"))
 
     def test_the_column_cannot_grow_past_the_viewport(self):
         css = (self.WEB / "styles/run.css").read_text(encoding="utf-8")
@@ -1668,7 +1694,7 @@ class Gallery(unittest.TestCase):
         # and the grid is fed from a pool with no demo cards in it at all.
         src = Path("app/web/js/gallery.js").read_text(encoding="utf-8")
         self.assertNotIn("card.demo) return true", src)
-        self.assertIn("demos = cards.filter((c) => c.demo)", src)
+        self.assertIn("demos = cards.filter((c) => c.demo && c.available)", src)
         self.assertIn("listings = cards.filter((c) => !c.demo)", src)
         # The shelf draws the demos; everything paged draws from `listings`.
         self.assertIn("shelf.replaceChildren(...demos.map(nodeFor))", src)
@@ -2073,6 +2099,59 @@ class SubjectScore(unittest.TestCase):
                    ("car", 0.519, (985.2, 478.8, 1151.3, 597.3)),
                    width=1440, height=1080)
         self.assertEqual(gate.pick_subject(c), [549.3, 76.4, 998.6, 588.4])
+
+    def test_a_weak_prototype_does_not_hand_the_box_to_the_neighbour(self):
+        """The live run of this frame. Phase 1 already picks the red F-MAX.
+
+        Phase 2 then hands the box to the white tractor on the left, because
+        CLIP ViT-B/32 scores a complete neighbour closer to the side-view
+        prototype than a clipped rear cab of the same truck. The comments on
+        `_score_similarity` already admit the two distributions overlap; a
+        0.15 cosine gap inside that band is not evidence the photographer
+        framed the wrong vehicle.
+        """
+        c = _boxes(("car", 0.249, (309.3, 506.7, 1145.1, 992.2)),
+                   ("truck", 0.805, (0.0, 213.1, 526.4, 898.6)),
+                   ("truck", 0.454, (549.3, 76.4, 998.6, 588.4)),
+                   ("bus", 0.677, (1240.3, 302.4, 1439.1, 634.9)),
+                   ("truck", 0.549, (1107.0, 403.6, 1246.9, 579.1)),
+                   ("car", 0.519, (985.2, 478.8, 1151.3, 597.3)),
+                   width=1440, height=1080)
+        pool = subject.build_candidates(c)
+        proto = np.array([1.0, 0.0], dtype=np.float32)
+        for cand in pool:
+            # The live numbers: neighbour 0.758, framed subject 0.606.
+            sim = 0.758 if cand.box[0] == 0.0 else 0.606 if cand.box[0] == 549.3 else 0.50
+            cand.emb = subject._normalise(np.array([sim, (1.0 - sim ** 2) ** 0.5],
+                                                   dtype=np.float32))
+        c._candidates = pool
+        identity = subject.SubjectIdentity(prototype=proto, method="recurring_vehicle",
+                                           seeded_from=[1, 12, 16])
+        subject._score_similarity({0: pool}, proto)
+        subject.assign(c, identity)
+        self.assertEqual(c.subject_box, [549.3, 76.4, 998.6, 588.4])
+        self.assertIn("photographer framed", c.subject_basis)
+
+    def test_the_prototype_still_resolves_two_trucks_neither_framed(self):
+        """Phase 2's job: a dealer-lot frame where geometry has no centre hit.
+
+        Two comparable trucks, both off-centre. The photograph does not name
+        one of them; the rest of the set does.
+        """
+        c = _boxes(("truck", 0.9, (0, 80, 300, 420)),
+                   ("truck", 0.85, (720, 80, 1000, 400)),
+                   width=1000, height=600)
+        pool = subject.build_candidates(c)
+        proto = np.array([1.0, 0.0], dtype=np.float32)
+        for cand in pool:
+            sim = 0.95 if cand.box[0] == 720 else 0.55
+            cand.emb = subject._normalise(np.array([sim, (1.0 - sim ** 2) ** 0.5],
+                                                   dtype=np.float32))
+        c._candidates = pool
+        identity = subject.SubjectIdentity(prototype=proto, method="recurring_vehicle")
+        subject._score_similarity({0: pool}, proto)
+        subject.assign(c, identity)
+        self.assertEqual(c.subject_box, [720, 80, 1000, 400])
 
 
 class PartViewSubject(unittest.TestCase):

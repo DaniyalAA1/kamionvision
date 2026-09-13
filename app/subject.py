@@ -12,7 +12,11 @@ one. So this module is two phases:
   phase 2  across the set, embed the candidate crops with the CLIP model the
            gate already runs, build an appearance prototype from the frames
            where the answer is unambiguous, and let that prototype resolve the
-           frames where it is not.
+           frames where it is not. It may not take the box off a truck the
+           photograph already framed and hand it to a neighbour: CLIP's
+           same-truck and different-truck cosines overlap, and a 0.15 gap
+           inside that band is how `demo/tr_clean/000.jpg` boxed the white
+           tractor on the left.
 
 The rule this replaces was "a box holding the centre of the frame wins
 outright, with area breaking ties among those". It was written for a real
@@ -502,7 +506,7 @@ def eligible(check: PhotoCheck, pool: list[Candidate],
 
 
 def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
-           identity: SubjectIdentity) -> str:
+           identity: SubjectIdentity, *, kept_framing: bool = False) -> str:
     """Why that box, or why none. Same posture as `EvidenceReport.fell_back_from`:
     the gate may change its mind, it may not do it where nobody can see."""
     if best is None:
@@ -514,6 +518,9 @@ def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
                     f"vehicle box is {biggest.area_frac * 100:.0f}% of the frame, which "
                     f"is the yard behind it")
         return "none: no vehicle box in this frame is the one being sold"
+    if kept_framing:
+        return ("the truck the photographer framed; the set's appearance "
+                "prototype preferred a neighbour")
     if identity.prototype is not None and best.sim_abs:
         # Frame-local, deliberately: `frames_agreeing` is a set-level count and
         # is not known until every frame has been assigned.
@@ -536,11 +543,26 @@ def assign(check: PhotoCheck, identity: SubjectIdentity = NO_IDENTITY) -> Candid
     keep = eligible(check, pool, identity)
     for c in keep:
         c.score = frame_score(c, use_prototype=use_proto)
+    geo_best = max(keep, key=lambda c: frame_score(c, use_prototype=False), default=None)
     best = max(keep, key=lambda c: c.score, default=None)
+    # CLIP ViT-B/32 does not separate same-truck from neighbour-truck well
+    # enough to overturn the vehicle the photographer put in the middle of
+    # the frame. On `demo/tr_clean/000.jpg` a 0.15 cosine gap inside that
+    # compressed band handed the box to a complete white tractor on the
+    # left and took it off the clipped red F-MAX the photograph is of.
+    # Phase 2 still resolves frames where geometry names nobody - two
+    # off-centre trucks, or two that both hold the centre.
+    kept_framing = False
+    if (use_proto and geo_best is not None and best is not None
+            and geo_best is not best
+            and geo_best.centre_hit and not best.centre_hit):
+        best = geo_best
+        kept_framing = True
     check.subject_box = list(best.box) if best else None
     check.subject_score = round(best.score, 4) if best else 0.0
     check.subject_sim = round(best.sim_abs, 3) if best else 0.0
-    check.subject_basis = _basis(check, best, pool, identity)
+    check.subject_basis = _basis(check, best, pool, identity,
+                                 kept_framing=kept_framing)
     if best is not None:
         _ensure_in_detections(check, best)
         best.det.is_subject = True

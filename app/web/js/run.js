@@ -10,15 +10,17 @@
 
      the drawing   fills in as the gate's view coverage binds to it, then
                    again as findings arrive
-     the frame     jumps to whichever photo was just read, with one box on it
+     the frame     stays on the photograph being read; when that call
+                   returns the yellow box (if any) lands, then the next
      the rail      one card per finished vision call, newest on top
+                   plus a pop on the photograph itself
 
    The progress figure is a count of finished calls, not an easing curve. The
    old bar eased asymptotically towards 95% and was labelled an estimate
    because nothing knew when the single call would answer; sixteen calls know
    exactly how many of them are done. */
 
-import { $, timers, reduced, viewName } from './dom.js';
+import { $, el, timers, reduced, viewName } from './dom.js';
 import * as elevation from './elevation.js';
 import * as frames from './frames.js';
 import * as reasoning from './reasoning.js';
@@ -32,23 +34,61 @@ let following = true;
 let latest = null;
 let reviewQueue = [];
 let reviewTimer = null;
+let sleepResolve = null;
 let reviewed = 0;
 let finished = false;
+let presenting = false;
+let reviewGen = 0;
 const received = new Set();
 const activePhotos = new Set();
-let activityTimer = null;
 let activityDetail = '';
+
+function ensureScanDots() {
+  const field = $('scan-field');
+  if (!field) return;
+  if (field.dataset.kind === 'pixels') return;
+  field.replaceChildren();
+  field.dataset.kind = 'pixels';
+  const cols = 26;
+  const rows = 18;
+  const span = cols + rows - 2;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const nx = (x + 0.5) / cols;
+      const ny = (y + 0.5) / rows;
+      const dist = Math.min(1, Math.hypot(nx - 0.5, ny - 0.5) / 0.72);
+      const dot = el('i', 'scan-dot');
+      dot.style.setProperty('--x', `${(nx * 100).toFixed(2)}%`);
+      dot.style.setProperty('--y', `${(ny * 100).toFixed(2)}%`);
+      dot.style.setProperty('--s', `${(7.4 - dist * 5.1).toFixed(2)}px`);
+      dot.style.setProperty('--diag', ((x + y) / span).toFixed(4));
+      field.append(dot);
+    }
+  }
+}
+
+function setScanning(on) {
+  const scan = $('scan');
+  if (on) {
+    ensureScanDots();
+    scan.classList.add('on');
+  } else {
+    scan.classList.remove('on');
+  }
+}
 
 function showActivePhoto() {
   if (!following || hasPendingReview() || !activePhotos.size) return;
-  const ids = [...activePhotos];
-  const index = ids.indexOf(frames.currentPhotoId());
-  const id = ids[(index + 1) % ids.length];
+  const current = frames.currentPhotoId();
+  const id = activePhotos.has(current) ? current : [...activePhotos][0];
   const check = frames.checkFor(id);
   if (check) {
     frames.showFrame(check); frames.markCell(id);
-    $('scan').classList.add('on');
-    $('scan-status').textContent = `${viewName(check.view)} · ${ids.length} active`;
+    setScanning(true);
+    const n = activePhotos.size;
+    $('scan-status').textContent = n > 1
+      ? `${viewName(check.view)} · ${n} active`
+      : viewName(check.view);
   }
 }
 
@@ -57,44 +97,110 @@ export function onActivity(msg) {
     frames.applyViews(msg.photos);
     return;
   }
-  if (msg.phase === 'photo') {
-    activePhotos.add(msg.photo_id);
-    if (activePhotos.size === 1) showActivePhoto();
-    if (!activityTimer) activityTimer = setInterval(showActivePhoto, 5000);
-  } else {
-    activityDetail = msg.detail || '';
-    if (msg.phase === 'synthesis') {
-      activePhotos.clear(); clearInterval(activityTimer); activityTimer = null;
+  if (msg.phase === 'identity') {
+    reasoning.identity(msg);
+    const who = [msg.make, msg.model].filter(Boolean).join(' ');
+    const n = msg.sample;
+    const of = msg.of;
+    if (msg.status === 'reading' && n && of) {
+      activityDetail = `Identity ${n} of ${of}`;
+      progress(activityDetail, 0.12 + 0.08 * ((n - 1) / of));
+    } else if (who) {
+      activityDetail = who;
+      if (n && of) progress(who, 0.12 + 0.08 * (n / of));
+    } else if (msg.detail) {
+      activityDetail = msg.detail;
     }
     if (!hasPendingReview()) $('scan-status').textContent = activityDetail;
+    return;
   }
+  if (msg.phase === 'photo') {
+    activePhotos.add(msg.photo_id);
+    reasoning.reading(msg.photo_id);
+    if (hasPendingReview()) return;
+    const current = frames.currentPhotoId();
+    if (!current || !activePhotos.has(current) || activePhotos.size === 1) {
+      showActivePhoto();
+    } else {
+      setScanning(true);
+    }
+    return;
+  }
+  activityDetail = msg.detail || '';
+  if (msg.phase === 'synthesis') {
+    activePhotos.clear();
+  }
+  if (!hasPendingReview()) $('scan-status').textContent = activityDetail;
 }
 
 
-export const hasPendingReview = () => reviewQueue.length > 0 || reviewTimer !== null;
-function presentNext() {
-  if (!following || reviewTimer !== null || !reviewQueue.length) return;
+export const hasPendingReview = () => reviewQueue.length > 0 || presenting;
+
+function cancelPresentation() {
+  reviewGen += 1;
+  clearTimeout(reviewTimer);
+  reviewTimer = null;
+  if (sleepResolve) {
+    const done = sleepResolve;
+    sleepResolve = null;
+    done(false);
+  }
+  presenting = false;
+  reasoning.hidePop();
+}
+
+function sleep(gen, ms) {
+  return new Promise((resolve) => {
+    clearTimeout(reviewTimer);
+    sleepResolve = (ok) => resolve(ok && gen === reviewGen);
+    reviewTimer = setTimeout(() => {
+      reviewTimer = null;
+      const done = sleepResolve;
+      sleepResolve = null;
+      if (done) done(gen === reviewGen);
+    }, ms);
+  });
+}
+
+async function presentNext() {
+  if (!following || presenting || !reviewQueue.length) return;
+  presenting = true;
+  const gen = ++reviewGen;
   const finding = reviewQueue.shift();
   const check = frames.checkFor(finding.photo_id);
-  if (!check) return presentNext();
+  if (!check) {
+    presenting = false;
+    return presentNext();
+  }
   reviewed += 1;
-  frames.showFrame(check);
+  const painted = await frames.showFrame(check);
+  if (gen !== reviewGen) return;
+  if (!following) { presenting = false; return; }
   frames.markCell(check.photo_id, 'read');
   $('scan-status').textContent = `${viewName(check.view)} · photo ${frames.photoOrdinal(check.photo_id)}`;
-  $('scan').classList.remove('on');
-  const parts = (finding.issues || []).filter((i) => Array.isArray(i.box) && i.box.length === 4).length;
-  // A presentation queue, NOT fabricated inference progress. Results can land
-  // concurrently; each gets enough screen time to read and inspect its parts.
-  reviewTimer = setTimeout(() => {
-    reviewTimer = null;
-    if (reviewQueue.length) presentNext();
-    else {
-      $('scan-status').textContent = finished
-        ? 'Done'
-        : activityDetail || `${read} of ${evidenceIds.length}`;
-      showActivePhoto();
-    }
-  }, Math.max(3200, Math.min(8000, (parts + 1) * 1600)));
+  setScanning(false);
+  const boxed = (finding.issues || []).filter((i) => Array.isArray(i.box) && i.box.length === 4).length;
+  /* The yellow box traces on before the card pops, and the next photograph
+     waits until that has been seen — unless the frame is clean. */
+  if (boxed && painted && !reduced()) {
+    if (!await sleep(gen, 420)) return;
+    if (!following) { presenting = false; return; }
+  }
+  reasoning.showPop(finding);
+  const hold = boxed
+    ? Math.max(2600, Math.min(7600, boxed * 1600 + 700))
+    : 1100;
+  if (!await sleep(gen, hold)) return;
+  if (!following) { presenting = false; return; }
+  reasoning.hidePop();
+  presenting = false;
+  if (reviewQueue.length) presentNext();
+  else {
+    $('scan-status').textContent = finished
+      ? 'Done'
+      : activityDetail || `${read} of ${evidenceIds.length}`;
+    showActivePhoto();
+  }
 }
 
 
@@ -140,8 +246,8 @@ function follow(value) {
      describing the wrong frame. */
   $('scan-status').hidden = !value;
   if (!value) {
-    clearTimeout(reviewTimer); reviewTimer = null;
-    $('scan').classList.remove('on');
+    cancelPresentation();
+    setScanning(false);
   }
 }
 function selectFrame(c) { follow(false); frames.showFrame(c); frames.markCell(c.photo_id); }
@@ -205,10 +311,11 @@ export function begin() {
 }
 
 export function stop() {
-  clearInterval(activityTimer); activityTimer = null; activePhotos.clear();
-  clearTimeout(reviewTimer); reviewTimer = null; reviewQueue = [];
+  activePhotos.clear();
+  reviewQueue = [];
+  cancelPresentation();
   t.clear();
-  $('scan').classList.remove('on');
+  setScanning(false);
   frames.cancelPendingFrame();
   document.querySelectorAll('.strip-cell.reading').forEach((cell) => cell.classList.remove('reading'));
 }
@@ -240,18 +347,18 @@ export function onGate(msg) {
 export function onStage(msg) {
   setStep(msg.step);
   if (msg.step === 'evidence') {
-    reasoning.begin(evidenceIds.length);
+    reasoning.begin(evidenceIds);
     evidenceIds.forEach((id) => {
       const c = $(`cell-${id}`);
       if (c) c.classList.add('reading');
     });
-    $('scan').classList.add('on');
+    setScanning(true);
     $('scan-status').textContent = 'Waiting for the first frame';
     progress(`0 of ${evidenceIds.length}`, 0.12);
   }
   if (msg.step === 'price') {
     if (!hasPendingReview()) $('scan-status').textContent = 'Pricing';
-    $('scan').classList.remove('on');
+    setScanning(false);
     progress(`${read} of ${evidenceIds.length || read}`, 0.96);
   }
 }
@@ -287,9 +394,9 @@ export function onPhoto(msg) {
 
 export function onResult(a) {
   finished = true;
-  clearInterval(activityTimer); activityTimer = null; activePhotos.clear();
+  activePhotos.clear();
   t.clear();
-  $('scan').classList.remove('on');
+  setScanning(false);
   $('scan-status').textContent = a.evidence ? 'Done' : 'Stopped';
   $('run').classList.add('is-done');
   progress(read ? `${read} photos` : 'Stopped', 1);
@@ -328,7 +435,7 @@ export function showFrozen(a) {
   const ev = a.evidence;
   if (ev && (ev.photo_findings || []).length) {
     ev.photo_findings.forEach((f) => frames.setFinding(f));
-    reasoning.begin(ev.photo_findings.length);
+    reasoning.begin(ev.photo_findings.map((f) => f.photo_id));
     [...ev.photo_findings].reverse().forEach((f) => reasoning.add(f));
   }
   if (lead) { frames.showFrame(lead); frames.markCell(lead.photo_id); }

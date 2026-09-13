@@ -162,51 +162,74 @@ export const hasHiddenBoxes = (check) =>
 
 /* ---------- featured frame ---------- */
 
+function paintFrame(check, source) {
+  current = check;
+  const img = $('frame-img');
+  img.alt = check.usable ? viewName(check.view) : 'Dropped';
+  img.src = source;
+  img.classList.add('in');
+  if (check.width && check.height) {
+    $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
+  }
+  fitChips();
+  drawBoxes($('frame-boxes'), check);
+  writeMeta(check);
+  const toggle = $('show-all');
+  if (toggle) toggle.hidden = !hasHiddenBoxes(check);
+}
+
 export function showFrame(check) {
-  if (!check) return;
+  if (!check) return Promise.resolve(false);
+  const source = urlFor(check.photo_id);
+  const img = $('frame-img');
+  /* Same photograph already on the stage: redraw the boxes without a
+     dissolve, so a finding can land on the frame that was being scanned. */
+  if (current && current.photo_id === check.photo_id && img.getAttribute('src') === source) {
+    clearPartTour();
+    frameVersion += 1;
+    paintFrame(check, source);
+    return Promise.resolve(true);
+  }
   clearPartTour();
   const version = ++frameVersion;
-  const source = urlFor(check.photo_id);
-  const preload = new Image();
-  preload.onload = () => {
-    if (version !== frameVersion) return;
-    const img = $('frame-img');
-    const stage = $('frame-stage');
-    stage.querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
-    if (img.getAttribute('src') && !reduced()) {
-      const previous = img.cloneNode();
-      previous.removeAttribute('id');
-      previous.alt = '';
-      previous.setAttribute('aria-hidden', 'true');
-      previous.className = 'frame-outgoing in';
-      stage.insertBefore(previous, img);
-      previous.addEventListener('animationend', () => previous.remove(), { once: true });
-      setTimeout(() => previous.remove(), 600);
-    }
-    current = check;
-    img.alt = check.usable ? viewName(check.view) : 'Dropped';
-    img.src = source;
-    img.classList.add('in');
-    if (check.width && check.height) {
-      $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
-    }
-    fitChips();
-    drawBoxes($('frame-boxes'), check);
-    writeMeta(check);
-    const toggle = $('show-all');
-    if (toggle) toggle.hidden = !hasHiddenBoxes(check);
-  };
-  preload.onerror = () => {
-    if (version !== frameVersion) return;
-    current = null;
-    $('show-all').hidden = true;
-    $('frame-img').removeAttribute('src');
-    $('frame-img').alt = 'This photo failed to load';
-    $('frame-boxes').replaceChildren();
-    $('frame-chips').replaceChildren();
-    $('frame-meta').textContent = 'This photo failed to load. Select another photo to continue.';
-  };
-  preload.src = source;
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    const preload = new Image();
+    preload.onload = () => {
+      if (version !== frameVersion) return settle(false);
+      const stage = $('frame-stage');
+      stage.querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
+      if (img.getAttribute('src') && !reduced()) {
+        const previous = img.cloneNode();
+        previous.removeAttribute('id');
+        previous.alt = '';
+        previous.setAttribute('aria-hidden', 'true');
+        previous.className = 'frame-outgoing in';
+        stage.insertBefore(previous, img);
+        previous.addEventListener('animationend', () => previous.remove(), { once: true });
+        setTimeout(() => previous.remove(), 600);
+      }
+      paintFrame(check, source);
+      settle(true);
+    };
+    preload.onerror = () => {
+      if (version !== frameVersion) return settle(false);
+      current = null;
+      $('show-all').hidden = true;
+      img.removeAttribute('src');
+      img.alt = 'This photo failed to load';
+      $('frame-boxes').replaceChildren();
+      $('frame-chips').replaceChildren();
+      $('frame-meta').textContent = 'This photo failed to load. Select another photo to continue.';
+      settle(false);
+    };
+    preload.src = source;
+  });
 }
 
 // Keep HTML labels aligned with the contained image, including portrait photos.
@@ -214,7 +237,10 @@ function fitChips() {
   if (!current?.width || !current?.height) return;
   const stage = $('frame-stage');
   const scale = Math.min(stage.clientWidth / current.width, stage.clientHeight / current.height);
-  $('frame-chips').style.inset = `${(stage.clientHeight - current.height * scale) / 2}px ${(stage.clientWidth - current.width * scale) / 2}px`;
+  const inset = `${(stage.clientHeight - current.height * scale) / 2}px ${(stage.clientWidth - current.width * scale) / 2}px`;
+  $('frame-chips').style.inset = inset;
+  const field = $('scan-field');
+  if (field) field.style.inset = inset;
 }
 new ResizeObserver(fitChips).observe($('frame-stage'));
 

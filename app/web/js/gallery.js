@@ -245,7 +245,7 @@ function buildShelf() {
 
 export function render(data, pick) {
   const cards = data.cards || [];
-  demos = cards.filter((c) => c.demo);
+  demos = cards.filter((c) => c.demo && c.available);
   listings = cards.filter((c) => !c.demo);
   onPick = pick;
 

@@ -427,10 +427,14 @@ def run(gate: GateReport, declared: dict | None = None, *,
     # `limit` is pass B's budget and IDENTITY_PHOTOS is pass A's; the smaller
     # wins, so a caller asking for a cheap four-frame run gets one.
     identity_photos = select_identity_photos(gate, min(IDENTITY_PHOTOS, limit))
+    identity_ids = [c.photo_id for c in identity_photos]
     if on_activity:
-        on_activity({"phase": "identity", "detail": "Identifying the truck and checking that the photos show the same vehicle"})
+        on_activity({"phase": "identity", "status": "start",
+                     "detail": "Identifying the truck and checking that the photos show the same vehicle",
+                     "photo_ids": identity_ids})
     read = sampling.identity_consensus(chain, identity_photos, declared,
-                                       max_tokens=IDENTITY_MAX_TOKENS, repair=_repair)
+                                       max_tokens=IDENTITY_MAX_TOKENS, repair=_repair,
+                                       **({"on_activity": on_activity} if on_activity else {}))
     client = read.client
     report.vehicle = read.vehicle
     report.same_vehicle, report.vehicle_mismatch = read.same_vehicle, read.vehicle_mismatch
@@ -439,6 +443,11 @@ def run(gate: GateReport, declared: dict | None = None, *,
     report.corrections.extend(read.corrections)
     report.parse_warnings.extend(read.warnings)
     report.calls.extend(read.calls)
+    if on_activity:
+        on_activity({"phase": "identity", "status": "done",
+                     "make": report.vehicle.make, "model": report.vehicle.model,
+                     "same_vehicle": report.same_vehicle,
+                     "photo_ids": identity_ids})
     vehicle_line = passes.vehicle_line(report.vehicle)
 
     # The truck's own baseline, composed once. `declared` has been in hand
