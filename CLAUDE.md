@@ -84,6 +84,11 @@ app/
                  stage.py    orchestration, concurrency, the on_photo stream
   odometer.py    an offline OCR (RapidOCR) that reads the dashboard mileage; reconcile's fourth rule
   reconcile.py   stage 2b: cross-checks the VLM against the heads and the OCR read, records every change
+  modelspec.py   what this repo knows about a specific MODEL, not about trucks;
+                 reads data/reference/models_tr.json, price-guarded on load
+  identity.py    stage 2c: the four identity witnesses adjudicated into one
+                 verdict, and the single place an identity widening is applied
+  vin.py         chassis-plate VIN: check digit, model year, and the WMI brand
   gallery.py     the unified truck grid: 200 corpus vehicles + the rehearsed cases
   vlm/           backends: openai (GPT-5.6), cursor (Agent SDK), anthropic
   pricing/       stage 3: features, ridge fit + calibration (train.py), estimate
@@ -348,6 +353,43 @@ app/
 - **The identity head may not dispute a brand it was never trained on.** The corpus has no Scania;
   a head that has never seen one still names a class, at high confidence. `reconcile` only raises
   an identity conflict when the VLM's make is in the head's own class list. A test pins this.
+  `app/identity.py` applies the same test to the head's vote, and it is easy to get backwards:
+  gating on the head's OWN output lets the artefact straight through, because the class it names
+  is by construction one it was trained on.
+- **One widening per fact.** `reconcile` records a correction when the head disputes the badge and
+  another when the chassis-plate WMI does; `app/identity.py` adjudicates all four witnesses and
+  owns the multiplier. Each per-rule widening is right alone and wrong together - 1.25 × 1.20 ×
+  1.25 is a 1.87× band for one disagreement. `identity.merge_widening` drops the superseded ones.
+  The corrections stay: the audit trail is the point, and nothing there deletes one.
+- **A witness that cannot have an opinion gets no vote, and absence is never conflict.** A WMI
+  missing from `data/reference/wmi.json`, or present but unverified, means unknown - it must never
+  dispute a badge the vision model can plainly read. Same posture as the head's class list.
+- **The badge pass is blind to what pass A concluded.** `prompts.badge_prompt` takes `make` and
+  `model` and deliberately ignores both; a test asserts the string is identical with and without
+  them. Naming either makes the pass a paraphrase of pass A rather than a second witness, and its
+  entire value is independence. Its crop is the upper cab band, which on a dealer lot contains the
+  windscreen - so transcription is restricted to what is moulded, pressed or scripted on the
+  truck, which serves the no-price rule and the no-seller-PII rule at once.
+- **The generation is read off the bodywork, never off the declared year.** The year is the thing
+  the generation read exists to check, so a year-derived generation agrees by construction and the
+  cross-check measures nothing. `generation` is not a schema enum - the legal list belongs to a
+  (brand, model) pair and the schema is built before the model is known - so the closed list
+  travels in the prompt text instead.
+- **A generation with no visual marker is dropped, not shipped.** Its only job is to be read off a
+  photograph; offering an ungroundable one in the closed list hands the model a choice it cannot
+  justify from anything it can see. One DAF and two Volvo generations were dropped on this rule.
+- **`data/reference/models_tr.json` is stamped and cited like the price reference, and it may not
+  contain money.** `modelspec.assert_priceless` walks it on load, because this file is read into
+  the prompt that assigns severity and the natural way to write a weak point is "cracks, and a
+  replacement is expensive". Scoped to `models` and skipping maintainer-only keys. Both narrowings
+  it needed are the same lesson: **"Euro 6" is an emission standard and "worth noting" is not a
+  valuation** - a guard that fires on the most common phrases in its own subject matter gets
+  switched off, and then the real leak goes through. Pinned from both directions.
+- **`normalise_model` is the half of the pair that was missing.** `normalise_brand` has existed
+  since the first fit, but `anchor.lookup` matched the model exactly, so "F Max", "FMAX" and
+  "F-MAX 500" all missed the F-MAX row and fell through to the brand default. An unknown model
+  passes through uppercased rather than becoming None - returning None loses a model the anchor
+  could still match.
 - **The view head's number to quote is twin agreement, not accuracy.** Its labels are CLIP
   zero-shot pseudo-labels, so accuracy against them measures agreement with a noisy teacher. What
   is real is stability: a degraded twin inherits its original's label, so 0.758 vs the teacher's
