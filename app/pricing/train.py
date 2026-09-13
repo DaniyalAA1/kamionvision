@@ -449,7 +449,20 @@ def main() -> None:
                       "the median band inflation needed to restore 80% coverage. Done within "
                       "a market because brand is nearly collinear with market on this corpus, "
                       "so a cross-market holdout measures the border, not the brand"),
-                  "leave_one_brand_out": lobo},
+                  "leave_one_brand_out": lobo,
+                  # How much wider the CONDITION band is drawn because the
+                  # model's own read of the photos is unstable. It is the one
+                  # place the eval harness feeds a number back into the
+                  # product, and it ships at 1.0 - no widening - until the
+                  # test-retest suite has measured it. Same inverse-variance
+                  # logic the anchor uses: sqrt(1 + (sd_cond/residual_std)^2).
+                  "condition_read": 1.0,
+                  "condition_read_basis": (
+                      "not yet measured: this is the spread of the condition "
+                      "multiplier across repeat runs of the SAME photo set, "
+                      "inflated into the band the way the anchor inflates "
+                      "variance. Until eval/suites/retest.py has run it stays "
+                      "at 1.0, which widens nothing and claims nothing")},
         meta={
             "fitted_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "training_set": chosen,

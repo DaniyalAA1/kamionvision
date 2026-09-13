@@ -211,7 +211,9 @@
         "median_widening_needed": 1.85,
         "method": "within-market leave-one-brand-out"
       }
-    }
+    },
+    "condition_read": 1.0,
+    "condition_read_basis": "not yet measured: this is the spread of the condition multiplier across repeat runs of the SAME photo set, inflated into the band the way the anchor inflates variance. Until eval/suites/retest.py has run it stays at 1.0, which widens nothing and claims nothing"
   },
   "anchor": {
     "ok": true,

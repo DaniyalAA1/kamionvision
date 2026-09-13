@@ -65,8 +65,11 @@ function findings(a, ev, runElev) {
     b.dataset.sev = i.severity;
 
     const part = el('span', 'finding-part', titleise(i.component));
-    part.append(el('span', 'finding-weight',
-                   `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`));
+    /* An unreadable severity is not a minor defect. It is shown with its photo
+       and weighted at zero rather than rounded up, so it says so here too. */
+    part.append(el('span', 'finding-weight', i.ungraded
+      ? 'reported, not graded'
+      : `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`));
     b.append(partIcon(i.component), part, el('span', 'finding-text', i.observation));
 
     /* An uploaded set is renamed 000.jpg upwards on the way in, so a filename
@@ -80,6 +83,13 @@ function findings(a, ev, runElev) {
     cite.append(el('b', null, seen ? `${seen + 1} photos`
                                    : `photo ${photoOrdinal(i.photo_id)}`));
     cite.append(document.createTextNode(` — ${certainty(i.confidence)}`));
+    /* Frames that disagreed about how bad this is. The merge keeps the level
+       two frames independently support, and prints the ones that lost rather
+       than quietly dropping them. */
+    if ((i.severity_span || []).length > 1) {
+      cite.append(document.createTextNode(
+        `, called ${i.severity_span.join(' and ')} by different frames`));
+    }
     if (check) b.title = check.filename;
     b.append(cite);
 
@@ -284,13 +294,43 @@ function working(a, ev, price) {
         + 'The red bar is that range moved by what the photos found, and no one '
         + 'has measured how often that one is right.'));
     }
-    if (price.adjustment && price.adjustment.cap_pct) {
-      const p = el('p', 'work-note assumed');
-      p.append(document.createTextNode('Assumed: the condition adjustment is capped at '));
-      p.append(el('b', null, `±${fixed(price.adjustment.cap_pct, 1)}%`));
-      p.append(document.createTextNode(', one residual standard deviation of the '
-        + 'price model. That cap is a stated assumption, not a measurement.'));
-      accuracy.push(p);
+    // The cap and the weights are not the same kind of number. This panel used
+    // to call the measured sigma "a stated assumption, not a measurement" while
+    // app/pricing/model.py called the 1-sigma CHOICE "a measured quantity
+    // rather than a chosen one". Both were wrong, in opposite directions. The
+    // honest split is three-way and it is printed as three sentences.
+    const adj = price.adjustment;
+    if (adj && adj.cap_pct) {
+      const m = el('p', 'work-note measured');
+      m.append(document.createTextNode('Measured: one out-of-fold residual standard '
+        + 'deviation of the price model is '));
+      m.append(el('b', null, `±${fixed(adj.cap_pct, 1)}%`));
+      m.append(document.createTextNode(' — the variation in asking price that year, '
+        + 'kilometres, brand and market do not explain.'));
+      accuracy.push(m);
+      accuracy.push(el('p', 'work-note assumed', 'Assumed: that condition is capped at '
+        + 'exactly one of those sigmas. The reasoning — condition cannot be worth '
+        + 'more than everything we cannot see — is sound, and no experiment picks '
+        + 'one sigma over half or two.'));
+      if (adj.weights_basis) {
+        accuracy.push(el('p', 'work-note assumed', 'Assumed: every weight that decides '
+          + 'where inside that cap this truck lands — the severity × impact table, '
+          + 'the per-subsystem saturation decay, the family value weights and the '
+          + 'coverage thresholds. This corpus carries no condition ground truth to fit '
+          + 'them against, so they are stated rather than measured.'));
+      }
+      if (adj.coverage_pct) {
+        const c = el('p', 'work-note');
+        c.append(document.createTextNode('This run photographed '));
+        c.append(el('b', null, `${fixed(adj.coverage_pct, 0)}%`));
+        c.append(document.createTextNode(' of the truck by value legibly, and positively '
+          + 'called '));
+        c.append(el('b', null, `${fixed(adj.merit_pct, 0)}%`));
+        c.append(document.createTextNode(' of it sound. Merit can never exceed coverage, '
+          + 'so a photo nobody could read earns nothing either way.'));
+        accuracy.push(c);
+      }
+      (adj.notes || []).forEach((n) => accuracy.push(el('p', 'work-note', n)));
     }
     if (accuracy.length) body.append(section('How accurate this is', ...accuracy));
 
