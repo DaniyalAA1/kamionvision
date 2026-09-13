@@ -2,7 +2,7 @@
    every colour here is the lit variant.
 
    A zone starts as a phantom outline - drawn, but not established. Gate view
-   coverage promotes it to `covered` (green: verified from the photos). A
+   coverage promotes it to `covered` (blue: verified from the photos). A
    finding promotes it again and sets data-sev, which changes stroke weight
    and, for `major` only, hue. No fills: several zones are open arcs and
    filling them produces lens shapes, so severity is carried by weight plus a
@@ -19,7 +19,7 @@
   stroke: var(--stage-haze);
   stroke-width: 1.1;
   stroke-dasharray: 4 4;
-  /* The stage went from navy to a deeper green with the brand, and a .22
+  /* The stage uses deep navy with the brand, and a .22
      phantom line disappeared into it. */
   opacity: .38;
   transition: opacity .55s var(--ease-draw), stroke .55s var(--ease-draw),

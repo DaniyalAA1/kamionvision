@@ -34,7 +34,7 @@
   background: var(--stage-rule);
   border-radius: var(--radius);
 }
-.thoughts:hover::-webkit-scrollbar-thumb { background: #4d6a5d; }
+.thoughts:hover::-webkit-scrollbar-thumb { background: #42608b; }
 
 .thought {
   display: block;

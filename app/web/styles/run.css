@@ -174,12 +174,12 @@
 .scan::before { content: ""; position: absolute; inset: -30% 0 auto;
   height: 30%; border-bottom: 1px solid rgba(190,224,173,.75);
   background: linear-gradient(transparent, rgba(143,196,122,.13));
-  box-shadow: 0 5px 22px -10px #8fc47a; }
+  box-shadow: 0 5px 22px -10px #8ac8ff; }
 .scan.on::before { animation: optical-sweep 3.8s ease-in-out infinite; }
 @keyframes optical-sweep { 0% { transform: translateY(0); opacity: 0; }
   15%, 75% { opacity: 1; } 100% { transform: translateY(440%); opacity: 0; } }
 .scan-status { position: absolute; bottom: 1rem; left: 1rem; right: 1rem;
-  width: fit-content; max-width: calc(100% - 2rem); border: 1px solid #536c5e;
+  width: fit-content; max-width: calc(100% - 2rem); border: 1px solid #49658e;
   background: rgba(20,35,28,.92); color: var(--stage-text); padding: .5rem .75rem;
   border-radius: var(--radius); font-size: var(--t-xs); backdrop-filter: blur(12px); }
 .scan-status::before { content: ""; display: inline-block; width: 6px; height: 6px;
@@ -228,7 +228,7 @@
   background: var(--stage-rule);
   border-radius: var(--radius);
 }
-.strip:hover::-webkit-scrollbar-thumb { background: #4d6a5d; }
+.strip:hover::-webkit-scrollbar-thumb { background: #42608b; }
 .strip-cell {
   flex: 0 0 auto;
   width: 62px;
