@@ -118,13 +118,26 @@ class ParseCloseup(unittest.TestCase):
         self.assertEqual(f.issues[0].component, "flux_capacitor")
         self.assertNotIn("flux_capacitor", evidence.COMPONENTS)
 
-    def test_bad_enum_values_fall_back(self):
+    def test_bad_enum_values_round_down_and_say_so(self):
+        """An unparseable severity is not a minor defect.
+
+        Every default here used to round UP - severity to `minor`, impact to
+        `low`, confidence to 0.5 - so a field nobody could read was worth real
+        money. The honest state is "the model did not grade this finding": it
+        is kept, shown with its photograph, and weighted at zero.
+        """
         f = evidence.parse_closeup(self.payload(observations=[
             {"component": "steer_tires", "observation": "x", "severity": "catastrophic",
              "confidence": "nope", "price_impact": "ruinous"}]), self.check, cropped=False)
-        self.assertIn(f.issues[0].severity, evidence.SEVERITIES)
-        self.assertIn(f.issues[0].price_impact, evidence.IMPACTS)
-        self.assertEqual(f.issues[0].confidence, 0.5)
+        issue = f.issues[0]
+        self.assertIn(issue.severity, evidence.SEVERITIES)
+        self.assertIn(issue.price_impact, evidence.IMPACTS)
+        self.assertEqual(issue.severity, "cosmetic")
+        self.assertEqual(issue.price_impact, "none")
+        self.assertTrue(issue.ungraded)
+        self.assertEqual(issue.confidence, 0.3)
+        from app import condition
+        self.assertEqual(condition.demerit(issue), 0.0)
 
     def test_an_observation_with_no_text_is_not_a_finding(self):
         f = evidence.parse_closeup(self.payload(observations=[
@@ -1142,8 +1155,22 @@ class FallbackSynthesis(unittest.TestCase):
         self.assertEqual(set(data["condition_summary"]), set(evidence.SUMMARY_KEYS))
         self.assertIn("worn", data["condition_summary"]["tires"])
         self.assertIn("oil film", data["condition_summary"]["engine_driveline"])
-        self.assertEqual(data["condition_grade"], "poor")
         self.assertIn("tread in mm", data["coverage_gaps"])
+
+    def test_the_fallback_does_not_grade_at_all(self):
+        """The regression this replaces, pinned.
+
+        The old fallback graded on `max(severity)` with `default=-1` and no
+        `-1` key in the dict, so sixteen spotless photos returned `unknown`
+        while ONE cosmetic scuff upgraded the same truck to `good`. Grading
+        now belongs to `app.condition.rollup` on both paths, so the two differ
+        only in prose.
+        """
+        from app.evidence.stage import _fallback_synthesis
+        self.assertEqual(_fallback_synthesis([], [])["condition_grade"], "")
+        flat = [Issue(photo_id=0, component="paint_finish", observation="light scuff",
+                      severity="cosmetic", confidence=0.6, price_impact="none")]
+        self.assertEqual(_fallback_synthesis([], flat)["condition_grade"], "")
 
     def test_an_unseen_system_says_so_rather_than_claiming_it_is_fine(self):
         from app.evidence.stage import _fallback_synthesis
