@@ -156,11 +156,17 @@ app/
   is handed exactly one photograph per call, the binding is structural rather than something the
   model has to remember - `parse_closeup` takes the id from the caller and never reads one out of
   the response. The identity pass still sees the whole set, so it keeps the old index mapping.
-- **Evidence is four passes, and two of them exist because of what the other two cannot see.**
-  `identity()` sees every selected photo at once and answers make / model / body type /
-  `same_vehicle` - do not collapse it into the synthesis, because a text-only pass cannot notice
-  that photo 9 is a different truck, and `pipeline.pricing_blocker` and the `mixed_vehicles` case
-  both rest on that answer. `closeup()` is one call per photo, sampled `CLOSEUP_SAMPLES` times.
+- **Evidence is five passes, and three of them exist because of what the others cannot see.**
+  `identity()` answers make / model / body type / `same_vehicle` - do not collapse it into the
+  synthesis, because a text-only pass cannot notice that photo 9 is a different truck, and
+  `pipeline.pricing_blocker` and the `mixed_vehicles` case both rest on that answer. It is now
+  sampled `IDENTITY_SAMPLES` times on ONE backend and gets its OWN photo selection
+  (`select_identity_photos`) and its own resolution: it was the single most load-bearing call in
+  the run - make picks the brand column, model picks the anchor row, body type can stop pricing -
+  and it was one draw from an unmeasured distribution while every close-up got three.
+  `badge()` is one full-resolution call on a crop of the grille and door, and it is deliberately
+  blind to what `identity()` concluded. `closeup()` is one call per photo, sampled
+  `CLOSEUP_SAMPLES` times.
   `synthesize()` is text-only. `calibrate()` is text-only and runs **between `merge_duplicates`
   and `condition.rollup`**, and neither side of that is negotiable: after the merge because the
   pre-merge list still holds three paraphrases of one worn drive tire, and before the rollup
@@ -222,12 +228,35 @@ app/
   against `tr_only` R²=0.84 on held-out Turkish listings. 14x the data makes it worse. The
   European rows stay as a measurement instrument, not as training data. Don't re-pool without
   re-running `app.pricing.train` and beating 0.84.
-- **Two bands, and they are not interchangeable.** The measured 80.3% coverage belongs to the
+- **`log_new_price` is the only column carrying the MODEL, and its gain is mostly model identity —
+  say that, don't oversell it.** Before it, the model name reached the fit nowhere: it was in the
+  fold key and the anchor lookup and in no term, so an F-MAX and a Cargo-derived `TRUCKS` were the
+  same truck to the regression. A per-model dummy is the wrong fix (23 distinct prices across 84
+  listings, and it learns nothing about a model it has never seen — the judges' case). The column
+  is TR-only, missing gets the training mean plus an indicator, and it is **clipped to the
+  6.85M–8.67M TRY span it was identified on**, because the coefficient is ≈+2.4 per log unit and
+  extrapolating a slope fitted on a 0.24-log lever turns a dearer reference row into a 90% uplift.
+  The permutation test is in the artifact and is honest: across rows p=0.000, but **across models
+  the true assignment ranks 2nd of 24 (p=0.083, floor 0.042)** — with four models that test cannot
+  return significance, and the best wrong assignment scores 0.9508 against the true 0.9506. Read
+  it as "model identity was missing and now is not", not as "published prices carry segment". The
+  generalisation evidence is split: TR:MAN|TGS held out entirely goes 23.0%→4.4% median error;
+  FORD|TRUCKS held out goes 24.69%→24.69% because the clip costs exactly that gain. The clip stays.
+- **The blend's two routes are no longer independent** — the same reference figure feeds the column
+  and the anchor. The `max(1.0, ...)` floor in `estimate()` is what stops that becoming a band
+  narrower than the measured one, and a test over five makes asserts it never does.
+- **A VIN's position-10 year is a North American convention, and applying it to a European VIN
+  invents a year.** Real DAF VINs from trucks built 2019–2025 decode to **1994**, and
+  `pricing/model.py` falls back to `vin_year` — so a 2023 DAF was priced as a 1994 truck *and* its
+  seller accused of lying about the year. `vin.model_year` now requires the North American region
+  AND `_check_vin` requires the check digit: both, because roughly 1 European VIN in 11 passes the
+  check digit by chance, so that test alone leaks ~9% of them.
+- **Two bands, and they are not interchangeable.** The measured 80.4% coverage belongs to the
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
 - **Measured numbers and assumed ones are labelled differently in the output.** Measured:
   interval coverage, gate false-refusal, the 1.85× unseen-brand widening, the price model's
-  residual sigma (0.0988, out-of-fold), the focus threshold, the subject area floor, and the
+  residual sigma (0.0551, out-of-fold), the focus threshold, the subject area floor, and the
   view-framing accuracy against 90 hand-labelled frames. Assumed and labelled so wherever they
   surface: the 1.12×-per-missing-view widening, **the choice to cap condition at exactly one
   residual sigma**, and the severity × impact weight tables, the per-subsystem decay, the family
@@ -248,7 +277,7 @@ app/
   model-shaped - R squared, out-of-fold coverage, the driver table in log space, backend ids,
   stage timings, parse warnings - lives inside the `How I worked this out` disclosure on the
   result screen. The measured-versus-assumed labelling travels there with the figures it
-  qualifies, and the measured 80.3% stays welded to the comparable-asking band. What stays in the
+  qualifies, and the measured 80.4% stays welded to the comparable-asking band. What stays in the
   open, in words: the band, the condition, the findings with their photos, and the backend
   fallback note - falling back is allowed, doing it quietly is not, and a disclosure nobody opens
   would be quiet.
@@ -395,7 +424,7 @@ app/
   is real is stability: a degraded twin inherits its original's label, so 0.758 vs the teacher's
   own 0.696 is a measured robustness gain. Never report the 0.772 teacher-agreement as accuracy.
 - **The anchor may claw back a widening; it may never narrow below the measured band.**
-  `estimate()` floors the blended band factor at 1.0 because the 80.3% coverage belongs to the
+  `estimate()` floors the blended band factor at 1.0 because the 80.4% coverage belongs to the
   unwidened hedonic interval. Measured payoff, TR:MAN held out (n=6, and say the n): band
   1.85×→1.00×, coverage 0.17→0.83, median error 16.3%→3.7%.
 - **`data/reference/new_prices_tr.json` is hand-curated and stamped, like `USD_TRY`.** Every row
@@ -420,7 +449,7 @@ app/
   to it. No-JS, `prefers-reduced-motion: reduce` and anything under 820px therefore all land on the
   *same* page. A test walks the stylesheet asserting `position: sticky` never escapes that scope, so
   a rule written one level too high does not silently stack six photographs on top of each other.
-- **The measured 80.3% is asserted to be in the comparable-asking row and nowhere else.** It is the
+- **The measured 80.4% is asserted to be in the comparable-asking row and nowhere else.** It is the
   same invariant as everywhere else in the repo, but the landing page is where getting it wrong is
   worst: it would put a measured guarantee on the photo-adjusted band in the largest type on the
   site. `tests/test_story.py` reads the two `band-row`s and checks the figure appears in one and not
@@ -481,8 +510,11 @@ That is why the live numbers below are smaller than the cleaning report's.
 | Images | 3,729 original + 3,729 degraded twins, median 19/vehicle (14–22) |
 | Priced | 155 — all 84 TR, 71 of the US; Mascus is price-on-request throughout |
 | TR brands | **78 of 84 are Ford**, 6 MAN — the binding limitation, see README source vetting |
-| Price model | `tr_only`, R² 0.84, median error 4.2%, 80% band covers 80.3% |
+| Price model | `tr_only`, R² 0.95, median error 3.6%, 80% band covers 80.4% at ±8% |
+| — without `log_new_price` | R² 0.84, median error 4.2%, covers 80.3% at ±16% — same 84 rows, same folds, one column fewer; carried in the artifact as `calibration.without_new_price_column` so the gain is readable, not asserted |
 | New-price anchor | retention curve R² 0.94, median error 3.1%; 5 cited reference rows |
+| Model spec card | 12 models, 12 cited, 25 generations, 47 weak points; 55 sources |
+| VIN manufacturer table | 32 WMIs, 32 verified against vPIC or a published recall VIN list |
 | Perception heads | degradation AUC 0.985, view stability 0.758 vs 0.696, brand 79.5% vs 39% |
 | Gate thresholds | calibrated on all 7,458 images; 1 of 200 vehicles false-refused |
 | EU comparables | 1,056 TruckStore tractor units (95% Mercedes) — measurement only, not training |
