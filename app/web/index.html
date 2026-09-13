@@ -4,191 +4,194 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KamionVision — what's this truck worth?</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1116'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23f0a23c' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316202b'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23c8102e' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/styles/fonts.css">
 <link rel="stylesheet" href="/static/styles/tokens.css">
 <link rel="stylesheet" href="/static/styles/base.css">
+<link rel="stylesheet" href="/static/styles/gallery.css">
 <link rel="stylesheet" href="/static/styles/elevation.css">
-<link rel="stylesheet" href="/static/styles/sheet.css">
 <link rel="stylesheet" href="/static/styles/run.css">
+<link rel="stylesheet" href="/static/styles/reasoning.css">
 <link rel="stylesheet" href="/static/styles/result.css">
 </head>
 <body>
 
-<div class="sheet">
+<div class="app">
 
-<header class="masthead">
-  <div class="masthead-id">
-    <h1>KamionVision</h1>
-    <p>Appraises a used tractor unit from photos. Prices it against real listings, or tells you it can't.</p>
-  </div>
-  <p class="masthead-state" id="masthead-state"></p>
+<header class="topbar">
+  <a class="mark" href="/">
+    <svg viewBox="0 0 32 22" aria-hidden="true" width="30" height="21">
+      <path d="M2 16h2.2a3 3 0 0 0 5.8 0h8.2a3 3 0 0 0 5.8 0H30v-5l-4-1-2.2-5H17v11"
+            fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linejoin="round"/>
+    </svg>
+    KamionVision
+  </a>
+  <p class="topbar-state" id="topbar-state"></p>
 </header>
 
 <main>
 
+<!-- ============================== intake ============================== -->
 <section class="intake" id="intake">
-  <div class="drawing-area" id="dropzone" tabindex="0" role="button"
-       aria-label="Add photos of the truck">
-    <input type="file" id="filepicker" multiple accept="image/*" hidden>
-    <div class="elev-slot elev-hero" id="intake-elev" aria-hidden="true"></div>
-    <div class="drawing-prompt">
-      <p class="prompt-lead">Drop photos of the truck</p>
-      <p class="prompt-sub">or press to choose files — three or more, any quality</p>
-    </div>
+
+  <div class="hero">
+  <div class="intake-head">
+    <h1>What's this truck worth?</h1>
+    <p>Send photos of a tractor unit and you'll get a price range, a read on its
+       condition, and a straight answer about what the photos can't tell you.</p>
   </div>
 
-  <div class="intake-side">
-    <p class="skipped" id="skipped" hidden></p>
-    <fieldset class="declared">
-      <legend>What the seller says <span>(optional — the photos do the work)</span></legend>
+  <div class="dropzone" id="dropzone" tabindex="0" role="button"
+       aria-label="Add photos of the truck">
+    <input type="file" id="filepicker" multiple accept="image/*" hidden>
+    <svg class="dz-glyph" viewBox="0 0 48 34" aria-hidden="true">
+      <path d="M3 25h3.3a4 4 0 0 0 7.8 0h12.6a4 4 0 0 0 7.8 0H45v-8l-6-1.5L35.5 8H26v17"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M26 25V3M20 9l6-6 6 6" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="dz-lead">Drop your photos here</span>
+    <span class="dz-sub">or choose files — three or more, taken on anything</span>
+  </div>
+  </div><!-- /hero -->
+  <p class="skipped" id="skipped" hidden></p>
+
+  <details class="seller">
+    <summary>Add what you know about it
+      <span>optional, the photos do the work</span></summary>
+    <div class="seller-fields">
       <label>Year <input type="number" id="f-year" min="1990" max="2027" placeholder="2020"></label>
       <label>Kilometres <input type="number" id="f-km" min="0" step="1000" placeholder="420000"></label>
       <label>Make <input type="text" id="f-make" placeholder="Ford Trucks"></label>
       <label>Asking price <input type="number" id="f-asking" min="0" step="10000" placeholder="2800000"></label>
-      <label>Market
-        <select id="f-market"><option value="TR">Türkiye</option><option value="US">United States</option></select>
-      </label>
-    </fieldset>
-
-    <div class="samples">
-      <h2>Or run a rehearsed case</h2>
-      <div id="sample-list" class="sample-list"></div>
     </div>
+  </details>
+
+  <div class="gallery-head">
+    <h2>Or try one of these</h2>
+    <p class="gallery-count" id="gallery-count">loading trucks…</p>
   </div>
+  <div class="filters" id="filters"></div>
+  <div class="gallery" id="gallery"></div>
+  <p class="gallery-empty" id="gallery-empty" hidden>No trucks match those filters.</p>
 </section>
 
+<!-- =============================== run ================================ -->
 <section class="run" id="run" hidden>
-  <ol class="stages" id="stages">
-    <li data-step="gate"><span class="stage-name">Gate</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
-    <li data-step="evidence"><span class="stage-name">Evidence</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
-    <li data-step="price"><span class="stage-name">Price</span><span class="stage-detail">waiting</span><span class="stage-time num"></span></li>
-  </ol>
+  <div class="stage">
 
-  <div class="inspect">
-    <figure class="frame-view">
-      <div class="frame-stage" id="frame-stage">
-        <img id="frame-img" alt="">
-        <svg class="frame-boxes" id="frame-boxes" aria-hidden="true"></svg>
-        <div class="frame-chips" id="frame-chips" aria-hidden="true"></div>
-        <span class="scan" id="scan" aria-hidden="true"></span>
+    <div class="stage-main">
+      <figure class="frame">
+        <div class="frame-stage" id="frame-stage">
+          <img id="frame-img" alt="">
+          <svg class="frame-boxes" id="frame-boxes" aria-hidden="true"></svg>
+          <div class="frame-chips" id="frame-chips" aria-hidden="true"></div>
+          <span class="scan" id="scan" aria-hidden="true"></span>
+        </div>
+        <figcaption class="frame-meta" id="frame-meta"></figcaption>
+      </figure>
+
+      <div class="strip" id="strip"></div>
+
+      <div class="stage-foot">
+        <div class="progress" id="progress">
+          <span class="progress-label" id="progress-label">checking the photos</span>
+          <span class="progress-rule"><i id="progress-fill"></i></span>
+        </div>
+        <div class="stage-actions">
+          <button class="ghost-btn" id="show-all" type="button" aria-pressed="false"
+                  hidden>Show everything it detected</button>
+          <button class="ghost-btn" id="reset" type="button">Start over</button>
+        </div>
       </div>
-      <figcaption class="frame-meta" id="frame-meta"></figcaption>
-    </figure>
+    </div>
 
-    <div class="coverage">
+    <aside class="rail">
+      <div class="rail-head">
+        <h2 id="rail-title">Looking at the photos</h2>
+        <p class="rail-sub" id="rail-sub">one at a time</p>
+      </div>
       <div class="elev-slot" id="run-elev" role="img"
            aria-label="Condition map of the tractor unit"></div>
-      <dl class="coverage-read" id="coverage-read"></dl>
-    </div>
-  </div>
+      <div class="thoughts" id="thoughts" aria-live="polite"></div>
+    </aside>
 
-  <p class="narration" id="narration" aria-live="polite"></p>
-
-  <div class="strip-row">
-    <div class="strip" id="strip"></div>
-  </div>
-
-  <div class="run-foot">
-    <div class="progress" id="progress" hidden>
-      <span class="progress-label" id="progress-label">reading the frames</span>
-      <span class="progress-rule"><i id="progress-fill"></i></span>
-      <span class="progress-time num" id="clock">0.0s</span>
-    </div>
-    <button class="reset" id="reset" type="button">Start over</button>
   </div>
 </section>
 
+<!-- ============================== result ============================== -->
 <section class="result" id="result" hidden>
 
-  <div class="verdict" id="verdict">
-    <p class="headline" id="headline"></p>
-    <p class="fallback-note" id="fallback-note" hidden></p>
-    <p class="asking-verdict" id="asking-verdict" hidden></p>
-    <div class="gauge-wrap" id="gauge-wrap">
-      <svg class="gauge" id="gauge" viewBox="0 0 1000 250" role="img"></svg>
-      <p class="gauge-note" id="gauge-note"></p>
+  <div class="verdict">
+    <p class="verdict-kicker" id="verdict-kicker"></p>
+    <p class="price" id="price"></p>
+    <p class="price-sub" id="price-sub"></p>
+
+    <div class="band-wrap" id="band-wrap">
+      <svg class="band" id="band" viewBox="0 0 1000 140" role="img"></svg>
+      <p class="band-note" id="band-note"></p>
     </div>
+
+    <p class="asking" id="asking" hidden></p>
+    <p class="fallback" id="fallback" hidden></p>
     <div class="refusal" id="refusal" hidden></div>
   </div>
 
-  <div class="columns">
-    <aside class="photos">
-      <h2>Photos <span class="count" id="photo-count"></span></h2>
+  <div class="result-body">
+
+    <section class="block" id="block-findings" hidden>
+      <h2>What I found</h2>
+      <p class="block-sub" id="findings-sub"></p>
+      <ul class="findings" id="findings"></ul>
+    </section>
+
+    <section class="block" id="block-strengths" hidden>
+      <h2>What looks right</h2>
+      <ul class="strengths" id="strengths"></ul>
+    </section>
+
+    <section class="block" id="block-asks" hidden>
+      <h2>Photos I still need</h2>
+      <ul class="asks" id="asks"></ul>
+    </section>
+
+    <section class="block" id="block-identity" hidden>
+      <h2>What it is</h2>
+      <dl class="identity" id="identity"></dl>
+    </section>
+
+    <section class="block" id="block-systems" hidden>
+      <h2>System by system</h2>
+      <dl class="systems" id="systems"></dl>
+    </section>
+
+    <section class="block" id="block-gaps" hidden>
+      <h2>What I couldn't tell from these</h2>
+      <ul class="gaps" id="gaps"></ul>
+    </section>
+
+    <section class="block" id="block-photos">
+      <h2>The photos <span class="count" id="photo-count"></span></h2>
       <div class="photo-grid" id="photo-grid"></div>
-    </aside>
+    </section>
 
-    <div class="panels">
-      <article class="panel" id="panel-identity" hidden>
-        <h2>Read off the truck</h2>
-        <dl class="identity" id="identity"></dl>
-      </article>
+    <!-- Everything measured, assumed, timed or versioned lives in here. The
+         honesty rules say this has to be visible, not that it has to be the
+         first thing a seller reads. -->
+    <details class="working">
+      <summary>How I worked this out</summary>
+      <div class="working-body" id="working-body"></div>
+    </details>
 
-      <article class="panel" id="panel-findings" hidden>
-        <h2>What I can see</h2>
-        <p class="panel-sub" id="findings-sub"></p>
-        <ul class="findings" id="findings"></ul>
-      </article>
-
-      <article class="panel" id="panel-systems" hidden>
-        <h2>System by system</h2>
-        <dl class="systems" id="systems"></dl>
-      </article>
-
-      <article class="panel" id="panel-asks" hidden>
-        <h2>Photos I still need</h2>
-        <ul class="asks" id="asks"></ul>
-      </article>
-
-      <article class="panel" id="panel-gaps" hidden>
-        <h2>What I could not assess</h2>
-        <ul class="gaps" id="gaps"></ul>
-      </article>
-
-      <article class="panel" id="panel-why" hidden>
-        <h2>Why this number</h2>
-        <table class="drivers" id="drivers"></table>
-        <h3>Compared against</h3>
-        <table class="comps" id="comps"></table>
-        <div class="provenance" id="provenance"></div>
-        <ul class="widened" id="widened"></ul>
-      </article>
-
-      <article class="panel panel-quiet" id="panel-caveats" hidden>
-        <h2>Caveats</h2>
-        <ul class="caveats" id="caveats"></ul>
-      </article>
+    <div class="result-foot">
+      <button class="ghost-btn" id="again" type="button">Appraise another truck</button>
     </div>
   </div>
 </section>
 
 </main>
-
-<!-- The title block, where a drawing records what it was drawn from and when.
-     Same job here: the corpus, the measured band coverage, the vision model
-     that answered, and the stamped exchange rate. -->
-<footer class="titleblock">
-  <div class="tb-cell tb-wide">
-    <dt>Subject</dt><dd id="tb-subject">used tractor unit, appraised from photographs</dd>
-  </div>
-  <div class="tb-cell">
-    <dt>Vision</dt><dd id="tb-vision" class="mono">checking…</dd>
-  </div>
-  <div class="tb-cell">
-    <dt>Comparables</dt><dd id="tb-comps" class="mono">—</dd>
-  </div>
-  <div class="tb-cell">
-    <dt>Band checked</dt><dd id="tb-cov" class="mono">—</dd>
-  </div>
-  <div class="tb-cell">
-    <dt>Rate</dt><dd id="tb-fx" class="mono">—</dd>
-  </div>
-  <div class="tb-cell">
-    <dt>Revision</dt><dd id="tb-sheet" class="mono">—</dd>
-  </div>
-</footer>
-
-</div><!-- /sheet -->
+</div><!-- /app -->
 
 <div class="lightbox" id="lightbox" hidden>
   <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close">×</button>

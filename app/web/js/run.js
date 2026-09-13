@@ -1,91 +1,43 @@
-/* The run, choreographed against the real clock.
+/* The run, against the real clock.
 
-   Measured on a 21-photo set: gate 1.2 s, vision call 49.5 s, regression
-   0.03 s. So about 97% of a run is one opaque call, and this module exists to
-   spend that minute showing work that has actually been done rather than a
-   spinner. Three channels, all sourced from data already in hand:
+   Measured on a 21-photo set: gate 1.2 s, then sixteen concurrent close-up
+   calls, then a synthesis. The gate report lands about a second in and every
+   photo lands as its own event, so for the first time this screen has enough
+   real material to fill the wait without inventing any.
 
-     the drawing      fills in as the gate's view coverage binds to it
-     the frames       the detector's own boxes, over the frames being sent
-     the narration    one line at a time, never a claim that has not returned
+   Three channels, all of them sourced from something that has actually
+   returned:
 
-   The clock is the truth. The rule beside it is labelled an estimate and
-   eases towards 95% without ever arriving, because nothing here knows when
-   the model will answer. */
+     the drawing   fills in as the gate's view coverage binds to it, then
+                   again as findings arrive
+     the frame     jumps to whichever photo was just read, with one box on it
+     the rail      one card per finished vision call, newest on top
 
-import { $, el, titleise, viewName, fixed, timers, reduced, animate } from './dom.js';
+   The progress figure is a count of finished calls, not an easing curve. The
+   old bar eased asymptotically towards 95% and was labelled an estimate
+   because nothing knew when the single call would answer; sixteen calls know
+   exactly how many of them are done. */
+
+import { $, timers, reduced } from './dom.js';
 import * as elevation from './elevation.js';
 import * as frames from './frames.js';
-
-/* The three stages that always report while the run is in flight. */
-const STEPS = ['gate', 'evidence', 'price'];
-/* Every stage the pipeline can put in a trace, in the order it runs them.
-   `perception` and `reconcile` only appear when their artifacts are present,
-   so the rail is rebuilt from the trace rather than assuming three rows -
-   a hardcoded three silently dropped their measured timings. */
-const RAIL_ORDER = ['gate', 'perception', 'evidence', 'reconcile', 'price'];
-const DWELL_MS = 2600;          // one frame per scan sweep
-const EST_TAU = 18;             // seconds; the rule's time constant
+import * as reasoning from './reasoning.js';
 
 let runElev = null;
 let t = timers();
-let t0 = 0;
-let clock = 0;
 let gate = null;
 let evidenceIds = [];
-let reading = false;
+let read = 0;
 
 export async function mount() {
-  await elevation.mount($('intake-elev'));
   runElev = await elevation.mount($('run-elev'));
   return runElev;
 }
 export const elevationRoot = () => runElev;
 
-/* ---------- stage rail ---------- */
-
-function setStage(step, state, detail, secs) {
-  const li = document.querySelector(`.stages li[data-step="${step}"]`);
-  if (!li) return;
-  li.dataset.state = state;
-  if (detail != null) li.querySelector('.stage-detail').textContent = detail;
-  li.querySelector('.stage-time').textContent =
-    secs != null ? `${fixed(secs, 2)}s` : '';
-}
-
-/* On completion the rail shows one row per stage that actually ran, plus a
-   `not reached` row for any of the three core stages that did not - refusing
-   and re-asking are different answers and the rail should say which. */
-function rebuildRail(trace) {
-  const byStep = new Map(trace.map((s) => [s.step, s]));
-  const rows = RAIL_ORDER.filter((s) => byStep.has(s) || STEPS.includes(s));
-  $('stages').replaceChildren(...rows.map((step) => {
-    const done = byStep.get(step);
-    const li = el('li');
-    li.dataset.step = step;
-    li.dataset.state = done ? 'done' : 'skipped';
-    li.append(el('span', 'stage-name', titleise(step)),
-              el('span', 'stage-time num', done ? `${fixed(done.elapsed_s, 2)}s` : ''),
-              el('span', 'stage-detail', done ? done.detail : 'not reached'));
-    return li;
-  }));
-}
-
-/* ---------- narration ---------- */
-
-function narrate(...parts) {
-  const n = $('narration');
-  n.replaceChildren(...parts.filter(Boolean).map(
-    (p) => (typeof p === 'string' ? document.createTextNode(p) : p)));
-  n.classList.remove('swap');
-  void n.offsetWidth;
-  n.classList.add('swap');
-}
-const mono = (s) => el('span', 'mono', s);
-
-function narrateSeq(lines, gap = 2400) {
-  lines.forEach((parts, i) => t.after(i * gap, () => narrate(...parts)));
-  return lines.length * gap;
+function progress(label, fraction) {
+  $('progress-label').textContent = label;
+  $('progress-fill').style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
 }
 
 /* ---------- lifecycle ---------- */
@@ -94,39 +46,29 @@ export function begin() {
   stop();
   gate = null;
   evidenceIds = [];
+  read = 0;
   $('run').hidden = false;
   $('result').hidden = true;
-  $('progress').hidden = true;
   $('strip').replaceChildren();
   $('frame-boxes').replaceChildren();
+  $('frame-chips').replaceChildren();
   $('frame-meta').replaceChildren();
-  $('coverage-read').replaceChildren();
   $('frame-img').removeAttribute('src');
   $('frame-img').classList.remove('in');
+  $('show-all').hidden = true;
+  $('show-all').setAttribute('aria-pressed', 'false');
+  frames.setShowAll(false);
   elevation.reset(runElev);
-  STEPS.forEach((s) => setStage(s, 'waiting', 'waiting', null));
-  narrate('checking the photographs');
-
-  t0 = performance.now();
-  clock = setInterval(tick, 100);
+  reasoning.clear();
+  $('rail-title').textContent = 'Checking the photos';
+  $('rail-sub').textContent = 'before anything is sent anywhere';
+  progress('checking the photos', 0.04);
   $('run').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
 }
 
 export function stop() {
   t.clear();
-  clearInterval(clock);
-  reading = false;
   $('scan').classList.remove('on');
-}
-
-const elapsed = () => (performance.now() - t0) / 1000;
-
-function tick() {
-  $('clock').textContent = `${elapsed().toFixed(1)}s`;
-  if (!reading) return;
-  /* Asymptotic, capped: an honest "still going" rather than a fake finish. */
-  const p = Math.min(0.95, 1 - Math.exp(-elapsed() / EST_TAU));
-  $('progress-fill').style.width = `${(p * 100).toFixed(1)}%`;
 }
 
 /* ---------- act 1: the gate has landed ---------- */
@@ -137,7 +79,6 @@ export function onGate(msg) {
   frames.setSource(msg.photo_urls, gate.photos, gate.decision);
 
   elevation.setCoverage(runElev, gate.views_present);
-  writeCoverage();
   frames.buildStrip(gate.photos, (c) => { frames.showFrame(c); frames.markCell(c.photo_id); });
 
   /* Lead with the frame the verdict turns on: on a not-a-truck refusal that is
@@ -147,127 +88,67 @@ export function onGate(msg) {
     || gate.photos[0];
   if (first) { frames.showFrame(first); frames.markCell(first.photo_id); }
 
-  const lines = [[gate.headline]];
-  if (gate.truck_evidence) lines.push([gate.truck_evidence]);
-  if ((gate.missing_views || []).length) {
-    const pretty = gate.missing_views.map((v) => viewName(v).toLowerCase()).join(', ');
-    lines.push([`nothing covering ${pretty} — the band will widen for that, `
-                + 'which is a stated assumption rather than a measurement']);
-  } else {
-    lines.push(['every canonical view the gate asks for is present']);
-  }
-  narrateSeq(lines, 2600);
-}
-
-function writeCoverage(issues) {
-  if (!gate) return;
-  const dl = $('coverage-read');
-  dl.replaceChildren();
-  const add = (k, v, cls) => {
-    dl.append(el('dt', null, k));
-    dl.append(el('dd', cls, v));
-  };
   const usable = (gate.usable_photo_ids || []).length;
   const total = (gate.photos || []).length;
-  add('Frames', `${usable} usable of ${total}`, 'seen');
-  const names = (list) => list.map((v) => viewName(v).toLowerCase()).join(', ');
-  add('Views', names(gate.views_present || []) || 'none identified', 'seen');
-  add('Not photographed',
-      names(gate.missing_views || []) || 'nothing the gate asks for',
-      (gate.missing_views || []).length ? 'unseen' : 'seen');
-  if (issues) {
-    const major = issues.filter((i) => i.severity === 'major').length;
-    add('Flagged', `${issues.length} finding${issues.length === 1 ? '' : 's'}`
-        + (major ? `, ${major} major` : ''), major ? 'unseen' : null);
-  }
+  $('rail-title').textContent = usable === total
+    ? `${total} photos, all usable`
+    : `${usable} of ${total} photos are usable`;
+  $('rail-sub').textContent = gate.truck_evidence || '';
+  progress(usable === total ? `${total} photos checked`
+                            : `${usable} of ${total} photos are usable`, 0.1);
 }
 
-/* ---------- act 2: the long read ---------- */
+/* ---------- act 2: the photos are read, one call each ---------- */
 
 export function onStage(msg) {
-  /* Whatever came before this step is finished; its real time arrives with
-     the result, so leave the figure blank rather than invent one. */
-  const i = STEPS.indexOf(msg.step);
-  for (const s of STEPS.slice(0, Math.max(0, i))) {
-    const li = document.querySelector(`.stages li[data-step="${s}"]`);
-    if (li && li.dataset.state === 'running') li.dataset.state = 'done';
+  if (msg.step === 'evidence') {
+    reasoning.begin(evidenceIds.length);
+    evidenceIds.forEach((id) => {
+      const c = $(`cell-${id}`);
+      if (c) c.classList.add('reading');
+    });
+    $('scan').classList.add('on');
+    progress(`reading ${evidenceIds.length} photos`, 0.12);
   }
-  setStage(msg.step, 'running', msg.detail, null);
-
-  if (msg.step === 'evidence') startReading(evidenceIds);
   if (msg.step === 'price') {
-    stopReading();
-    narrate('matching against the priced listings');
+    $('scan').classList.remove('on');
+    $('rail-title').textContent = 'Matching it against real listings';
+    $('rail-sub').textContent = 'the photos are read';
+    progress('pricing it against comparable trucks', 0.96);
   }
 }
 
-function startReading(ids) {
-  const list = ids.length ? ids : (gate ? gate.usable_photo_ids : []) || [];
-  if (!list.length) return;
-  reading = true;
-  $('progress').hidden = false;
-  $('progress-label').textContent = 'vision model reading, typically 30–50s';
-  $('scan').classList.add('on');
-  list.forEach((id) => {
-    const c = $(`cell-${id}`);
-    if (c) c.classList.add('reading');
-  });
+/* One photo's own vision call has returned. */
+export function onPhoto(msg) {
+  const finding = msg.finding;
+  reasoning.add(finding);
+  read += 1;
 
-  let i = 0;
-  const step = () => {
-    if (!reading) return;
-    const id = list[i % list.length];
-    const check = frames.checkFor(id);
-    if (check) {
-      frames.showFrame(check);
-      frames.markCell(id, 'read');
-      narrate('reading ', mono(check.filename), `, ${viewName(check.view).toLowerCase()}`);
-    }
-    i += 1;
-    /* Past one pass the model is simply still working; say so and keep the
-       head moving rather than pretending there are more frames. */
-    if (i === list.length) {
-      t.after(DWELL_MS, () => {
-        if (reading) narrate(`all ${list.length} frames sent — waiting on the model`);
-      });
-    }
-    t.after(DWELL_MS, step);
-  };
-  step();
-}
+  const check = frames.checkFor(finding.photo_id);
+  if (check) {
+    frames.showFrame(check);
+    frames.markCell(finding.photo_id, 'read');
+  }
+  elevation.setFindings(runElev, finding.issues || []);
 
-function stopReading() {
-  reading = false;
-  $('scan').classList.remove('on');
-  $('progress-fill').style.width = '100%';
-  t.clear();
+  const total = evidenceIds.length || read;
+  progress(`${read} of ${total} photos read`, 0.12 + 0.8 * (read / Math.max(1, total)));
 }
 
 /* ---------- act 3: it answered ---------- */
 
 export function onResult(a) {
-  stopReading();
-  clearInterval(clock);
-  $('clock').textContent = `${fixed(a.elapsed_s, 2)}s`;
-  $('progress-label').textContent = 'done';
-
-  rebuildRail(a.trace || []);
-
+  stop();
+  progress('done', 1);
   const ev = a.evidence;
   if (ev) {
     elevation.setSummarised(runElev, ev.condition_summary);
     elevation.setFindings(runElev, ev.issues);
-    writeCoverage(ev.issues);
-    const n = (ev.issues || []).length;
-    narrate(n
-      ? `${n} finding${n === 1 ? '' : 's'}, each pinned to the frame it came from`
-      : 'nothing flagged in the frames supplied');
-  } else {
-    narrate('stopped before the vision call');
   }
+  reasoning.done(ev);
 }
 
-/* A frozen export has no server and no clock: paint the finished state
+/* A frozen export has no server and no stream: paint the finished state
    directly. Same functions the live run uses, so the export cannot drift from
    what the demo shows. */
 export function showFrozen(a) {
@@ -279,22 +160,24 @@ export function showFrozen(a) {
   frames.setSource(a.photo_urls, gate.photos, gate.decision);
   elevation.reset(runElev);
   elevation.setCoverage(runElev, gate.views_present, { stagger: 0 });
-  /* onResult only writes the coverage readout when there is evidence; on a
-     refusal the live run had already written it from the gate event. */
-  writeCoverage();
   const lead = (gate.decision === 'refuse_not_a_truck' && frames.smokingGun())
     || (gate.photos || []).find((c) => c.usable) || gate.photos[0];
   frames.buildStrip(gate.photos, (c) => { frames.showFrame(c); frames.markCell(c.photo_id); });
   if (lead) { frames.showFrame(lead); frames.markCell(lead.photo_id); }
-  /* render() calls onResult itself, so the stage times, the findings and the
-     revision marks all land through the one path. */
+  /* The rail is rebuilt from the findings the export carries, so a frozen file
+     shows the same per-photo reasoning the live run showed. */
+  const ev = a.evidence;
+  if (ev && (ev.photo_findings || []).length) {
+    reasoning.begin(ev.photo_findings.length);
+    [...ev.photo_findings].reverse().forEach((f) => reasoning.add(f));
+  }
+  /* render() calls onResult itself, so the drawing and the rail's closing
+     state both land through the one path. */
 }
 
 export function onError(message) {
   stop();
-  STEPS.forEach((s) => {
-    const li = document.querySelector(`.stages li[data-step="${s}"]`);
-    if (li && li.dataset.state !== 'done') setStage(s, 'skipped', 'not reached', null);
-  });
-  narrate(message);
+  progress(message, 1);
+  $('rail-title').textContent = 'Something broke';
+  $('rail-sub').textContent = message;
 }

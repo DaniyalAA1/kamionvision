@@ -83,6 +83,11 @@ class PhotoCheck(_Dict):
     # is smaller than this is scenery, not the subject being sold.
     competing_area_frac: float = 0.0
     truck_dominant: bool = False
+    # The one detection the gate treats as the vehicle being sold, xyxy in
+    # source pixels. Decided here rather than in the browser so the box a
+    # viewer sees and the pixels the vision model is given are the same truck:
+    # a dealer-lot photo has five, and averaging them describes none of them.
+    subject_box: list[float] | None = None
     non_truck_subject: str | None = None
     view: str = "unknown"
     view_conf: float = 0.0
@@ -201,14 +206,50 @@ class Issue(_Dict):
     severity: str           # cosmetic | minor | moderate | major
     confidence: float
     price_impact: str = "none"   # none | low | medium | high
+    # Other photos the same defect was seen in. Fourteen per-photo calls report
+    # one worn steer tire three times; the synthesis pass folds those into one
+    # finding and records the corroboration here rather than discarding it.
+    # It is also the honest consumer-facing confidence signal - "seen in 3
+    # photos" is checkable in a way that "confidence 0.87" is not.
+    also_seen_in: list[int] = field(default_factory=list)
 
 
 @dataclass
-class PhotoEvidence(_Dict):
+class PhotoFinding(_Dict):
+    """One photo, read on its own, by its own vision call.
+
+    The unit the fan-out produces and the unit the screen streams. `photo_id`
+    is not a claim the model made here - the call was given exactly one photo,
+    so the binding is structural. That is a strictly stronger guarantee than
+    the single-call design, where an issue citing a photo that was never sent
+    had to be detected and dropped.
+    """
     photo_id: int
     view: str
+    shows: str = ""             # one plain line: what this frame is of
     legible: bool = True
-    notes: str = ""
+    issues: list[Issue] = field(default_factory=list)
+    # Things this frame positively shows to be in good order. A report that can
+    # only name faults is not an appraisal, it is a complaint, and a buyer
+    # deciding whether to drive six hours needs the other half.
+    strengths: list[str] = field(default_factory=list)
+    cannot_tell: list[str] = field(default_factory=list)
+    # Set only by a frame that actually shows a legible odometer. The reading
+    # moved here from the set-level pass when evidence became a fan-out: asking
+    # one call to read six digits off one of sixteen downscaled photos was
+    # always the weakest link, and the dashboard close-up is looking straight
+    # at it.
+    odometer_km: int | None = None
+    confidence: float = 0.0
+    # True when the subject crop was sent rather than the whole frame. Surfaced
+    # because "I looked at this truck, not the four behind it" is part of the
+    # answer, not an implementation detail.
+    cropped: bool = False
+    elapsed_s: float = 0.0
+    # This photo's call failed and the appraisal carried on without it. Recorded
+    # rather than swallowed: thirteen frames read and one lost is a different
+    # answer from fourteen read, and the reader is entitled to know which.
+    error: str = ""
 
 
 @dataclass
@@ -234,7 +275,7 @@ class EvidenceReport(_Dict):
     # condition across two vehicles produces a confident number about neither.
     same_vehicle: bool = True
     vehicle_mismatch: str = ""
-    per_photo: list[PhotoEvidence] = field(default_factory=list)
+    photo_findings: list[PhotoFinding] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     condition_summary: dict[str, str] = field(default_factory=dict)
     condition_grade: str = "unknown"      # excellent | good | fair | poor
@@ -245,6 +286,12 @@ class EvidenceReport(_Dict):
     # Backends that were tried and failed before this one answered. Surfaced on
     # the report and on screen: falling back is allowed, doing it quietly is not.
     fell_back_from: list[str] = field(default_factory=list)
+    # One entry per vision call the fan-out made, in the order they were
+    # issued: ("identity", 11.8), ("photo 3", 7.2), ("synthesis", 4.1). The
+    # trace line and the disclosure both read this.
+    calls: list[list] = field(default_factory=list)
+    photos_read: int = 0
+    photos_failed: int = 0
     elapsed_s: float = 0.0
     raw_text: str = ""
     parse_warnings: list[str] = field(default_factory=list)

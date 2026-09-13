@@ -40,6 +40,22 @@ def money(value: float, currency: str) -> str:
     return f"{symbol}{value:,.0f}"
 
 
+def _corroboration(appraisal: Appraisal, issue) -> str:
+    """", and 2 more" when the same defect was reported from several frames.
+
+    The fan-out reads each photo on its own, so one worn steer tire arrives
+    three times. The synthesis folds those into one finding and keeps the other
+    photo ids here - "seen in three photos" is a claim a buyer can check, which
+    is more than a confidence decimal ever was.
+    """
+    extra = getattr(issue, "also_seen_in", None) or []
+    if not extra:
+        return ""
+    if len(extra) == 1:
+        return f" and {_photo_label(appraisal, extra[0])}"
+    return f" and {len(extra)} other photos"
+
+
 def _photo_label(appraisal: Appraisal, photo_id: int) -> str:
     for check in appraisal.gate.photos:
         if check.photo_id == photo_id:
@@ -140,8 +156,9 @@ def condition_lines(appraisal: Appraisal, evidence: EvidenceReport) -> list[str]
             mark = SEVERITY_MARK.get(issue.severity, "  ")
             out.append(f"   {mark} [{issue.severity}/{issue.price_impact} impact] "
                        f"{issue.observation}")
-            out.append(f"        seen in {_photo_label(appraisal, issue.photo_id)} "
-                       f"(confidence {issue.confidence:.2f})")
+            out.append(f"        seen in {_photo_label(appraisal, issue.photo_id)}"
+                       + _corroboration(appraisal, issue)
+                       + f" (confidence {issue.confidence:.2f})")
     for issue in remaining:
         out.append(f"   {SEVERITY_MARK.get(issue.severity, '  ')} "
                    f"[{issue.severity}] {issue.observation}")
@@ -224,6 +241,17 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
         for key, text in ev.condition_summary.items():
             L.append(f"    {key.replace('_', ' ').title():<22} {text}")
         L.append("")
+        strengths = [(f.photo_id, g) for f in ev.photo_findings for g in f.strengths]
+        if strengths:
+            L.append("  What the photos show to be in good order:")
+            for photo_id, good in strengths[:10]:
+                L.append(f"    + {good}")
+                L.append(f"        seen in {_photo_label(appraisal, photo_id)}")
+            L.append("")
+        if ev.photos_failed:
+            L.append(f"  NOTE  {ev.photos_failed} frame(s) could not be read; the "
+                     f"findings above come from the {ev.photos_read} that were.")
+            L.append("")
 
     pl = perception_lines(appraisal)
     if pl:

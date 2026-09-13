@@ -60,7 +60,7 @@ def probe_all() -> list[BackendStatus]:
 def resolve_chain(preferred: str | None = None) -> list[VLMBackend]:
     """Every usable backend, best first.
 
-    `evidence.run` walks this rather than taking only the first, so a provider
+    `evidence.stage` walks this rather than taking only the first, so a provider
     that rate-limits or falls over mid-demo costs one retry against the next
     one instead of the whole appraisal. This is not theoretical: the OpenAI key
     hit `credit_balance_exhausted` mid-session.

@@ -1,0 +1,166 @@
+/* The gallery: one grid, every truck, no market split.
+
+   A card is a photograph with its specification sitting on it, the way a
+   marketplace listing looks, because that is what a person is actually
+   scanning for - shape, colour, how clean it is. The specification is set over
+   a scrim rather than in a panel below, so 200 of them still read as a wall of
+   trucks rather than a table with pictures.
+
+   The rehearsed cases are marked by what the system will DO with them - price
+   it, ask for more, refuse - because that is the only thing about them worth
+   knowing in advance. */
+
+.gallery-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  margin: var(--s-7) 0 var(--s-4);
+}
+.gallery-head h2 { font-size: var(--t-xl); letter-spacing: -.025em; }
+.gallery-count { color: var(--steel); font-size: var(--t-sm); margin-left: auto; }
+
+/* ---------- filters ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem var(--s-2);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: var(--s-5);
+}
+.filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.filter-group + .filter-group {
+  margin-left: var(--s-3);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--edge);
+}
+.filter-label {
+  font: 400 var(--t-xs)/1 var(--sans);
+  color: var(--steel-dim);
+  margin-right: .15rem;
+}
+.chip {
+  font: 500 var(--t-sm)/1 var(--cond);
+  letter-spacing: .01em;
+  color: var(--steel);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: .42rem .8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .16s, border-color .16s, background .16s;
+}
+.chip:hover { color: var(--ink); border-color: var(--steel-dim); }
+.chip b { font-weight: 400; color: var(--steel-dim); margin-left: .3rem; }
+.chip[aria-pressed="true"] {
+  color: var(--card); background: var(--ink); border-color: var(--ink);
+}
+.chip[aria-pressed="true"] b { color: rgba(255, 255, 255, .6); }
+
+.filter-clear {
+  margin-left: auto;
+  font: 400 var(--t-sm)/1 var(--sans);
+  color: var(--signal);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: .42rem 0;
+}
+.filter-clear[hidden] { display: none; }
+
+/* ---------- the grid ---------- */
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: var(--s-4);
+}
+.gallery-empty { color: var(--steel); padding: var(--s-6) 0; }
+
+.truck {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--lot-deep);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  color: var(--card);
+  transition: transform .22s var(--ease-out), box-shadow .22s var(--ease-out);
+}
+.truck:hover, .truck:focus-visible { transform: translateY(-3px); box-shadow: var(--lift); }
+.truck img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .5s var(--ease-out), opacity .4s;
+  opacity: 0;
+}
+.truck img.in { opacity: 1; }
+.truck:hover img { transform: scale(1.035); }
+
+.truck-scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 2.6rem .8rem .7rem;
+  background: linear-gradient(to top,
+    rgba(12, 18, 25, .88) 0%, rgba(12, 18, 25, .6) 45%, rgba(12, 18, 25, 0) 100%);
+  pointer-events: none;
+}
+.truck-name {
+  display: block;
+  font: 600 var(--t-base)/1.2 var(--sans);
+  letter-spacing: -.01em;
+}
+.truck-spec {
+  display: block;
+  font: 400 var(--t-xs)/1.4 var(--sans);
+  color: rgba(255, 255, 255, .72);
+  margin-top: .12rem;
+}
+
+/* A rehearsed case is flagged by the answer it produces, which is the only
+   thing worth knowing about it before you press it. */
+.truck-flag {
+  position: absolute;
+  top: .7rem;
+  left: .7rem;
+  font: 500 var(--t-xs)/1 var(--sans);
+  color: var(--card);
+  padding: .3rem .55rem;
+  border-radius: 999px;
+  background: rgba(12, 18, 25, .72);
+  backdrop-filter: blur(3px);
+}
+.truck-flag[data-expect="refused"]        { background: var(--stop); }
+.truck-flag[data-expect="need_more_photos"] { background: var(--caution); }
+
+.truck-missing {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: var(--s-4);
+  text-align: center;
+  color: var(--steel);
+  font-size: var(--t-xs);
+  background: var(--lot-deep);
+}
+.truck[disabled] { cursor: not-allowed; opacity: .55; }
+
+/* The first screenful deals in rather than appearing at once, which is how
+   you see how many there are. One sequence, on load, and never again. */
+.truck.deal { animation: deal .45s var(--ease-out) backwards; }
+@keyframes deal {
+  from { opacity: 0; transform: translateY(10px) scale(.99); }
+  to   { opacity: 1; transform: none; }
+}

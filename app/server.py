@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
-from . import evidence, pipeline, report
+from . import evidence, gallery, pipeline, report
 from .config import HEIF_SUPPORT, IMAGE_SUFFIXES, IMAGES, REPO, WEB
 
 app = FastAPI(title="KamionVision", docs_url="/api/docs")
@@ -41,6 +41,11 @@ def warm() -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
+    return HTMLResponse((WEB / "landing.html").read_text(encoding="utf-8"))
+
+
+@app.get("/app", response_class=HTMLResponse)
+def appraisal() -> HTMLResponse:
     return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"))
 
 
@@ -85,17 +90,39 @@ def health() -> dict:
     return out
 
 
-@app.get("/api/samples")
-def samples() -> list[dict]:
+@app.get("/api/gallery")
+def gallery_cards() -> dict:
+    """Every truck the screen can appraise, in one grid.
+
+    Rehearsed cases first - three of them are not corpus vehicles at all, and a
+    gallery that could only offer real tractors could not demonstrate a refusal.
+    """
+    cards = gallery.cards()
+    declared = {}
     from .demo import resolved_cases
-    out = []
     for case in resolved_cases():
-        folder = REPO / case["folder"]
-        out.append({"id": case["id"], "title": case["title"], "blurb": case["blurb"],
-                    "expect": case["expect"], "declared": case.get("declared") or {},
-                    "available": folder.exists(),
-                    "n_photos": len(pipeline.collect_photos(folder)) if folder.exists() else 0})
-    return out
+        declared[case["id"]] = case.get("declared") or {}
+    return {"cards": cards, "facets": gallery.facets(), "declared": declared}
+
+
+@app.get("/api/corpus-photo/{source_key}/{listing_id}/{index}")
+def corpus_photo(source_key: str, listing_id: str, index: int) -> FileResponse:
+    paths = gallery.photo_paths(source_key, listing_id)
+    if not 0 <= index < len(paths):
+        raise HTTPException(404)
+    return FileResponse(gallery.thumb(paths[index]))
+
+
+@app.get("/api/case-photo/{case_id}/{index}")
+def case_photo(case_id: str, index: int) -> FileResponse:
+    from .demo import resolved_cases
+    match = next((c for c in resolved_cases() if c["id"] == case_id), None)
+    if not match:
+        raise HTTPException(404)
+    paths = pipeline.collect_photos(REPO / match["folder"])
+    if not 0 <= index < len(paths):
+        raise HTTPException(404)
+    return FileResponse(gallery.thumb(paths[index]))
 
 
 def _new_session(paths: list[Path]) -> dict:
@@ -155,6 +182,27 @@ def upload_sample(case: str = Form(...)) -> dict:
     return out
 
 
+@app.post("/api/upload-truck")
+def upload_truck(truck: str = Form(...)) -> dict:
+    """A gallery card into a session, through the same door as an upload.
+
+    One code path from here on: the gate cannot tell a corpus vehicle from a
+    phone full of photos, and it should not be able to.
+    """
+    source_key, _, listing_id = truck.partition(":")
+    paths = gallery.photo_paths(source_key, listing_id)
+    if not paths:
+        raise HTTPException(404, f"unknown truck {truck!r}")
+    card = next((c for c in gallery.cards() if c["id"] == truck), {})
+    out = _new_session(paths)
+    out["declared"] = {k: v for k, v in (("year", card.get("year")),
+                                         ("km", card.get("km")),
+                                         ("make", card.get("make")))
+                       if v not in (None, "", "—")}
+    out["title"] = f"{card.get('make', '')} {card.get('model', '')}".strip()
+    return out
+
+
 @app.get("/api/photo/{session}/{name}")
 def photo(session: str, name: str) -> FileResponse:
     path = (SESSIONS / session / name).resolve()
@@ -199,9 +247,15 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
                             "photo_urls": urls_for(gate.photos),
                             "evidence_photo_ids": evidence_ids})
 
+            def photo_read(finding):
+                # One finished vision call, pushed the moment it lands. They
+                # arrive out of order because the close-ups run concurrently,
+                # and the screen is built to show that rather than hide it.
+                events.put({"type": "photo", "finding": finding.to_dict()})
+
             result = pipeline.appraise(photos, declared, market=market,
                                        backend=backend, on_step=note,
-                                       on_gate=gate_done)
+                                       on_gate=gate_done, on_photo=photo_read)
             payload = result.to_dict()
             payload["photo_urls"] = urls_for(result.gate.photos)
             payload["text_report"] = report.render_text(result)

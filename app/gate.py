@@ -73,6 +73,59 @@ def thresholds() -> dict:
     return _THRESHOLDS
 
 
+# How far off-centre a box can sit before it stops looking like the subject.
+# A corner box keeps 45% of its score, so a genuinely larger truck still wins
+# over a small centred one, but two similar trucks are split by composition -
+# which is what a seller photographing their own vehicle actually does.
+CENTRE_BIAS = 0.55
+
+
+def subject_score(box: list[float], width: int, height: int) -> float:
+    """Area, discounted by distance from the centre of the frame."""
+    x1, y1, x2, y2 = box
+    frame = float(width * height) or 1.0
+    area = abs((x2 - x1) * (y2 - y1)) / frame
+    cx, cy = (x1 + x2) / 2 / (width or 1), (y1 + y2) / 2 / (height or 1)
+    far = ((cx - 0.5) ** 2 + (cy - 0.5) ** 2) ** 0.5 / (0.5 * 2 ** 0.5)
+    return area * (1.0 - CENTRE_BIAS * min(1.0, far))
+
+
+def pick_subject(check: PhotoCheck) -> list[float] | None:
+    """The one box that is the vehicle being sold, or None.
+
+    Decided here rather than in the browser. The old screen picked the largest
+    vehicle box client-side while the vision model was handed the whole frame,
+    so the box a viewer was shown and the pixels the model actually read were
+    only coincidentally the same truck. On a dealer-lot photo they were not.
+
+    Area alone is not enough, and neither is area discounted by position. On a
+    real rear three-quarter shot from the corpus the subject ran off the top of
+    the frame, so YOLO measured it at 15% of the area against 23% for a whole
+    white tractor parked to the left - and the left one won. A box clipped by
+    the frame edge is always under-measured, and the thing the photographer
+    actually pointed at is the thing their frame is centred on. So a box that
+    contains the centre of the frame wins outright, and area only breaks ties
+    among those.
+    """
+    boxes = [d for d in check.detections if d.label in ("truck", "bus")]
+    if not boxes:
+        return None
+    cx, cy = check.width / 2, check.height / 2
+    centred = [d for d in boxes
+               if d.box[0] <= cx <= d.box[2] and d.box[1] <= cy <= d.box[3]]
+    pool = centred or boxes
+    best = max(pool, key=lambda d: subject_score(d.box, check.width, check.height))
+    return list(best.box)
+
+
+def competing_vehicles(check: PhotoCheck) -> int:
+    """Vehicle boxes other than the subject. Above one, the frame is a lot shot."""
+    subject = check.subject_box
+    return sum(1 for d in check.detections
+               if d.label in vision.COCO_VEHICLES and d.confidence >= 0.4
+               and d.area_frac >= 0.02 and list(d.box) != subject)
+
+
 def capture_metrics(bgr: np.ndarray) -> dict:
     """Identical formulas to scripts/clean_dataset.py, so a gate score and a
     corpus row are the same quantity and the calibration transfers."""
@@ -198,6 +251,10 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
             check.truck_conf >= det_cfg["truck_conf_weak"]
             and check.truck_area_frac >= det_cfg["min_truck_area_frac"]
             and check.truck_area_frac >= check.competing_area_frac)
+        # Independent of truck_dominant, which is a gate verdict about the whole
+        # set. This is a rendering and cropping fact about one frame: if there
+        # is a truck-shaped box here at all, which one is the truck.
+        check.subject_box = pick_subject(check)
         if best_other[0] and best_other[1] >= det_cfg["disqualify_conf"]:
             disqualifiers.append((idx, best_other[0], best_other[1]))
 

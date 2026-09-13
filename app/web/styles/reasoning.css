@@ -1,0 +1,129 @@
+/* The reasoning rail.
+
+   Each card is one finished vision call. The close-ups run concurrently, so
+   they land out of order and the newest goes on top - this is real returned
+   work arriving, not a scripted sequence pretending to be one.
+
+   The blur is doing a job rather than decorating: a card resolves out of
+   defocus the way a photograph does when you look at it properly, and the
+   cards already read drop back into soft focus so the live one is always the
+   sharp thing on the rail. That is the whole motion budget for this screen. */
+
+.thoughts {
+  display: grid;
+  gap: var(--s-2);
+  max-height: 62vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: .2rem;
+  /* the rail fades out at its foot rather than stopping at a hard edge */
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 28px), transparent 100%);
+}
+
+.thought {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: .7rem;
+  padding: .7rem .8rem;
+  background: var(--stage-lift);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--stage-rule);
+  transition: filter .6s var(--ease-out), opacity .6s var(--ease-out);
+}
+.thought.resolve { animation: resolve .62s var(--ease-out) backwards; }
+@keyframes resolve {
+  from { opacity: 0; filter: blur(14px); transform: translateY(12px) scale(.97); }
+  60%  { opacity: 1; }
+  to   { opacity: 1; filter: blur(0); transform: none; }
+}
+/* Anything that is no longer the newest card softens back out of focus. */
+.thought.settled { filter: blur(.6px); opacity: .62; }
+.thought.settled:hover { filter: blur(0); opacity: 1; }
+
+.thought[data-worst="major"]    { border-left-color: var(--stop-lit); }
+.thought[data-worst="moderate"] { border-left-color: var(--caution-lit); }
+.thought[data-worst="clean"]    { border-left-color: var(--verified-lit); }
+.thought[data-error="true"]     { border-left-color: var(--stop-lit); opacity: .7; }
+
+.thought-thumb {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--stage);
+  align-self: start;
+}
+.thought-body { min-width: 0; }
+.thought-view {
+  font: 600 var(--t-sm)/1.25 var(--sans);
+  color: var(--stage-text);
+  letter-spacing: -.01em;
+}
+.thought-cropped {
+  font: 400 var(--t-xs)/1 var(--sans);
+  color: var(--verified-lit);
+  margin-left: .4rem;
+  font-weight: 500;
+}
+.thought-shows {
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  color: var(--stage-haze);
+  margin-top: .15rem;
+}
+
+.thought-list { margin-top: .45rem; display: grid; gap: .3rem; }
+.thought-list li {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: .45rem;
+  align-items: start;
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  color: var(--stage-text);
+}
+.thought-list li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-top: .42rem;
+  background: var(--stage-haze);
+}
+.thought-list li[data-sev="major"]::before    { background: var(--stop-lit); }
+.thought-list li[data-sev="moderate"]::before { background: var(--caution-lit); }
+.thought-list li[data-sev="ok"]::before       { background: var(--verified-lit); }
+.thought-list li[data-sev="ok"] { color: var(--stage-haze); }
+
+.thought-quiet { font-size: var(--t-xs); color: var(--stage-haze); margin-top: .4rem; }
+
+/* The card that stands in for a call still in flight. Its pulse is the only
+   thing on the page that moves without something having happened, and it stops
+   the moment a real card replaces it. */
+.thought-pending {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .7rem .8rem;
+  font-size: var(--t-xs);
+  color: var(--stage-haze);
+  background: var(--stage-lift);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--stage-rule);
+}
+.thought-pending::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--verified-lit);
+  animation: pending 1.5s ease-in-out infinite;
+}
+@keyframes pending {
+  0%, 100% { opacity: .25; transform: scale(.8); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thought.settled { filter: none; opacity: .8; }
+}

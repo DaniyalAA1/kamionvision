@@ -89,10 +89,28 @@ ANTHROPIC_MODEL = os.environ.get("KAMION_ANTHROPIC_MODEL", "claude-opus-5").stri
 ANTHROPIC_EFFORT = os.environ.get("KAMION_ANTHROPIC_EFFORT", "low").strip()
 
 # Photos sent to the vision model per appraisal. A phone-toting seller
-# uploads 15-40 near-identical frames; the evidence call gets a view-diverse
+# uploads 15-40 near-identical frames; the evidence stage gets a view-diverse
 # subset instead, which is both cheaper and measurably less repetitive.
-MAX_EVIDENCE_PHOTOS = int(os.environ.get("KAMION_MAX_EVIDENCE_PHOTOS", "14"))
+#
+# Raised from 14 when evidence became a fan-out. Under the old single call each
+# extra photo made one request longer and blunter; now each is its own call in
+# a bounded pool, so the cost of one more frame is one more parallel call
+# rather than a thinner share of the same attention.
+MAX_EVIDENCE_PHOTOS = int(os.environ.get("KAMION_MAX_EVIDENCE_PHOTOS", "16"))
 EVIDENCE_MAX_TOKENS = 16000
+
+# --- the evidence fan-out -------------------------------------------------
+# Pass A sees every photo and answers identity only, so it is short. Pass B is
+# one photo per call and needs room for a full checklist. Pass C sees no images
+# at all - it is rolling up text that already exists.
+IDENTITY_MAX_TOKENS = int(os.environ.get("KAMION_IDENTITY_MAX_TOKENS", "4000"))
+CLOSEUP_MAX_TOKENS = int(os.environ.get("KAMION_CLOSEUP_MAX_TOKENS", "4000"))
+SYNTHESIS_MAX_TOKENS = int(os.environ.get("KAMION_SYNTHESIS_MAX_TOKENS", "6000"))
+# Close-up calls in flight at once. Measured on a 16-photo set: median call
+# 12.4 s, so five meant four waves and an 84 s run. Eight halves the waves
+# without tripping a provider; the whole point of the pool is that
+# wall-clock stays roughly where the single call was while the depth goes up.
+EVIDENCE_CONCURRENCY = int(os.environ.get("KAMION_EVIDENCE_CONCURRENCY", "8"))
 # Long edge the photos are downscaled to before upload. 1024 keeps tread
 # blocks and rust pitting legible while holding a 14-photo call near 20k
 # input tokens.

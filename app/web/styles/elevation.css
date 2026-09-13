@@ -1,73 +1,70 @@
-/* The elevation's zone states.
+/* The truck drawing's zone states. It only ever appears on the dark stage, so
+   every colour here is the lit variant.
 
    A zone starts as a phantom outline - drawn, but not established. Gate view
-   coverage promotes it to `covered` (teal: verified from the photos). A
-   finding from the vision model promotes it again and sets data-sev, which
-   changes stroke weight and, for `major` only, hue. No fills: several zones
-   are open arcs and filling them produces lens shapes, so severity is carried
-   by weight plus a revision triangle placed beside the zone - which is how a
-   drawing marks a changed area anyway. */
+   coverage promotes it to `covered` (green: verified from the photos). A
+   finding promotes it again and sets data-sev, which changes stroke weight
+   and, for `major` only, hue. No fills: several zones are open arcs and
+   filling them produces lens shapes, so severity is carried by weight plus a
+   mark beside the zone. */
 
 .elev { width: 100%; height: auto; display: block; overflow: visible; }
 .elev * { vector-effect: non-scaling-stroke; }
 
-.elev-chrome .ground  { stroke: var(--line); stroke-width: 1.25; }
-.elev-chrome .hatch line { stroke: var(--rule-lift); stroke-width: 1; }
-.elev-chrome .centre  {
-  stroke: var(--sodium-dim); stroke-width: .75;
-  stroke-dasharray: 20 4 3 4; opacity: .8;
-}
+.elev-chrome .ground  { stroke: var(--stage-rule); stroke-width: 1.25; }
+.elev-chrome .hatch line { stroke: var(--stage-rule); stroke-width: 1; opacity: .6; }
+.elev-chrome .centre  { stroke: none; }
 
 .zone {
-  stroke: var(--haze-dim);
+  stroke: var(--stage-haze);
   stroke-width: 1;
   stroke-dasharray: 4 4;
-  opacity: .26;
+  opacity: .22;
   transition: opacity .55s var(--ease-draw), stroke .55s var(--ease-draw),
               stroke-width .55s var(--ease-draw);
 }
 .zone .thin { stroke-width: .55; }
 
 .zone[data-state="covered"] {
-  stroke: var(--signal); opacity: .8; stroke-dasharray: none;
+  stroke: var(--verified-lit); opacity: .8; stroke-dasharray: none;
 }
 .zone[data-state="read"] {
-  stroke: var(--paper); opacity: .92; stroke-dasharray: none;
+  stroke: var(--stage-text); opacity: .92; stroke-dasharray: none;
 }
 /* Interior and buried components keep a broken line even once established -
    they are real but not directly visible, which is what phantom line means. */
 .zone.phantom[data-state] { stroke-dasharray: 6 4; }
 
-.zone[data-sev="cosmetic"] { stroke: var(--sodium); opacity: .6;  stroke-width: 1; }
-.zone[data-sev="minor"]    { stroke: var(--sodium); opacity: .78; stroke-width: 1.3; }
-.zone[data-sev="moderate"] { stroke: var(--sodium); opacity: 1;   stroke-width: 1.8; }
+.zone[data-sev="cosmetic"] { stroke: var(--caution-lit); opacity: .55; stroke-width: 1; }
+.zone[data-sev="minor"]    { stroke: var(--caution-lit); opacity: .75; stroke-width: 1.3; }
+.zone[data-sev="moderate"] { stroke: var(--caution-lit); opacity: 1;   stroke-width: 1.9; }
 .zone[data-sev="major"] {
-  stroke: var(--flag); opacity: 1; stroke-width: 2.3;
-  filter: drop-shadow(0 0 5px rgba(224, 91, 79, .45));
+  stroke: var(--stop-lit); opacity: 1; stroke-width: 2.4;
+  filter: drop-shadow(0 0 5px rgba(255, 111, 97, .45));
 }
 
 .elev .zone[data-focus] {
-  stroke: var(--paper); opacity: 1; stroke-width: 2.4;
-  filter: drop-shadow(0 0 6px rgba(233, 240, 244, .35));
+  stroke: var(--stage-text); opacity: 1; stroke-width: 2.4;
+  filter: drop-shadow(0 0 6px rgba(230, 236, 241, .35));
 }
 
 /* the moment a zone is established */
 .zone.lit { animation: ignite .7s var(--ease-draw); }
 @keyframes ignite {
-  0%   { opacity: .26; stroke-width: 1; }
+  0%   { opacity: .22; stroke-width: 1; }
   35%  { opacity: 1;   stroke-width: 2.6; }
   100% { }
 }
 
-/* revision triangles, added beside a flagged zone */
+/* the mark placed beside a flagged zone */
 .rev-mark { pointer-events: none; }
-.rev-mark path { stroke: var(--sodium); stroke-width: 1; fill: rgba(11, 17, 22, .85); }
+.rev-mark path { stroke: var(--caution-lit); stroke-width: 1; fill: rgba(19, 28, 38, .9); }
 .rev-mark text {
-  fill: var(--sodium); font-family: var(--mono); font-size: 11px;
+  fill: var(--caution-lit); font-family: var(--sans); font-weight: 600; font-size: 11px;
   text-anchor: middle; dominant-baseline: central;
 }
-.rev-mark[data-sev="major"] path { stroke: var(--flag); }
-.rev-mark[data-sev="major"] text { fill: var(--flag); }
+.rev-mark[data-sev="major"] path { stroke: var(--stop-lit); }
+.rev-mark[data-sev="major"] text { fill: var(--stop-lit); }
 .rev-mark.in { animation: rev-in .5s var(--ease-out) backwards; }
 @keyframes rev-in {
   from { opacity: 0; transform: translateY(-6px); }

@@ -62,7 +62,7 @@ becomes one finding with three photos rather than three findings.
 app/evidence/__init__.py   public surface, unchanged import sites
 app/evidence/prompts.py    COMPONENTS, both JSON schemas, the per-view question bank
 app/evidence/passes.py     identity() / closeup() / synthesize()
-app/evidence/run.py        orchestration, concurrency, the on_photo callback
+app/evidence/stage.py      orchestration, concurrency, the on_photo callback
 ```
 
 ## 2. Subject box

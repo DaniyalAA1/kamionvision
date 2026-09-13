@@ -25,8 +25,8 @@ import numpy as np
 
 from app import evidence, gate, report
 from app.config import USD_TRY
-from app.schema import (Appraisal, EvidenceReport, GateDecision, GateReport,
-                        Issue, PhotoCheck)
+from app.schema import (Appraisal, Detection, EvidenceReport, GateDecision,
+                        GateReport, Issue, PhotoCheck)
 
 
 def _check(photo_id: int, name: str = "x.jpg") -> PhotoCheck:
@@ -55,74 +55,188 @@ class ExtractJson(unittest.TestCase):
             evidence.extract_json('{"a": 1, "b": ')
 
 
-class ParseEvidence(unittest.TestCase):
-    def setUp(self):
-        self.selected = [_check(7, "a.jpg"), _check(11, "b.jpg")]
+class ParseIdentity(unittest.TestCase):
+    """Pass A answers what the truck is and whether it is one truck."""
 
     def payload(self, **over):
-        base = {
-            "vehicle": {"make": "Ford", "model": "F-MAX", "odometer_km": 164374,
-                        "odometer_photo_id": 1, "badges_seen": ["F-MAX"],
-                        "confidence": 0.9},
-            "per_photo": [],
-            "issues": [{"photo_id": 0, "component": "steer_tires",
-                        "observation": "worn to the bars", "severity": "moderate",
-                        "confidence": 0.8, "price_impact": "medium"}],
-            "condition_summary": {}, "condition_grade": "good",
-            "coverage_gaps": [], "confidence": 0.7,
-        }
+        base = {"make": "Ford", "model": "F-MAX", "body_type": "tractor_unit",
+                "cab_type": "high sleeper", "axle_config": "4x2",
+                "approx_year_range": "2019-2023", "badges_seen": ["F-MAX"],
+                "confidence": 0.9, "same_vehicle": True, "vehicle_mismatch": ""}
         base.update(over)
         return json.dumps(base)
 
-    def test_indices_map_back_to_gate_ids(self):
-        """The model sees 0..n-1; the report must cite the gate's photo ids."""
-        r = evidence.parse(self.payload(), self.selected)
-        self.assertEqual(r.issues[0].photo_id, 7)
-        self.assertEqual(r.vehicle.odometer_photo_id, 11)
+    def test_reads_the_vehicle(self):
+        v, same, mismatch = evidence.parse_identity(self.payload())
+        self.assertEqual((v.make, v.model), ("Ford", "F-MAX"))
+        self.assertTrue(same)
+        self.assertEqual(mismatch, "")
 
-    def test_uncited_issue_is_dropped(self):
-        """An issue naming a photo that was never sent is not evidence."""
-        r = evidence.parse(self.payload(issues=[
-            {"photo_id": 99, "component": "drive_tires", "observation": "invented",
-             "severity": "major", "confidence": 1.0, "price_impact": "high"}]),
-            self.selected)
-        self.assertEqual(r.issues, [])
-        self.assertTrue(any("uncited" in w for w in r.parse_warnings))
+    def test_a_mismatch_is_carried_not_swallowed(self):
+        _, same, mismatch = evidence.parse_identity(
+            self.payload(same_vehicle=False, vehicle_mismatch="two different plates"))
+        self.assertFalse(same)
+        self.assertIn("plates", mismatch)
 
-    def test_unknown_component_is_normalised_not_trusted(self):
-        r = evidence.parse(self.payload(issues=[
-            {"photo_id": 0, "component": "flux_capacitor", "observation": "hmm",
-             "severity": "minor", "confidence": 0.5, "price_impact": "low"}]),
-            self.selected)
-        self.assertEqual(r.issues[0].component, "flux_capacitor")
-        self.assertTrue(any("unknown component" in w for w in r.parse_warnings))
+    def test_blank_strings_become_none(self):
+        v, _, _ = evidence.parse_identity(self.payload(make="", model=None))
+        self.assertIsNone(v.make)
+        self.assertIsNone(v.model)
+
+
+class ParseCloseup(unittest.TestCase):
+    """Pass B is one call per photo, which is what makes the citation structural."""
+
+    def setUp(self):
+        self.check = _check(7, "a.jpg")
+        self.check.view = "tire_wheel"
+
+    def payload(self, **over):
+        base = {"shows": "the near-side steer tire", "legible": True,
+                "odometer_km": None,
+                "observations": [{"component": "steer_tires",
+                                  "observation": "worn to the bars on the outer shoulder",
+                                  "severity": "moderate", "confidence": 0.8,
+                                  "price_impact": "medium"}],
+                "strengths": ["rim is straight and free of kerbing"],
+                "cannot_tell": ["tread depth in millimetres"], "confidence": 0.7}
+        base.update(over)
+        return json.dumps(base)
+
+    def test_photo_id_comes_from_the_caller_not_the_model(self):
+        # The whole point of the fan-out: the call was given exactly one photo,
+        # so a claim cannot cite a frame that was never sent. There is no index
+        # for the model to get wrong.
+        f = evidence.parse_closeup(self.payload(photo_id=999), self.check, cropped=False)
+        self.assertEqual(f.photo_id, 7)
+        self.assertEqual(f.issues[0].photo_id, 7)
+
+    def test_unknown_component_is_kept_but_not_laundered(self):
+        f = evidence.parse_closeup(self.payload(observations=[
+            {"component": "flux_capacitor", "observation": "hmm", "severity": "minor",
+             "confidence": 0.5, "price_impact": "low"}]), self.check, cropped=False)
+        self.assertEqual(f.issues[0].component, "flux_capacitor")
+        self.assertNotIn("flux_capacitor", evidence.COMPONENTS)
 
     def test_bad_enum_values_fall_back(self):
-        r = evidence.parse(self.payload(issues=[
-            {"photo_id": 0, "component": "steer_tires", "observation": "x",
-             "severity": "catastrophic", "confidence": "nope", "price_impact": "ruinous"}]),
-            self.selected)
-        self.assertIn(r.issues[0].severity, evidence.SEVERITIES)
-        self.assertIn(r.issues[0].price_impact, evidence.IMPACTS)
-        self.assertEqual(r.issues[0].confidence, 0.5)
+        f = evidence.parse_closeup(self.payload(observations=[
+            {"component": "steer_tires", "observation": "x", "severity": "catastrophic",
+             "confidence": "nope", "price_impact": "ruinous"}]), self.check, cropped=False)
+        self.assertIn(f.issues[0].severity, evidence.SEVERITIES)
+        self.assertIn(f.issues[0].price_impact, evidence.IMPACTS)
+        self.assertEqual(f.issues[0].confidence, 0.5)
 
-    def test_summary_keys_always_present(self):
-        r = evidence.parse(self.payload(), self.selected)
-        self.assertEqual(set(r.condition_summary), set(evidence.SUMMARY_KEYS))
+    def test_an_observation_with_no_text_is_not_a_finding(self):
+        f = evidence.parse_closeup(self.payload(observations=[
+            {"component": "steer_tires", "observation": "   ", "severity": "minor",
+             "confidence": 0.5, "price_impact": "low"}]), self.check, cropped=False)
+        self.assertEqual(f.issues, [])
+
+    def test_strengths_and_gaps_survive(self):
+        f = evidence.parse_closeup(self.payload(), self.check, cropped=False)
+        self.assertEqual(len(f.strengths), 1)
+        self.assertEqual(len(f.cannot_tell), 1)
+
+    def test_an_implausible_odometer_is_dropped(self):
+        # A guessed mileage is worse than none: it is cross-checked against what
+        # the seller typed, and a bad read fabricates a contradiction.
+        for bad in (0, -5, 99_000_000, "lots", None):
+            f = evidence.parse_closeup(self.payload(odometer_km=bad), self.check,
+                                       cropped=False)
+            self.assertIsNone(f.odometer_km, bad)
+
+    def test_a_real_odometer_is_kept(self):
+        f = evidence.parse_closeup(self.payload(odometer_km=164374), self.check,
+                                   cropped=False)
+        self.assertEqual(f.odometer_km, 164374)
+
+
+class MergeDuplicates(unittest.TestCase):
+    """One worn tire seen in three frames is one finding with three photos."""
+
+    def _issues(self, n):
+        return [Issue(photo_id=i, component="steer_tires", observation=f"o{i}",
+                      severity="minor", confidence=0.5) for i in range(n)]
+
+    def test_merged_findings_become_corroboration(self):
+        flat = self._issues(3)
+        out = evidence.merge_duplicates(flat, [{"keep": 0, "merge": [1, 2]}])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].photo_id, 0)
+        self.assertEqual(sorted(out[0].also_seen_in), [1, 2])
+
+    def test_nothing_is_deleted_without_being_recorded(self):
+        # Same posture as fell_back_from and Correction: changing your mind is
+        # allowed, doing it where nobody can see it is not.
+        flat = self._issues(3)
+        out = evidence.merge_duplicates(flat, [{"keep": 0, "merge": [1, 2]}])
+        cited = {out[0].photo_id, *out[0].also_seen_in}
+        self.assertEqual(cited, {0, 1, 2})
+
+    def test_out_of_range_indices_are_ignored(self):
+        flat = self._issues(2)
+        out = evidence.merge_duplicates(flat, [{"keep": 9, "merge": [0]},
+                                               {"keep": 0, "merge": [99]}])
+        self.assertEqual(len(out), 2)
+
+    def test_garbage_does_not_lose_findings(self):
+        flat = self._issues(2)
+        out = evidence.merge_duplicates(flat, ["nonsense", {"merge": [1]}, None])
+        self.assertEqual(len(out), 2)
+
+    def test_no_duplicates_leaves_every_finding_alone(self):
+        flat = self._issues(4)
+        out = evidence.merge_duplicates(flat, [])
+        self.assertEqual(len(out), 4)
+        self.assertTrue(all(not i.also_seen_in for i in out))
+
+
+class ParseSynthesis(unittest.TestCase):
+    def test_missing_summary_keys_are_filled_not_omitted(self):
+        data = evidence.parse_synthesis(json.dumps({"condition_summary": {"tires": "ok"}}))
+        self.assertEqual(set(data["condition_summary"]), set(evidence.SUMMARY_KEYS))
+        self.assertEqual(data["condition_summary"]["engine_driveline"],
+                         "not visible in these photos")
+
+    def test_an_invented_grade_falls_back_to_unknown(self):
+        data = evidence.parse_synthesis(json.dumps({"condition_grade": "immaculate"}))
+        self.assertEqual(data["condition_grade"], "unknown")
 
 
 class JsonSchema(unittest.TestCase):
     def test_strict_shape(self):
         """Strict mode requires every property listed in `required`."""
-        s = evidence.json_schema()
-        for node in (s, s["properties"]["vehicle"], s["properties"]["issues"]["items"]):
+        closeup = evidence.closeup_schema()
+        nodes = [closeup, closeup["properties"]["observations"]["items"],
+                 evidence.synthesis_schema(),
+                 evidence.synthesis_schema()["properties"]["condition_summary"]]
+        from app.evidence.prompts import IDENTITY_SCHEMA
+        nodes.append(IDENTITY_SCHEMA)
+        for node in nodes:
             self.assertFalse(node["additionalProperties"])
             self.assertEqual(set(node["required"]), set(node["properties"]))
 
     def test_enums_match_the_parser(self):
-        issue = evidence.json_schema()["properties"]["issues"]["items"]["properties"]
-        self.assertEqual(issue["component"]["enum"], evidence.COMPONENTS)
-        self.assertEqual(issue["severity"]["enum"], evidence.SEVERITIES)
+        obs = evidence.closeup_schema()["properties"]["observations"]["items"]["properties"]
+        self.assertEqual(obs["component"]["enum"], evidence.COMPONENTS)
+        self.assertEqual(obs["severity"]["enum"], evidence.SEVERITIES)
+        self.assertEqual(obs["price_impact"]["enum"], evidence.IMPACTS)
+
+    def test_every_component_rolls_up_into_a_summary_key(self):
+        # The deterministic fallback used when the synthesis call fails groups
+        # findings through this map. A component missing from it would silently
+        # vanish from the summary rather than error.
+        for component in evidence.COMPONENTS:
+            self.assertIn(component, evidence.COMPONENT_SUMMARY)
+            self.assertIn(evidence.COMPONENT_SUMMARY[component], evidence.SUMMARY_KEYS)
+
+    def test_every_canonical_view_has_its_own_checklist(self):
+        # A view with no checklist falls back to four generic questions, which
+        # is exactly the shallow prompt the fan-out exists to replace.
+        from app import vision
+        for view in vision.VIEW_LABELS:
+            self.assertIn(view, evidence.VIEW_QUESTIONS, view)
+            self.assertGreaterEqual(len(evidence.questions_for(view)), 4)
 
 
 class Pricing(unittest.TestCase):
@@ -468,7 +582,7 @@ class GateEventContract(unittest.TestCase):
             # vision call it is meant to cover has already returned.
             seen.append(("gate", g, len(seen)))
 
-        def fake_evidence(gate, declared=None, *, backend=None):
+        def fake_evidence(gate, declared=None, *, backend=None, on_photo=None):
             seen.append(("evidence", None, len(seen)))
             return ev
 
@@ -686,3 +800,347 @@ class FrozenExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubjectBox(unittest.TestCase):
+    """Which truck in the frame is the one being sold.
+
+    Decided in the gate rather than the browser. The old screen picked the
+    largest vehicle box client-side while the vision model was handed the whole
+    frame, so on a dealer-lot photo the box a viewer saw and the pixels the
+    model read were different trucks.
+    """
+
+    def _check(self, *boxes, width=1000, height=600):
+        c = _check(0)
+        c.width, c.height = width, height
+        c.detections = [Detection(label=lbl, confidence=conf, box=list(box),
+                                  area_frac=abs((box[2] - box[0]) * (box[3] - box[1]))
+                                  / float(width * height))
+                        for lbl, conf, box in boxes]
+        return c
+
+    def test_no_vehicle_box_means_no_subject(self):
+        # A tire close-up contains no truck-shaped object and is still a photo
+        # of the truck; it simply has no box to draw.
+        self.assertIsNone(gate.pick_subject(self._check()))
+
+    def test_the_only_truck_is_the_subject(self):
+        c = self._check(("truck", 0.9, (100, 100, 600, 500)))
+        self.assertEqual(gate.pick_subject(c), [100, 100, 600, 500])
+
+    def test_the_bigger_truck_wins(self):
+        c = self._check(("truck", 0.9, (10, 10, 120, 120)),
+                        ("truck", 0.9, (300, 100, 800, 500)))
+        self.assertEqual(gate.pick_subject(c), [300, 100, 800, 500])
+
+    def test_centring_breaks_a_tie_between_similar_trucks(self):
+        # Two trucks of the same size in a lot shot: the one the photographer
+        # framed is the one being sold.
+        c = self._check(("truck", 0.9, (0, 0, 300, 300)),
+                        ("truck", 0.9, (350, 150, 650, 450)))
+        self.assertEqual(gate.pick_subject(c), [350, 150, 650, 450])
+
+    def test_a_car_is_never_the_subject(self):
+        c = self._check(("car", 0.95, (0, 0, 900, 580)),
+                        ("truck", 0.6, (400, 200, 700, 450)))
+        self.assertEqual(gate.pick_subject(c), [400, 200, 700, 450])
+
+    def test_a_clipped_centre_subject_beats_a_whole_truck_at_the_edge(self):
+        """The case that sent the box to the wrong truck on a real frame.
+
+        On `demo/tr_clean/000.jpg` the subject ran off the top of the frame, so
+        YOLO measured it at 15% of the area against 23% for a whole white
+        tractor parked to the left, and area picked the white one. A box
+        clipped by the frame edge is always under-measured; the frame's centre
+        is not.
+        """
+        # 1000x600, so the centre of the frame is (500, 300).
+        c = self._check(("truck", 0.81, (30, 120, 470, 560)),   # whole, left of centre
+                        ("truck", 0.45, (400, 0, 700, 420)))    # clipped at the top
+        self.assertEqual(gate.pick_subject(c), [400, 0, 700, 420])
+
+    def test_when_two_boxes_hold_the_centre_the_bigger_one_wins(self):
+        c = self._check(("truck", 0.7, (420, 240, 560, 360)),
+                        ("truck", 0.7, (150, 60, 880, 560)))
+        self.assertEqual(gate.pick_subject(c), [150, 60, 880, 560])
+
+    def test_nothing_on_the_centre_falls_back_to_area_and_position(self):
+        c = self._check(("truck", 0.8, (10, 10, 210, 210)),
+                        ("truck", 0.8, (700, 350, 990, 590)))
+        self.assertIsNotNone(gate.pick_subject(c))
+
+    def test_competing_vehicles_are_counted_excluding_the_subject(self):
+        c = self._check(("truck", 0.9, (300, 100, 800, 500)),
+                        ("truck", 0.8, (10, 100, 200, 400)),
+                        ("car", 0.7, (820, 300, 980, 420)))
+        c.subject_box = gate.pick_subject(c)
+        self.assertEqual(gate.competing_vehicles(c), 2)
+
+
+class SubjectCrop(unittest.TestCase):
+    """When the close-up call gets the crop instead of the whole frame."""
+
+    def _check(self, subject, others=(), width=1000, height=600):
+        c = _check(0)
+        c.width, c.height = width, height
+        boxes = [("truck", 0.9, subject)] + list(others)
+        c.detections = [Detection(label=lbl, confidence=conf, box=list(box),
+                                  area_frac=abs((box[2] - box[0]) * (box[3] - box[1]))
+                                  / float(width * height))
+                        for lbl, conf, box in boxes]
+        c.subject_box = list(subject)
+        return c
+
+    def test_a_lone_truck_is_sent_whole(self):
+        # Nothing to be confused by, and cropping would throw away the ground
+        # line and the background a buyer reads for context.
+        self.assertFalse(evidence.wants_crop(self._check((200, 100, 700, 500))))
+
+    def test_a_lot_shot_is_cropped_to_the_subject(self):
+        c = self._check((350, 150, 650, 450),
+                        [("truck", 0.8, (0, 150, 300, 450))])
+        self.assertTrue(evidence.wants_crop(c))
+
+    def test_a_truck_already_filling_the_frame_is_not_cropped(self):
+        c = self._check((5, 5, 995, 595), [("truck", 0.8, (0, 0, 60, 60))])
+        self.assertFalse(evidence.wants_crop(c))
+
+    def test_no_subject_box_is_never_cropped(self):
+        c = _check(0)
+        c.width, c.height = 1000, 600
+        self.assertFalse(evidence.wants_crop(c))
+
+
+class PhotoStream(unittest.TestCase):
+    """`on_photo` is a separate callback because `on_step` is pinned at two
+    arguments - widening it broke every CLI appraise once already."""
+
+    def _gate(self, n=3):
+        photos = []
+        for i in range(n):
+            c = _check(i, f"{i}.jpg")
+            c.view, c.capture_quality = "tire_wheel", 0.9
+            photos.append(c)
+        return GateReport(decision=GateDecision.PASS, headline="h", photos=photos,
+                          usable_photo_ids=[c.photo_id for c in photos])
+
+    def test_fires_once_per_photo_and_not_through_on_step(self):
+        from app import pipeline
+        from app.schema import PhotoFinding
+        gate_report = self._gate(3)
+        seen, steps = [], []
+
+        def fake_evidence(g, declared=None, *, backend=None, on_photo=None):
+            for c in g.photos:
+                on_photo(PhotoFinding(photo_id=c.photo_id, view=c.view))
+            return EvidenceReport()
+
+        with unittest.mock.patch.object(pipeline.gate_stage, "run",
+                                        return_value=gate_report), \
+             unittest.mock.patch.object(pipeline.evidence_stage, "run",
+                                        side_effect=fake_evidence):
+            pipeline.appraise([Path("a.jpg")],
+                              on_step=lambda step, detail: steps.append(step),
+                              on_photo=lambda f: seen.append(f.photo_id))
+        self.assertEqual(sorted(seen), [0, 1, 2])
+        self.assertIn("evidence", steps)
+
+    def test_absent_callback_changes_nothing(self):
+        from app import pipeline
+        with unittest.mock.patch.object(pipeline.gate_stage, "run",
+                                        return_value=self._gate(2)), \
+             unittest.mock.patch.object(pipeline.evidence_stage, "run",
+                                        return_value=EvidenceReport()):
+            result = pipeline.appraise([Path("a.jpg")])
+        self.assertIn(result.status, ("ok", "need_more_photos", "ok_with_requests"))
+
+
+class FanOutFailure(unittest.TestCase):
+    """One lost frame is not a lost appraisal; every lost frame is."""
+
+    class _Client:
+        supports_structured_output = False
+        name = "fake"
+
+        def __init__(self, fail_on=()):
+            self.fail_on = set(fail_on)
+            self.calls = 0
+
+        def complete(self, prompt, images, **kw):
+            from app.vlm.base import VLMError, VLMResponse
+            self.calls += 1
+            if self.calls in self.fail_on:
+                raise VLMError("provider said no")
+            return VLMResponse(text=json.dumps({
+                "shows": "a tire", "legible": True, "odometer_km": None,
+                "observations": [], "strengths": [], "cannot_tell": [],
+                "confidence": 0.5}), backend="fake", model="fake")
+
+    def _checks(self, n):
+        out = []
+        for i in range(n):
+            c = _check(i, f"{i}.jpg")
+            c.view = "tire_wheel"
+            out.append(c)
+        return out
+
+    def test_a_failed_photo_is_recorded_not_swallowed(self):
+        from app.evidence import stage as run_module
+        import tempfile
+        client = self._Client(fail_on={2})
+        report = EvidenceReport()
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = run_module._fan_out(client, self._checks(3), "a truck",
+                                           Path(tmp), None, report)
+        failed = [f for f in findings if f.error]
+        self.assertEqual(len(failed), 1)
+        self.assertTrue(any("could not be read" in w for w in report.parse_warnings))
+
+    def test_the_surviving_photos_still_produce_findings(self):
+        from app.evidence import stage as run_module
+        import tempfile
+        client = self._Client(fail_on={1})
+        report = EvidenceReport()
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = run_module._fan_out(client, self._checks(3), "a truck",
+                                           Path(tmp), None, report)
+        self.assertEqual(sum(1 for f in findings if not f.error), 2)
+
+
+class FallbackSynthesis(unittest.TestCase):
+    """Losing the synthesis call should cost the prose, not the findings."""
+
+    def test_findings_are_grouped_without_a_model(self):
+        from app.evidence.stage import _fallback_synthesis
+        from app.schema import PhotoFinding
+        flat = [Issue(photo_id=0, component="steer_tires", observation="worn",
+                      severity="major", confidence=0.8),
+                Issue(photo_id=1, component="engine_bay", observation="oil film",
+                      severity="minor", confidence=0.6)]
+        findings = [PhotoFinding(photo_id=0, view="tire_wheel",
+                                 cannot_tell=["tread in mm"])]
+        data = _fallback_synthesis(findings, flat)
+        self.assertEqual(set(data["condition_summary"]), set(evidence.SUMMARY_KEYS))
+        self.assertIn("worn", data["condition_summary"]["tires"])
+        self.assertIn("oil film", data["condition_summary"]["engine_driveline"])
+        self.assertEqual(data["condition_grade"], "poor")
+        self.assertIn("tread in mm", data["coverage_gaps"])
+
+    def test_an_unseen_system_says_so_rather_than_claiming_it_is_fine(self):
+        from app.evidence.stage import _fallback_synthesis
+        data = _fallback_synthesis([], [])
+        self.assertEqual(data["condition_summary"]["fifth_wheel_coupling"],
+                         "not visible in these photos")
+
+
+class Gallery(unittest.TestCase):
+    """One grid, every vehicle, no market split."""
+
+    @classmethod
+    def setUpClass(cls):
+        from app import gallery as g
+        cls.g = g
+        cls.cards = g.cards()
+
+    def test_the_rehearsed_cases_are_pinned_to_the_front(self):
+        # A gallery that could only offer real tractors could not demonstrate a
+        # refusal, and refusing well is its own line in the brief's rubric.
+        demo = [c for c in self.cards if c["demo"]]
+        self.assertTrue(all(c["demo"] for c in self.cards[:len(demo)]))
+        self.assertGreaterEqual(len(demo), 6)
+
+    def test_every_card_can_be_rendered(self):
+        for card in self.cards:
+            self.assertTrue(card["id"])
+            self.assertIn("make", card)
+            self.assertIsInstance(card["n_photos"], int)
+
+    def test_a_vehicle_backing_a_rehearsed_case_appears_once(self):
+        ids = [c["id"] for c in self.cards]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_makes_are_normalised_so_a_filter_chip_is_one_manufacturer(self):
+        # The corpus spells one make several ways because three harvesters
+        # wrote it; FORD and Ford must not be two chips.
+        names = [m["name"] for m in self.g.facets()["makes"]]
+        self.assertEqual(len(names), len({n.lower() for n in names}))
+        self.assertIn("Ford", names)
+
+    def test_corpus_photos_resolve_on_disk(self):
+        card = next(c for c in self.cards if not c["demo"])
+        paths = self.g.photo_paths(card["source_key"], card["listing_id"])
+        self.assertEqual(len(paths), card["n_photos"])
+        self.assertTrue(paths[0].exists())
+
+    def test_the_cover_index_is_inside_the_photo_list(self):
+        for card in self.cards:
+            if card["demo"] or not card["cover"]:
+                continue
+            index = int(card["cover"].rsplit("/", 1)[1])
+            self.assertLess(index, card["n_photos"])
+
+
+class NearDuplicateMerge(unittest.TestCase):
+    """Sixteen calls describe one worn drive tire sixteen ways.
+
+    The first real fan-out produced three separate `major` findings for one
+    shoulder-worn drive tire, which read as three problems and dragged the
+    condition grade to `poor`. The model's own duplicate list missed the
+    paraphrases, so a deterministic pass runs behind it.
+    """
+
+    def issue(self, photo_id, component, text, severity="major"):
+        return Issue(photo_id=photo_id, component=component, observation=text,
+                     severity=severity, confidence=0.8)
+
+    def test_paraphrases_of_one_defect_collapse(self):
+        flat = [
+            self.issue(0, "drive_tires",
+                       "The outer drive tire has severe irregular shoulder wear with "
+                       "extensive tread-block tearing and chunking"),
+            self.issue(1, "drive_tires",
+                       "The outer drive tire shows uneven scalloped tread-block wear "
+                       "with irregular shoulder tearing across the visible ribs"),
+        ]
+        out = evidence.merge_duplicates(flat, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].also_seen_in, [1])
+
+    def test_two_genuinely_different_defects_stay_apart(self):
+        flat = [
+            self.issue(0, "drive_tires", "outer drive tire worn to the wear bars"),
+            self.issue(1, "drive_tires", "inner drive tire sidewall has a deep cut "
+                                         "exposing cord near the bead"),
+        ]
+        self.assertEqual(len(evidence.merge_duplicates(flat, [])), 2)
+
+    def test_different_components_never_merge(self):
+        # Identical wording on two parts is two findings, not one.
+        text = "heavy corrosion with flaking paint and pitting across the surface"
+        flat = [self.issue(0, "chassis_frame", text),
+                self.issue(1, "fuel_tank", text)]
+        self.assertEqual(len(evidence.merge_duplicates(flat, [])), 2)
+
+    def test_the_models_own_pairing_still_wins_first(self):
+        flat = [self.issue(0, "steer_tires", "worn to the bars"),
+                self.issue(1, "steer_tires", "completely unrelated wording here"),
+                self.issue(2, "steer_tires", "another unrelated description")]
+        out = evidence.merge_duplicates(flat, [{"keep": 0, "merge": [1, 2]}])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(sorted(out[0].also_seen_in), [1, 2])
+
+    def test_corroboration_from_both_passes_is_kept(self):
+        flat = [self.issue(0, "drive_tires", "outer drive tire shoulder wear tearing"),
+                self.issue(1, "drive_tires", "unrelated rim damage wording entirely"),
+                self.issue(2, "drive_tires", "outer drive tire shoulder wear and tearing")]
+        out = evidence.merge_duplicates(flat, [{"keep": 1, "merge": []}])
+        by_photo = {i.photo_id: i for i in out}
+        self.assertIn(0, by_photo)
+        self.assertEqual(by_photo[0].also_seen_in, [2])
+
+    def test_noise_words_alone_do_not_merge(self):
+        # Two short observations sharing only filler must not be folded.
+        flat = [self.issue(0, "mirrors_visor", "the mirror is there and visible"),
+                self.issue(1, "mirrors_visor", "there is a crack across the glass")]
+        self.assertEqual(len(evidence.merge_duplicates(flat, [])), 2)

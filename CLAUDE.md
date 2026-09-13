@@ -54,14 +54,16 @@ No linter, no CI. Dataset scripts self-verify by printing counts; `clean_dataset
 Two test layers for `app/`:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests    # 67 offline tests, ~0.5s, no API calls
+.venv/bin/python -m unittest discover -s tests    # 146 offline tests, ~2s, no API calls
 .venv/bin/python -m app.demo                      # 8 end-to-end cases, spends vision calls
 ```
 
 Run the offline suite on every edit; it covers JSON extraction, evidence-to-photo binding, the
-price interval, the capture thresholds, the `on_step`/`on_gate` callback contracts, the nested
-`/static/` route and the drawing's zone vocabulary — the things that have actually broken. `app.demo` is
-the real check but costs a vision call per case, so keep it for before a commit that matters.
+price interval, the capture thresholds, the `on_step`/`on_gate`/`on_photo` callback contracts,
+subject-box selection, the crop rule, near-duplicate merging, the gallery API, the nested
+`/static/` route and the drawing's zone vocabulary — the things that have actually broken.
+`app.demo` is the real check but now costs ~18 vision calls per case rather than one, so keep it
+for before a commit that matters.
 
 ## The appraisal system (`app/`)
 
@@ -72,8 +74,12 @@ app/
   vision.py      lazily-loaded YOLOv8n + CLIP, pinned to MPS
   gate.py        stage 1: refuse / re-ask / pass, deterministic, ~1s
   perception/    stage 1b: three heads trained on the corpus (heads.py, train.py)
-  evidence.py    stage 2: one structured vision call over a closed component enum
+  evidence/      stage 2: three vision passes over a closed component enum
+                 prompts.py  the enums, the schemas, the per-view question bank
+                 passes.py   identity() / closeup() / synthesize(), and the crop
+                 stage.py    orchestration, concurrency, the on_photo stream
   reconcile.py   stage 2b: cross-checks the VLM against the heads, records every change
+  gallery.py     the unified truck grid: 200 corpus vehicles + the rehearsed cases
   vlm/           backends: openai (GPT-5.6), cursor (Agent SDK), anthropic
   pricing/       stage 3: features, ridge fit + calibration (train.py), estimate
                  anchor.py: second route - published new price x fitted retention
@@ -83,16 +89,18 @@ app/
   server.py      FastAPI + SSE, so the gate verdict paints before the VLM returns
   calibrate_gate.py   derives models/gate_thresholds.json from the corpus
   web/           the demo screen - static ES modules, no build step
-    index.html          the sheet: masthead, intake, run, result, title block
-    app.js              entry: wiring, verdict block, title block
+    index.html          gallery -> run -> result, plus the working disclosure
+    app.js              entry: wiring, the verdict, the frozen-export path
     js/dom.js           helpers; the Motion wrapper and the rAF value tween
-    js/net.js           health, samples, upload, the SSE stream
-    js/run.js           the run: stage rail, narration, clock, frame walk
+    js/net.js           health, gallery, upload, the SSE stream
+    js/gallery.js       the 200-truck grid and its filters, all client-side
+    js/run.js           the run: the dark stage, the frame, the progress count
+    js/reasoning.js     the rail: one blur-in card per finished vision call
     js/elevation.js     the truck drawing's zone state machine
-    js/frames.js        contact strip, detection overlay, grid, lightbox
-    js/gauge.js         the price band drawn as a dimension annotation
-    js/panels.js        the seven result plates
-    styles/             tokens, base, sheet, run, result, elevation, fonts
+    js/frames.js        contact strip, the ONE subject box, grid, lightbox
+    js/band.js          the two price bands, drawn apart
+    js/panels.js        the result blocks and the "how I worked this out" body
+    styles/             tokens, base, gallery, run, reasoning, result, elevation
     assets/             tractor-elevation.svg, self-hosted woff2 + OFL
     vendor/motion.min.js  Motion 13.2.0, MIT, vendored - never a CDN
 ```
@@ -123,9 +131,30 @@ app/
 - **A YOLO label that disagrees with CLIP does not disqualify a frame.** YOLO calls a truck
   dashboard filling 98% of the frame a "train" at 0.56; refusing on that is the worst error the
   gate can make.
-- **Every condition claim carries a `photo_id` that was actually sent.** `evidence.parse` drops
-  the ones that don't and records a warning. The VLM sees sequential ids; the parser maps them
-  back to gate ids. Never bypass that mapping.
+- **Every condition claim carries a `photo_id` that was actually sent.** Since the close-up pass
+  is handed exactly one photograph per call, the binding is structural rather than something the
+  model has to remember - `parse_closeup` takes the id from the caller and never reads one out of
+  the response. The identity pass still sees the whole set, so it keeps the old index mapping.
+- **Evidence is three passes, and the first one is why.** `identity()` sees every selected photo
+  at once and answers make / model / body type / `same_vehicle`; `closeup()` is one call per photo
+  with a view-specific checklist; `synthesize()` is text-only. Do not collapse pass A into the
+  synthesis to save a call: a text-only pass cannot notice that photo 9 is a different truck, and
+  `pipeline.pricing_blocker` and the `mixed_vehicles` case both rest on that answer.
+- **The per-view question bank is the depth.** `prompts.VIEW_QUESTIONS` asks a tire close-up about
+  tread across the ribs, cupping, sidewall cracking, DOT dates and brand match across the axle.
+  The single call it replaced said "at most 12 issues" and "a `per_photo` entry ONLY for photos
+  that are illegible" - it was instructed to skim, and it did. A test asserts every id in
+  `vision.VIEW_LABELS` has its own checklist; falling back to the generic four is the old failure.
+- **One defect seen in three frames is one finding.** Sixteen independent calls each describe the
+  same worn drive tire. `merge_duplicates` takes the synthesis pass's own pairing first, then runs
+  a deterministic content-word overlap pass within a single component behind it, because the model
+  missed three paraphrases of one shoulder-worn tire on the first real run and they read as three
+  major findings. Corroboration lands on `Issue.also_seen_in` - never dropped, and "seen in three
+  photos" is a better consumer signal than a confidence decimal.
+- **A close-up call that fails costs one photo, not the appraisal.** The `PhotoFinding` carries an
+  `error` and the run continues; every call failing raises. Same posture as `fell_back_from`.
+  A failed synthesis degrades to `_fallback_synthesis`, which groups the findings that already
+  exist through `COMPONENT_SUMMARY` - losing that call should cost the prose, not the work.
 - **The VLM never sees or emits a price; the regression never sees the photos.** That separation
   is the answer to "is it more than a thin wrapper".
 - **Price folds are grouped by (market, brand, model, year, price).** 87 of 155 priced listings
@@ -158,6 +187,20 @@ app/
   first and keeps the rest as fallbacks, and `evidence.run` walks the whole chain. A fallback is
   recorded on `EvidenceReport.fell_back_from` and shown in the trace, the card and the UI — falling
   back is allowed, doing it quietly is not.
+- **The measured numbers stay in the UI; they just stop being the first thing read.** Everything
+  model-shaped - R squared, out-of-fold coverage, the driver table in log space, backend ids,
+  stage timings, parse warnings - lives inside the `How I worked this out` disclosure on the
+  result screen. The measured-versus-assumed labelling travels there with the figures it
+  qualifies, and the measured 80.3% stays welded to the comparable-asking band. What stays in the
+  open, in words: the band, the condition, the findings with their photos, and the backend
+  fallback note - falling back is allowed, doing it quietly is not, and a disclosure nobody opens
+  would be quiet.
+- **One market, one gallery.** The Turkiye/United States selector is gone and every appraisal
+  asks for `market=TR`. The price model is `tr_only`, so the dropdown let someone ask a Turkish
+  fit for a number in dollars; an American truck now prices in lira, takes the unseen-brand
+  widening and says why, which is a rehearsed and measured path. `app/gallery.py` serves all 200
+  corpus vehicles in one grid with the eight rehearsed cases pinned in front of them, and the
+  filters are client-side over rows already in memory.
 - **The screen never reaches the network at run time.** Fonts are self-hosted
   woff2 under `app/web/assets/fonts/`, Motion is vendored in `app/web/vendor/`.
   A demo that depends on venue wifi for its typography is a demo that can fail
@@ -167,7 +210,11 @@ app/
   `cli.py` and `demo.py` both pass two-parameter callbacks, so adding a third
   positional argument breaks every CLI appraise - and a `lambda *a` in a test
   will hide it. Anything a caller needs beyond the string goes through
-  `on_gate` or a new callback, not by widening this one.
+  `on_gate`, `on_photo`, or a new callback, not by widening this one.
+- **`on_photo` fires once per photo, out of order.** The close-ups run concurrently, so they
+  finish in whatever order the provider answers. The rail prepends rather than sorts, because the
+  arrival order is the one honest thing it has to say. The progress figure is a count of finished
+  calls; the old asymptotic bar existed because nothing could know when a single call would return.
 - **`on_gate` fires once, before the refusal return.** It hands the finished
   `GateReport` over about a second in so the screen can paint the real
   detections, view coverage and frames during the ~50 s vision call instead of
@@ -183,6 +230,18 @@ app/
 - **A detection box only gets the refusal colour when the *set* was refused for
   not being a truck.** Truck detection is set-level; colouring a box red
   because one frame looks odd would contradict the gate.
+- **One box, and the gate picks it.** `gate.pick_subject` decides which vehicle is being sold and
+  records it on `PhotoCheck.subject_box`; the screen draws that one and dims the rest, behind a
+  `show everything it detected` toggle. Deciding it in the browser meant the box a viewer saw and
+  the pixels the model read were only coincidentally the same truck. The rule is **a box holding
+  the centre of the frame wins outright**, with area x centrality only breaking ties among those:
+  on `demo/tr_clean/000.jpg` the subject ran off the top of the frame, so YOLO measured it at 15%
+  of the area against 23% for a whole tractor parked to the left, and pure area picked the wrong
+  truck. A clipped box is always under-measured; the frame's centre is not.
+- **When another vehicle is in frame, the close-up call gets the crop.** `evidence.wants_crop` is
+  true only when a subject box exists, covers under 70% of the frame, and something else competes
+  - a lone truck is already the crop and a tire close-up has no box at all. Measured on the
+  rehearsed Ford set: 5 of 16 frames cropped.
 - **The image embedding never reaches the price fit; only the condition multiplier does.**
   `scripts/probe_residual_signal.py` measured whether a CLIP embedding explains the out-of-fold
   price residual, under nested vehicle-grouped CV against a permuted-target null: TR R² −0.222,

@@ -122,7 +122,9 @@ def cmd_doctor(args) -> int:
         ok = False
         print(f"  [ FAIL ] {type(exc).__name__}: {exc}")
 
-    print(f"\nevidence photos per call: {MAX_EVIDENCE_PHOTOS}")
+    from .config import EVIDENCE_CONCURRENCY
+    print(f"\nevidence: {MAX_EVIDENCE_PHOTOS} photos per appraisal, one vision call "
+          f"each, {EVIDENCE_CONCURRENCY} at a time")
     print(f"models: cursor={CURSOR_MODEL}  anthropic={ANTHROPIC_MODEL}")
     print("\n" + ("all good" if ok else "some checks failed"))
     return 0 if ok else 1
@@ -147,8 +149,25 @@ def cmd_appraise(args) -> int:
         if not args.json:
             print(f"  ... {step}: {detail}", file=sys.stderr, flush=True)
 
+    def photo_read(finding):
+        # Each photo is its own vision call now, so there is something real to
+        # report while the rest are still in flight rather than a spinner.
+        if args.json:
+            return
+        if finding.error:
+            print(f"      photo {finding.photo_id}: could not be read "
+                  f"({finding.error[:60]})", file=sys.stderr, flush=True)
+            return
+        n = len(finding.issues)
+        print(f"      photo {finding.photo_id} ({finding.view.replace('_', ' ')})"
+              f"{' cropped to subject' if finding.cropped else ''}: "
+              f"{n} finding{'' if n == 1 else 's'}"
+              f"{', ' + str(len(finding.strengths)) + ' ok' if finding.strengths else ''}"
+              f"  [{finding.elapsed_s:.1f}s]", file=sys.stderr, flush=True)
+
     result = pipeline.appraise(photos, declared, market=args.market,
-                               backend=args.backend, on_step=note)
+                               backend=args.backend, on_step=note,
+                               on_photo=photo_read)
 
     if args.json:
         print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))

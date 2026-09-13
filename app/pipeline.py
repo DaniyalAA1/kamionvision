@@ -97,7 +97,13 @@ def collect_photos(source: str | Path) -> list[Path]:
 
 def appraise(photos: list[Path], declared: dict | None = None, *,
              market: str = "TR", backend: str | None = None,
-             on_step=None, on_gate=None) -> Appraisal:
+             on_step=None, on_gate=None, on_photo=None) -> Appraisal:
+    """`on_step(step, detail)` takes exactly two arguments and always will -
+    `cli.py` and `demo.py` both pass two-parameter callbacks. Anything a caller
+    needs beyond the string gets its own callback rather than widening that
+    one: `on_gate(GateReport)` once, about a second in, and `on_photo(
+    PhotoFinding)` once per photo as its own vision call returns, out of order.
+    """
     from . import __version__
 
     t0 = time.time()
@@ -145,17 +151,23 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
             perception.elapsed_s))
 
     # --- 2. evidence ------------------------------------------------------
-    # `evidence.run` sends a view-diverse subset capped at MAX_EVIDENCE_PHOTOS,
-    # not every usable frame, so the old "reading {usable} photos" overstated
-    # it by however many were held back. select_photos is a pure function of
-    # the gate report, so calling it here to report the real set costs one sort
-    # and cannot disagree with what run() picks.
+    # `evidence.run` reads a view-diverse subset capped at MAX_EVIDENCE_PHOTOS,
+    # not every usable frame, so "reading {usable} photos" would overstate it by
+    # however many were held back. select_photos is a pure function of the gate
+    # report, so calling it here to report the real set costs one sort and
+    # cannot disagree with what run() picks.
+    #
+    # Each of those frames is now its own vision call rather than one slot in a
+    # shared one, which is why `on_photo` exists: the screen shows returned work
+    # instead of a progress bar guessing at it.
     sent = evidence_stage.select_photos(gate)
     note("evidence", f"reading {len(sent)} of {len(gate.usable_photo_ids)} usable frames")
-    ev = evidence_stage.run(gate, declared, backend=backend)
+    ev = evidence_stage.run(gate, declared, backend=backend, on_photo=on_photo)
     result.evidence = ev
-    detail = (f"{len(ev.issues)} findings, {len(ev.coverage_gaps)} gaps "
-              f"({ev.backend}/{ev.model})")
+    detail = (f"{ev.photos_read} photo(s) read in depth, {len(ev.issues)} findings, "
+              f"{len(ev.coverage_gaps)} gaps ({ev.backend}/{ev.model})")
+    if ev.photos_failed:
+        detail += f" — {ev.photos_failed} frame(s) could not be read"
     if ev.fell_back_from:
         detail += f" — fell back from {len(ev.fell_back_from)} failed backend(s)"
     result.trace.append(TraceStep("evidence", detail, ev.elapsed_s))

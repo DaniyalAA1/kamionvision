@@ -1,11 +1,12 @@
 /* Everything that talks to the server.
 
    The stream carries unnamed SSE frames discriminated by a `type` field:
-   `gate` (new - the finished gate report, about a second in), `stage`,
-   `result` and `error`. */
+   `gate` (the finished gate report, about a second in), `stage`, `photo` (one
+   per photo, as its own vision call returns, out of order), `result` and
+   `error`. */
 
 export const getHealth  = () => fetch('/api/health').then((r) => r.json());
-export const getSamples = () => fetch('/api/samples').then((r) => r.json());
+export const getGallery = () => fetch('/api/gallery').then((r) => r.json());
 
 async function post(url, body) {
   const r = await fetch(url, { method: 'POST', body });
@@ -24,6 +25,12 @@ export function uploadSample(id) {
   const body = new FormData();
   body.set('case', id);
   return post('/api/upload-sample', body);
+}
+
+export function uploadTruck(id) {
+  const body = new FormData();
+  body.set('truck', id);
+  return post('/api/upload-truck', body);
 }
 
 export function openStream(session, params, handlers) {

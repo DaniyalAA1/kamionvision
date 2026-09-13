@@ -1,80 +1,52 @@
-/* Entry point: wiring, the verdict block, and the title block.
+/* Entry point: wiring, the verdict, and the frozen-export path.
 
-   The run is streamed. The gate report now arrives as its own event about a
-   second in, so the drawing, the frames and the detector's boxes are all on
-   screen long before the price exists - see app/web/js/run.js. */
+   The run is streamed. The gate report arrives about a second in, and every
+   photo arrives as its own event while the rest are still being read - see
+   js/run.js and js/reasoning.js. */
 
-import { $, el, money, fixed, reduced, animate } from './js/dom.js';
+import { $, el, money, fixed, reduced } from './js/dom.js';
 import * as net from './js/net.js';
 import * as run from './js/run.js';
 import * as frames from './js/frames.js';
+import * as gallery from './js/gallery.js';
 import * as elevation from './js/elevation.js';
-import { drawGauge } from './js/gauge.js';
+import { drawBand } from './js/band.js';
 import { renderPanels } from './js/panels.js';
 
 let stream = null;
 
-/* ---------- title block ---------- */
+/* ---------- boot ---------- */
 
+/* The top bar is silent when everything works. It is not a status dashboard;
+   the only thing a person needs from it is to be told when the thing they are
+   about to press will not work. */
 async function loadHealth() {
   try {
     const h = await net.getHealth();
     const ready = h.backends.find(
       (b) => b.ready && (!h.selected_backend || b.name === h.selected_backend));
-    const vision = $('tb-vision');
-    if (ready) {
-      vision.textContent = `${ready.name} / ${ready.model}`;
-      vision.className = 'mono ready';
-      $('masthead-state').textContent = '';
-    } else {
-      const blocked = h.backends.find((b) => b.account_blocked);
-      vision.textContent = blocked ? `${blocked.name} blocked` : 'none configured';
-      vision.className = 'mono broken';
-      $('masthead-state').textContent = blocked
-        ? `${blocked.name} account is blocked — ${blocked.detail}`
-        : 'No vision backend is configured, so only the gate will run.';
-      $('masthead-state').className = 'masthead-state broken';
-    }
-    const pm = h.price_model || {};
-    if (pm.n_listings) {
-      $('tb-comps').textContent = `${pm.n_listings} listings, ${pm.n_groups} specs`;
-      $('tb-cov').replaceChildren(
-        el('b', null, `${(pm.coverage_80 * 100).toFixed(1)}%`),
-        document.createTextNode(` of ${pm.coverage_n}`));
-      $('tb-cov').title =
-        `The 80% comparable-asking band held the real asking price in `
-        + `${(pm.coverage_80 * 100).toFixed(1)}% of ${pm.coverage_n} held-out `
-        + `evaluations. Fit R² ${pm.r2}, median error ${pm.median_ape}%.`;
-    }
+    if (ready) { $('topbar-state').textContent = ''; return; }
+    const blocked = h.backends.find((b) => b.account_blocked);
+    $('topbar-state').textContent = blocked
+      ? `Vision is unavailable — ${blocked.detail}`
+      : 'No vision model is configured, so photos can be checked but not read.';
+    $('topbar-state').className = 'topbar-state broken';
   } catch {
-    $('tb-vision').textContent = 'unreachable';
-    $('tb-vision').className = 'mono broken';
+    $('topbar-state').textContent = 'Cannot reach the server.';
+    $('topbar-state').className = 'topbar-state broken';
   }
 }
 
-async function loadSamples() {
-  const list = $('sample-list');
+async function loadGallery() {
   try {
-    const cases = await net.getSamples();
-    list.replaceChildren(...cases.map((c) => {
-      const b = el('button', 'sample');
-      b.type = 'button';
-      b.dataset.expect = c.expect;
-      b.disabled = !c.available;
-      b.append(el('span', 'sample-n', c.available ? String(c.n_photos) : '—'),
-               el('span', 'sample-title', c.title),
-               el('span', 'sample-blurb', c.available
-                 ? c.blurb
-                 : 'fixtures missing — run python -m app.demo --build'));
-      b.addEventListener('click', () => runSample(c));
-      return b;
-    }));
+    const data = await net.getGallery();
+    gallery.render(data, (card) => pick(card, data.declared || {}));
   } catch {
-    list.replaceChildren(el('p', 'sample-blurb', 'Could not load the rehearsed cases.'));
+    gallery.fail('Could not load the trucks.');
   }
 }
 
-/* ---------- intake ---------- */
+/* ---------- starting a run ---------- */
 
 function declaredParams() {
   const p = new URLSearchParams();
@@ -83,28 +55,27 @@ function declaredParams() {
   set('km', $('f-km').value);
   set('make', $('f-make').value.trim());
   set('asking', $('f-asking').value);
-  p.set('market', $('f-market').value);
+  /* One market. The price model is fitted on Turkish listings, so a truck from
+     anywhere is priced in lira and an unfamiliar make widens the range and
+     says so - which beats a dropdown that let someone ask a Turkish fit for a
+     number in dollars. */
+  p.set('market', 'TR');
   return p;
 }
 
-function showSkipped(skipped) {
-  const box = $('skipped');
-  if (!skipped || !skipped.length) { box.hidden = true; return; }
-  box.hidden = false;
-  box.textContent = skipped.length === 1
-    ? `${skipped[0].name} was not used: ${skipped[0].why}.`
-    : `${skipped.length} files were not used: `
-      + skipped.map((s) => `${s.name} (${s.why})`).join(', ') + '.';
+function fillDeclared(d) {
+  $('f-year').value = d.year || '';
+  $('f-km').value = d.km ? Math.round(d.km) : '';
+  $('f-make').value = d.make || '';
+  $('f-asking').value = d.asking_price || '';
 }
 
-async function runSample(c) {
+async function pick(card, declaredByCase) {
   try {
-    const data = await net.uploadSample(c.id);
-    const d = c.declared || {};
-    $('f-year').value = d.year || '';
-    $('f-km').value = d.km || '';
-    $('f-make').value = d.make || '';
-    $('f-asking').value = d.asking_price || '';
+    const data = card.demo
+      ? await net.uploadSample(card.case_id)
+      : await net.uploadTruck(card.id);
+    fillDeclared(card.demo ? (declaredByCase[card.case_id] || {}) : (data.declared || {}));
     showSkipped(null);
     start(data.session);
   } catch (e) { fail(e.message); }
@@ -118,133 +89,156 @@ async function uploadFiles(files) {
   } catch (e) { fail(e.message); }
 }
 
-function fail(message) {
-  $('masthead-state').textContent = message;
-  $('masthead-state').className = 'masthead-state broken';
+function showSkipped(skipped) {
+  const box = $('skipped');
+  if (!skipped || !skipped.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = skipped.length === 1
+    ? `${skipped[0].name} was not used: ${skipped[0].why}.`
+    : `${skipped.length} files were not used: `
+      + skipped.map((s) => `${s.name} (${s.why})`).join(', ') + '.';
 }
 
-/* ---------- the run ---------- */
+function fail(message) {
+  $('topbar-state').textContent = message;
+  $('topbar-state').className = 'topbar-state broken';
+}
 
 function start(session) {
   if (stream) stream.close();
+  $('intake').hidden = true;
   run.begin();
   stream = net.openStream(session, declaredParams(), {
     gate: (m) => run.onGate(m),
     stage: (m) => run.onStage(m),
+    photo: (m) => run.onPhoto(m),
     result: (m) => { stream.close(); render(m.appraisal); },
     error: (m) => {
       stream.close();
       run.onError('Something broke while appraising.');
       showRefusal('Something broke while appraising.', m.message);
+      $('intake').hidden = false;
     },
   });
 }
 
-/* ---------- the verdict ---------- */
+/* ---------- the answer ---------- */
 
-function showRefusal(headline, detail, evidence) {
+/* `pipeline.pricing_blocker` returns a headline and a reason that deliberately
+   share their explanatory tail, because the CLI prints only one of them. On
+   screen both are shown, so printing them in full says the same sentence
+   twice. */
+const normalise = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+function showRefusal(headline, detail) {
   $('result').hidden = false;
-  $('headline').textContent = headline;
-  $('gauge-wrap').hidden = true;
+  $('price').textContent = '';
+  $('price-sub').textContent = '';
+  $('verdict-kicker').textContent = '';
+  $('band-wrap').hidden = true;
   const box = $('refusal');
   box.hidden = false;
-  box.replaceChildren(el('p', null, detail));
-  if (evidence) box.append(el('p', 'refusal-evidence', evidence));
+  box.replaceChildren(el('p', null, headline));
+  const a = normalise(headline), b = normalise(detail);
+  if (b && b !== a && !a.includes(b) && !b.includes(a)) box.append(el('p', null, detail));
+}
+
+function priceLine(price) {
+  const wrap = $('price');
+  wrap.replaceChildren(
+    document.createTextNode(money(price.low, price.currency)),
+    el('span', 'dash', '–'),
+    document.createTextNode(money(price.high, price.currency)));
 }
 
 function render(a) {
   frames.setSource(a.photo_urls, a.gate.photos, a.gate.decision);
   $('result').hidden = false;
   $('refusal').hidden = true;
-  $('gauge-wrap').hidden = true;
-  $('headline').textContent = a.headline;
+  $('band-wrap').hidden = true;
 
   run.onResult(a);
   frames.renderGrid(a.gate, frames.openLightbox);
 
   const ev = a.evidence, price = a.price;
 
-  const fb = $('fallback-note');
+  /* Who the truck is, before what it is worth. */
+  const v = ev ? ev.vehicle : null;
+  const named = v ? [v.make, v.model].filter(Boolean).join(' ') : '';
+  const kicker = [];
+  if (named) kicker.push(named);
+  if (v && v.odometer_km) {
+    kicker.push(`${v.odometer_km.toLocaleString('en-US')} km on the clock`);
+  }
+  $('verdict-kicker').textContent = kicker.join(', ');
+
+  /* Falling back is allowed. Doing it quietly is not - so it stays on the
+     answer, in words, rather than moving into the disclosure with the rest of
+     the machinery. */
+  const fb = $('fallback');
   if (ev && ev.fell_back_from && ev.fell_back_from.length) {
     fb.hidden = false;
-    fb.replaceChildren(
-      document.createTextNode('Answered by '),
-      el('b', null, `${ev.backend} / ${ev.model}`),
-      document.createTextNode(` after ${ev.fell_back_from.length} backend(s) failed: `
-                              + ev.fell_back_from[0]));
+    fb.textContent = 'One of the vision providers was unavailable, so a backup '
+      + 'read the photos instead. The details are under "How I worked this out".';
   } else fb.hidden = true;
 
-  const askEl = $('asking-verdict');
+  const askEl = $('asking');
   if (price && price.ok && price.asking) {
-    const v = price.asking;
+    const ask = price.asking;
     askEl.hidden = false;
-    askEl.className = 'asking-verdict '
-      + (v.inside_comparable_band ? 'inline' : (v.vs_comparables_pct > 0 ? 'above' : 'below'));
+    askEl.className = 'asking '
+      + (ask.inside_comparable_band ? 'inline' : (ask.vs_comparables_pct > 0 ? 'above' : 'below'));
     askEl.replaceChildren(
       document.createTextNode('The seller is asking '),
-      el('b', null, money(v.asking, v.currency)),
-      document.createTextNode(' — '),
-      el('b', null, v.label),
-      document.createTextNode(`. ${v.summary}`));
+      el('b', null, money(ask.asking, ask.currency)),
+      document.createTextNode(`, which is ${ask.label}. ${ask.summary}`));
   } else askEl.hidden = true;
 
   if (a.status === 'refused') {
     showRefusal(a.headline,
-                'No price was produced. The gate stopped this before any vision call.',
-                a.gate.truck_evidence);
+                'No photo was sent to a vision model. The checks that run first — '
+                + 'on your machine, in about a second — stopped this before anything '
+                + 'was spent on it.');
   } else if (price && price.ok) {
-    $('gauge-wrap').hidden = false;
-    drawGauge(price);
-    writeGaugeNote(price);
+    $('band-wrap').hidden = false;
+    priceLine(price);
+    $('price-sub').textContent = subLine(a, ev, price);
+    drawBand($('band'), price);
+    $('band-note').textContent = bandNote(price);
   } else if (price && !price.ok) {
-    showRefusal(a.headline, price.reason, a.gate.truck_evidence);
+    showRefusal(a.headline, price.reason);
   } else {
-    showRefusal(a.headline, a.gate.headline, a.gate.truck_evidence);
+    showRefusal(a.headline, a.gate.headline);
   }
 
   renderPanels(a, run.elevationRoot());
-  stampTitleBlock(a);
   $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
 }
 
-/* The calibration figure is pinned to the band it was measured on, and says
-   so in words, because the adjusted band carries no such guarantee. */
-function writeGaugeNote(price) {
-  const card = price.model_card || {};
-  const note = $('gauge-note');
-  const parts = [];
-  const push = (s) => parts.push(document.createTextNode(s));
-  const fig = (s) => parts.push(el('b', null, s));
-
-  if (Math.abs(price.point - price.baseline_point) > 1) {
-    push('What the photos found moved the estimate ');
-    fig(`${price.adjustment.pct >= 0 ? '+' : ''}${fixed(price.adjustment.pct, 1)}%`);
-    push(`, capped at ±${fixed(price.adjustment.cap_pct, 1)}% — one residual standard `
-         + 'deviation of the price model, which is a stated assumption. ');
+function subLine(a, ev, price) {
+  const grade = ev ? ev.condition_grade : 'unknown';
+  const read = ev ? ev.photos_read : 0;
+  const bits = [];
+  if (grade && grade !== 'unknown') bits.push(`Condition ${grade}`);
+  if (read) bits.push(`read from ${read} photos, one at a time`);
+  if (a.status === 'ok_with_requests') {
+    bits.push('and the range would narrow with the photos listed below');
   }
-  push('The comparable-asking band is an ');
-  push(`${Math.round(price.interval_level * 100)}% interval, and that is the band `
-       + 'whose accuracy was measured: on held-out listings it contained the real '
-       + 'asking price ');
-  fig(`${(card.coverage * 100).toFixed(1)}%`);
-  push(` of the time over ${card.coverage_n} evaluations. Fit R² ${card.r2}, `
-        + `median error ${card.mae_pct}% across ${card.n_listings} listings `
-        + `collapsing to ${card.n_groups} distinct specs.`);
-  note.replaceChildren(...parts);
+  return bits.join(', ') + '.';
 }
 
-function stampTitleBlock(a) {
-  const v = a.evidence ? a.evidence.vehicle : null;
-  if (v && (v.make || v.model)) {
-    const bits = [[v.make, v.model].filter(Boolean).join(' ')];
-    const spec = [v.cab_type, v.axle_config].filter(Boolean).join(' ');
-    if (spec) bits.push(spec);
-    if (v.approx_year_range) bits.push(v.approx_year_range);
-    $('tb-subject').textContent = bits.join(', ');
+/* The two bands are not interchangeable, so the note that explains them says
+   which is which without quoting the measured figure for the one it does not
+   belong to. That number lives in the disclosure, attached to its own band. */
+function bandNote(price) {
+  if (Math.abs(price.point - price.baseline_point) <= 1) {
+    return 'This is what comparable trucks of this age and mileage are being '
+      + 'asked for. Nothing in the photos moved it.';
   }
-  const fx = a.price && a.price.model_card ? a.price.model_card.fx : null;
-  if (fx) $('tb-fx').textContent = `${fx.usd_try} TRY/USD, ${fx.as_of}`;
-  if (a.version) $('tb-sheet').textContent = a.version;
+  const dir = price.adjustment.pct >= 0 ? 'up' : 'down';
+  return `What the photos found moved the estimate ${dir} `
+    + `${fixed(Math.abs(price.adjustment.pct), 1)}% from what comparable trucks `
+    + 'are being asked for.';
 }
 
 /* ---------- wiring ---------- */
@@ -267,14 +261,25 @@ dz.addEventListener('drop', (e) => {
   if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
 });
 
-$('reset').addEventListener('click', () => {
+$('show-all').addEventListener('click', (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  e.currentTarget.textContent = on ? 'Show only the truck being sold'
+                                   : 'Show everything it detected';
+  frames.setShowAll(on);
+});
+
+function startOver() {
   if (stream) stream.close();
   run.stop();
+  $('intake').hidden = false;
   $('run').hidden = true;
   $('result').hidden = true;
   elevation.reset(run.elevationRoot());
   window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
-});
+}
+$('reset').addEventListener('click', startOver);
+$('again').addEventListener('click', startOver);
 
 $('lightbox-close').addEventListener('click', () => { $('lightbox').hidden = true; });
 $('lightbox').addEventListener('click', (e) => {
@@ -286,8 +291,8 @@ document.addEventListener('keydown', (e) => {
 
 /* A frozen export embeds the appraisal and has no API behind it: render it
  * straight away and drop the parts that would call a server. The drawing, the
- * frames and the findings all still work, which is the point - a judge can
- * click through it when the live run has failed. */
+ * frames, the per-photo rail and the findings all still work, which is the
+ * point - a judge can click through it when the live run has failed. */
 if (window.KAMION_APPRAISAL) {
   $('intake').hidden = true;
   run.mount().then(() => {
@@ -297,5 +302,5 @@ if (window.KAMION_APPRAISAL) {
 } else {
   run.mount();
   loadHealth();
-  loadSamples();
+  loadGallery();
 }
