@@ -179,20 +179,27 @@ class ScanTests(unittest.TestCase):
         from PIL import Image
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'two.jpg'
-            Image.new('RGB', (200, 100), 'white').save(path)
+            Image.new('RGB', (400, 200), 'white').save(path)
             gate = GateReport(photos=[PhotoCheck(7, str(path), 'two.jpg', detections=[
-                Detection('truck', .99, [0,0,100,100], .5, True),
-                Detection('car', .99, [100,0,200,100], .5, False)])])
+                Detection('truck', .99, [0,0,200,200], .5, True),
+                Detection('car', .99, [200,0,400,200], .5, False)])])
             class Backend:
                 def complete(self, prompt, images, **kwargs):
+                    self.images = images
+                    self.kwargs = kwargs
                     with Image.open(images[0]) as img:
-                        assert img.size == (100,100)
+                        assert img.size == (208,200)
+                    with Image.open(images[1]) as img:
+                        assert img.size == (208,124)
                     return SimpleNamespace(text=json.dumps(dict(plate='34 ABC 123', country='TR', confidence=.99)))
+            backend = Backend()
             with patch('app.history.lookup', return_value=('matched', record(), 'Matched')) as db:
-                h = scan(gate, backend=Backend())
+                h = scan(gate, backend=backend)
             self.assertEqual([o.is_subject for o in h.observations], [True, False])
             self.assertEqual([o.photo_id for o in h.observations], [7, 7])
             self.assertEqual(db.call_count, 1)
+            self.assertEqual(backend.kwargs['json_schema']['required'],
+                             ['plate', 'country', 'confidence', 'reason'])
 
     def test_uncertain_reads_and_backend_failures_do_not_lookup(self):
         from PIL import Image
@@ -208,6 +215,67 @@ class ScanTests(unittest.TestCase):
                     h = scan(gate, backend=backend)
                 self.assertEqual(h.observations[0].status, expected)
                 db.assert_not_called()
+
+    def test_invalid_turkish_plate_does_not_lookup(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'truck.jpg'
+            Image.new('RGB', (100,100)).save(path)
+            gate = GateReport(photos=[PhotoCheck(0, str(path), 'truck.jpg', detections=[
+                Detection('truck', .99, [0,0,100,100], 1, True)])])
+            backend = SimpleNamespace(complete=lambda *a, **k: SimpleNamespace(
+                text=json.dumps(dict(plate='99ABC123', country='TR', confidence=.99,
+                                     reason='clear characters'))))
+            with patch('app.history.lookup') as db:
+                h = scan(gate, backend=backend)
+            self.assertEqual(h.observations[0].status, 'needs_confirmation')
+            db.assert_not_called()
+
+    def test_repeated_subject_read_wins_over_conflicting_singleton(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as tmp:
+            photos = []
+            for photo_id in range(3):
+                path = Path(tmp)/f'{photo_id}.jpg'
+                Image.new('RGB', (100,100)).save(path)
+                photos.append(PhotoCheck(photo_id, str(path), path.name, detections=[
+                    Detection('truck', .99, [0,0,100,100], 1, True)]))
+            class Backend:
+                def complete(self, prompt, images, **kwargs):
+                    photo_id = int(images[0].name.split('_')[1])
+                    plate = '34ABC123' if photo_id < 2 else '06XYZ789'
+                    return SimpleNamespace(text=json.dumps(dict(
+                        plate=plate, country='TR', confidence=.99, reason='clear')))
+            with patch('app.history.lookup', return_value=('matched', record(), 'Matched')) as db:
+                h = scan(GateReport(photos=photos), backend=Backend())
+            self.assertEqual(db.call_count, 1)
+            self.assertEqual(db.call_args.args[:2], ('34ABC123', 'TR'))
+            self.assertEqual([o.status for o in h.observations],
+                             ['matched', 'matched', 'conflict'])
+            self.assertIn('Repeated subject reads agree', h.notes[-1])
+
+    def test_tied_subject_reads_do_not_lookup(self):
+        observations = [
+            PlateObservation(0, 0, [0,0,1,1], True, '34ABC123', 'TR', .99, status='read'),
+            PlateObservation(1, 0, [0,0,1,1], True, '06XYZ789', 'TR', .99, status='read'),
+        ]
+        from app.history import _resolve_subject_conflicts
+        note = _resolve_subject_conflicts(observations)
+        self.assertEqual([o.status for o in observations], ['conflict', 'conflict'])
+        self.assertIn('without a repeated winner', note)
+
+    def test_matching_subject_read_corroborates_missing_country(self):
+        observations = [
+            PlateObservation(0, 0, [0,0,1,1], True, '16AKG358', 'TR', .99,
+                             status='read'),
+            PlateObservation(1, 0, [0,0,1,1], True, '16AKG358', '', .99,
+                             status='needs_confirmation'),
+        ]
+        from app.history import _resolve_subject_conflicts
+        _resolve_subject_conflicts(observations)
+        self.assertEqual([o.status for o in observations], ['read', 'read'])
+        self.assertEqual(observations[1].country, 'TR')
+        self.assertIn('corroborated', observations[1].reason)
 
 
 if __name__ == '__main__':

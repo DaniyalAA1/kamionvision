@@ -8,10 +8,17 @@ receive a valuation. Background vehicles retain separate observations.
 
 ## What works
 
-- Each detection is cropped and sent to the configured vision backend. Plate,
+- Each detection is sent as a padded vehicle crop plus an enlarged lower-body
+  view, where tractor-unit plates normally appear. Structured output is used
+  where the backend supports it. Plate,
   country, confidence, photo ID and vehicle box travel with the result. Hidden,
   ambiguous or low-confidence plates do not trigger lookup. Country must be
   explicitly visible; it is not guessed from the selected pricing market.
+- Repeated reads of the selected truck are reconciled before lookup. A repeated
+  plate can corroborate a missing country read from another photo; a repeated
+  winner can exclude a conflicting singleton, while tied conflicts perform no
+  lookup. Standard Turkish plates must carry a valid 01-81 province code and a
+  valid letter/digit layout.
 - A local JSON database of authorized records is matched by normalized plate AND
   country. Spaces/hyphens are removed, but letters are never substituted for digits.
 - Records must identify the source, record ID, VIN, commercial registration and
