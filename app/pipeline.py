@@ -21,6 +21,7 @@ import pandas as pd
 
 from . import evidence as evidence_stage
 from . import gate as gate_stage
+from . import history as history_stage
 from . import identity as identity_stage
 from . import reconcile as reconcile_stage
 from .perception import heads as perception_stage
@@ -220,8 +221,16 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     if on_gate:
         on_gate(gate)
 
-    if gate.decision in (GateDecision.REFUSE_NOT_A_TRUCK, GateDecision.REFUSE_QUALITY,
-                         GateDecision.REFUSE_NO_PHOTOS):
+    refused = (GateDecision.REFUSE_NOT_A_TRUCK, GateDecision.REFUSE_QUALITY,
+               GateDecision.REFUSE_NO_PHOTOS)
+    if history_stage.enabled() and gate.decision not in refused:
+        note("history", "reading vehicle plates and checking available history records")
+        history_started = time.time()
+        result.history = history_stage.scan(gate, backend=backend)
+        result.trace.append(TraceStep("history", f"{len(result.history.observations)} vehicle plate reads",
+                                      round(time.time() - history_started, 2)))
+
+    if gate.decision in refused:
         result.status = "refused"
         result.headline = gate.headline
         result.elapsed_s = round(time.time() - t0, 2)
@@ -363,6 +372,8 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     price = pricing.price_from_evidence(
         price_model(), ev, declared, market=market,
         listings=listings(), extra_widening=widening)
+    if result.history:
+        history_stage.apply_history(price, result.history, ev.vehicle, same_vehicle=ev.same_vehicle)
     price.elapsed_s = round(time.time() - t, 2)
     result.price = price
     result.trace.append(TraceStep(
@@ -384,7 +395,7 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         grade = ev.condition_grade if ev else "unknown"
         band = (f"{price.low:,.0f}–{price.high:,.0f} {price.currency}")
         if abs(price.point - price.baseline_point) > 1:
-            band += (f" after condition, against "
+            band += (f" after condition and available history, against "
                      f"{price.baseline_low:,.0f}–{price.baseline_high:,.0f} asked "
                      f"for comparable trucks")
         if gate.decision == GateDecision.ASK_MORE:

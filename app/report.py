@@ -73,7 +73,7 @@ def price_lines(price: PriceEstimate) -> list[str]:
     if adjusted:
         out.append(f"  What comparable trucks are asking   "
                    f"{money(price.baseline_low, cur)} – {money(price.baseline_high, cur)}")
-        out.append(f"  Adjusted for what the photos show   "
+        out.append(f"  Adjusted for condition and history   "
                    f"{money(price.low, cur)} – {money(price.high, cur)}"
                    f"   (midpoint {money(price.point, cur)})")
     else:
@@ -213,6 +213,24 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
         elif ident_v is not None and ident_v.agreed:
             L.append(f"  Identity confirmed by {len(ident_v.agreed)} independent reads: "
                      f"{', '.join(ident_v.agreed)}")
+        L.append("")
+
+    history = getattr(appraisal, "history", None)
+    if history is not None:
+        L += [thin, "  LICENSE PLATES & VEHICLE HISTORY", thin]
+        for note in history.notes:
+            L.append(f"  {note}")
+        for observation in history.observations:
+            who = "appraised truck" if observation.is_subject else "other vehicle"
+            L.append(f"  {_photo_label(appraisal, observation.photo_id)}, {who}: "
+                     f"{observation.country} {observation.plate or 'unreadable plate'} — {observation.status}")
+            L.append(f"    {observation.reason}")
+            record = observation.record
+            if record:
+                L.append(f"    {record['source']} / {record['record_id']} / as of {record['as_of']}")
+                for event in record['events']:
+                    L.append(f"    {event['date']} [{event['id']}]: {event['description']}")
+        L.extend(f"  {line}" for line in history.reasoning)
         L.append("")
 
     price = appraisal.price

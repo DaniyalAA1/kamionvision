@@ -47,3 +47,6 @@ eval/cache/
 # deliberately - it is what the app runs, not a benchmark candidate.
 /models/*.pt
 !/models/yolov8n.pt
+
+# Local vehicle-history records (do not commit real records).
+/vehicle-history.json
