@@ -21,6 +21,7 @@ import pandas as pd
 
 from . import evidence as evidence_stage
 from . import gate as gate_stage
+from . import identity as identity_stage
 from . import reconcile as reconcile_stage
 from .perception import heads as perception_stage
 from .config import IMAGE_SUFFIXES, LISTINGS_CSV
@@ -145,6 +146,22 @@ def pricing_blocker(ev, gate=None, min_clusters=_LOAD,
                 f"model was fit on is a tractor unit, so it has nothing honest to price "
                 f"a {pretty} against. The condition notes below still stand.")
     return None
+
+def _head_classes() -> list[str]:
+    """The brands the identity head was actually trained on, or [].
+
+    `identity.decide` needs these to enforce the rule reconcile already
+    enforces: a head that has never seen a Scania still names a class, at high
+    confidence, and that guess must not be allowed to vote against a badge the
+    vision model can plainly read. Empty list means "no opinion available",
+    which `decide` treats as the head being allowed to speak - the same
+    degradation as a missing perception.json everywhere else.
+    """
+    try:
+        return list(reconcile_stage._identity_classes())
+    except Exception:                                    # noqa: BLE001
+        return []
+
 
 _LISTINGS: pd.DataFrame | None = None
 _MODEL = None
@@ -281,6 +298,34 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # is no coverage restore that legitimately answers them. Lifting a pricing
     # block on a 0.60-confidence head prediction would be exactly the
     # confident wrong answer the brief singles out.
+
+    # --- 2c. who is this truck --------------------------------------------
+    # Every read that can name the vehicle, adjudicated in one place: the
+    # sampled identity pass, the badge crop, the chassis-plate WMI and the
+    # trained head. Until this existed the only identity number the pipeline
+    # had was the vision model's opinion of its own answer, and only body type
+    # and same_vehicle could stop the run - so nothing could say "I do not know
+    # what this truck is well enough to put a band on it", even though brand is
+    # a term in the price model.
+    #
+    # Placed after reconcile because reconcile is what fills the WMI, and
+    # before the pricing block for the same reason reconcile is: a set that
+    # stops here still gets an honest re-ask list.
+    ev.identity = identity_stage.decide(ev.vehicle, perception,
+                                        head_classes=_head_classes())
+    # One widening per fact. reconcile records a correction when the head
+    # disputes the badge and another when the plate does; each multiplier is
+    # right alone and wrong together, so the verdict supersedes them.
+    recon.widening = identity_stage.merge_widening(ev.identity, recon.widening)
+    if ev.identity.status != "confirmed":
+        result.trace.append(TraceStep(
+            "identity", f"{ev.identity.status}: {ev.identity.reason}", 0.0))
+    # The re-ask path for identity, which existed only for capture quality.
+    # Ordered behind the gate's own requests - those are canonical views the
+    # seller can shoot right now.
+    if ev.identity.reask and ev.identity.status in ("unknown", "disputed"):
+        if ev.identity.reask not in result.requests:
+            result.requests.append(ev.identity.reask)
 
     if gate.blocks_pricing:
         result.status = "need_more_photos"
