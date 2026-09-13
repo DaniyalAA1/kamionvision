@@ -4,7 +4,7 @@
    numbers that belong to the model - R squared, out-of-fold coverage, feature
    contributions in log space, backend ids, stage timings - are all still on
    the page, because the honesty rules require them to be, but they are inside
-   `How I worked this out` rather than between a person and their answer.
+   `How this number was reached` rather than between a person and their answer.
 
    What survives in the open is what a buyer would ask a mechanic: what is
    wrong with it, what is right with it, what could you not see, and what is
@@ -51,10 +51,9 @@ function findings(a, ev, runElev) {
 
   const n = ev.issues.length;
   const major = ev.issues.filter((i) => i.severity === 'major').length;
-  $('findings-sub').textContent =
-    `${n} thing${n === 1 ? '' : 's'} worth knowing about`
-    + (major ? `, ${major} of them serious. ` : '. ')
-    + 'Each one names the photo it came from — press it to see the evidence marked on that photo.';
+  $('findings-sub').textContent = major
+    ? `${n} findings, ${major} major. Press one to mark it on the photo.`
+    : `${n} finding${n === 1 ? '' : 's'}. Press one to mark it on the photo.`;
 
   const list = [...ev.issues].sort(
     (x, y) => (SEV_ORDER[x.severity] ?? 9) - (SEV_ORDER[y.severity] ?? 9));
@@ -69,7 +68,7 @@ function findings(a, ev, runElev) {
     /* An unreadable severity is not a minor defect. It is shown with its photo
        and weighted at zero rather than rounded up, so it says so here too. */
     part.append(el('span', 'finding-weight', i.ungraded
-      ? 'reported, not graded'
+      ? 'reported without a grade'
       : `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`));
     b.append(partIcon(i.component), part, el('span', 'finding-text', i.observation));
 
@@ -191,7 +190,7 @@ function systems(ev) {
     const definition = el('dd');
     const line = gist(v);
     if (line === String(v || '').trim() || !v) {
-      definition.append(el('p', 'system-gist', line || 'Not in these photos'));
+      definition.append(el('p', 'system-gist', line || 'Unseen in this set'));
     } else {
       const detail = el('details', 'system-detail');
       detail.append(el('summary', null, line), el('p', null, v));
@@ -226,7 +225,7 @@ function table(head, rows) {
 
 function gist(text) {
   const t = String(text || '').trim();
-  if (!t || /^not visible/i.test(t)) return 'Not in these photos';
+  if (!t || /^not visible/i.test(t)) return 'Unseen in this set';
   const sentence = t.split(/(?<=[.!?])\s+/)[0] || t;
   return sentence.length > 120 ? `${sentence.slice(0, 116)}…` : sentence;
 }
@@ -277,7 +276,7 @@ function working(a, ev, price) {
                 [`${c.make || ''} ${c.model || ''}`.trim()],
                 [kkm(c.km), 'num'],
                 [money(c.price, c.currency), 'num']])),
-        el('p', null, 'These are asking prices, not prices anything sold for.')));
+        el('p', null, 'These figures are estimated asking prices rather than prices anything sold for.')));
     }
 
     const accuracy = [];
@@ -363,7 +362,7 @@ function working(a, ev, price) {
     const bits = [];
     bits.push(el('p', null, `Answered by ${ev.backend} / ${ev.model}. Each photo got `
       + `its own call: ${ev.photos_read} read`
-      + (ev.photos_failed ? `, ${ev.photos_failed} could not be` : '')
+      + (ev.photos_failed ? `, ${ev.photos_failed} unread` : '')
       + `, then a synthesis pass over the results.`));
     if (calls.length) {
       bits.push(table([['Call'], ['Seconds', 'num']],
@@ -417,7 +416,7 @@ function vehicleHistory(a) {
       for (const e of o.record.events || []) {
         row.append(el('p', null, `${e.date} · ${e.type} · ${e.description} [${e.id}]`));
       }
-      if (!o.record.events.length) row.append(el('p', null, 'No events in this source; this does not prove the vehicle is accident-free.'));
+      if (!o.record.events.length) row.append(el('p', null, 'This source lists zero events. Absence of a record leaves accident history unproven.'));
     }
     return row;
   }));

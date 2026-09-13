@@ -318,6 +318,25 @@ class IdentityFailurePosture(unittest.TestCase):
         self.assertEqual(len(read.calls), 3)
         self.assertTrue(all(str(name).startswith("identity") for name, _ in read.calls))
 
+    def test_each_sample_is_announced_while_it_runs(self):
+        # The rail used to sit on three "Reading…" placeholders for the whole
+        # of pass A. The screen can only show a sample if this callback fires
+        # before the call and again when the read lands.
+        events = []
+        client = _Client([_identity_json(),
+                          _identity_json(make="MAN", model="TGX"),
+                          _identity_json()])
+        sampling.identity_consensus(
+            [client], self.selected, None, max_tokens=800, samples=3,
+            on_activity=events.append)
+        started = [e for e in events if e.get("status") == "reading"]
+        landed = [e for e in events if e.get("status") == "read"]
+        self.assertEqual([e["sample"] for e in started], [1, 2, 3])
+        self.assertEqual([e["of"] for e in started], [3, 3, 3])
+        self.assertEqual(started[0]["photo_ids"], [0])
+        self.assertEqual([e["model"] for e in landed], ["F-MAX", "TGX", "F-MAX"])
+        self.assertTrue(all(e["phase"] == "identity" for e in events))
+
 
 # --- item 7: pass A's own photo selection ----------------------------------
 

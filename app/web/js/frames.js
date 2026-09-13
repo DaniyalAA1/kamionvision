@@ -18,10 +18,18 @@
 
    Everything outside the subject is dimmed rather than deleted: a person can
    still see what else was in the frame, and `show everything it detected`
-   brings the rest of the boxes back for anyone who wants them. */
+   brings the rest of the boxes back for anyone who wants them.
 
-import { $, el, svg, viewName, fixed, animate, reduced, titleise } from './dom.js';
-import { partIcon } from './icons.js';
+   The subject chip names the camera angle (front, side, rear ¾), not a
+   generic "being appraised" caption. Inner boxes are findings only, and
+   only the active one is drawn - a stack of healthy component regions
+   inside the subject is how the overlay became unreadable.
+
+   A close-up often has no truck-shaped object. Those frames still get an
+   angle box: the photograph itself is the subject, inset so the stroke
+   does not sit on the clip edge. */
+
+import { $, el, svg, viewName, viewAngle, fixed, animate, reduced, titleise } from './dom.js';
 
 const VEHICLE = new Set(['truck', 'bus', 'car', 'train', 'motorcycle', 'bicycle',
                          'boat', 'airplane']);
@@ -43,14 +51,28 @@ const partName = (id) => ({engine_bay:'Engine bay', windscreen_glass:'Windshield
 
 function clearPartTour() { partTimers.forEach(clearTimeout); partTimers = []; }
 
+const SEV_RANK = { cosmetic: 0, minor: 1, moderate: 2, major: 3 };
+
+function validBox(box) {
+  return Array.isArray(box) && box.length === 4 &&
+    box.every(Number.isFinite) && box[0] >= 0 && box[1] >= 0 &&
+    box[2] > 0 && box[3] > 0 && box[0] + box[2] <= 1.001 && box[1] + box[3] <= 1.001;
+}
+
+/* Findings only, one box per component. Healthy `component_regions` used to
+   stack eight faded rectangles inside the subject and drown the angle mark. */
 function locatedParts(finding) {
   if (!finding || finding.error) return [];
-  const items = [...(finding.issues || []).map(i => ({...i, kind:'finding'})),
-    ...(finding.component_regions || []).filter(r => !(finding.issues || []).some(i => i.component === r.component && i.box))
-      .map(r => ({...r, kind:'visible'}))];
-  return items.filter(p => Array.isArray(p.box) && p.box.length === 4 &&
-    p.box.every(Number.isFinite) && p.box[0] >= 0 && p.box[1] >= 0 &&
-    p.box[2] > 0 && p.box[3] > 0 && p.box[0]+p.box[2] <= 1.001 && p.box[1]+p.box[3] <= 1.001);
+  const best = new Map();
+  for (const issue of finding.issues || []) {
+    if (!validBox(issue.box)) continue;
+    const prev = best.get(issue.component);
+    if (!prev || (SEV_RANK[issue.severity] || 0) > (SEV_RANK[prev.severity] || 0)) {
+      best.set(issue.component, { ...issue, kind: 'finding' });
+    }
+  }
+  return [...best.values()].sort(
+    (a, b) => (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0));
 }
 
 function focusPart(index) {
@@ -68,8 +90,6 @@ export function setSource(photoUrls, photoChecks, decision, evidenceIds = null) 
   checks = photoChecks || [];
   findings = {};
   evidencePhotos = evidenceIds === null ? null : new Set(evidenceIds);
-  const intel = $('frame-intel');
-  if (intel) intel.replaceChildren();
   /* Truck detection is a set-level rule, never per-photo: a tire close-up
      contains no truck-shaped object and is still a photo of the truck. So a
      box only earns the refusal colour when the whole set was refused for not
@@ -82,8 +102,23 @@ export function setFinding(finding) {
   findings[finding.photo_id] = finding;
   updateStripCellStatus(finding);
   if (current && current.photo_id === finding.photo_id) {
-    renderIntel(current, finding);
     drawBoxes($('frame-boxes'), current);
+  }
+}
+
+export function applyViews(photos) {
+  for (const patch of photos || []) {
+    const check = checkFor(patch.photo_id);
+    if (!check) continue;
+    if (patch.view) check.view = patch.view;
+    if (patch.subject_box === null) {
+      check.subject_box = null;
+      (check.detections || []).forEach((d) => { d.is_subject = false; });
+    }
+  }
+  if (current) {
+    drawBoxes($('frame-boxes'), current);
+    writeMeta(current);
   }
 }
 
@@ -127,53 +162,74 @@ export const hasHiddenBoxes = (check) =>
 
 /* ---------- featured frame ---------- */
 
+function paintFrame(check, source) {
+  current = check;
+  const img = $('frame-img');
+  img.alt = check.usable ? viewName(check.view) : 'Dropped';
+  img.src = source;
+  img.classList.add('in');
+  if (check.width && check.height) {
+    $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
+  }
+  fitChips();
+  drawBoxes($('frame-boxes'), check);
+  writeMeta(check);
+  const toggle = $('show-all');
+  if (toggle) toggle.hidden = !hasHiddenBoxes(check);
+}
+
 export function showFrame(check) {
-  if (!check) return;
+  if (!check) return Promise.resolve(false);
+  const source = urlFor(check.photo_id);
+  const img = $('frame-img');
+  /* Same photograph already on the stage: redraw the boxes without a
+     dissolve, so a finding can land on the frame that was being scanned. */
+  if (current && current.photo_id === check.photo_id && img.getAttribute('src') === source) {
+    clearPartTour();
+    frameVersion += 1;
+    paintFrame(check, source);
+    return Promise.resolve(true);
+  }
   clearPartTour();
   const version = ++frameVersion;
-  const source = urlFor(check.photo_id);
-  const preload = new Image();
-  preload.onload = () => {
-    if (version !== frameVersion) return;
-    const img = $('frame-img');
-    const stage = $('frame-stage');
-    stage.querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
-    if (img.getAttribute('src') && !reduced()) {
-      const previous = img.cloneNode();
-      previous.removeAttribute('id');
-      previous.alt = '';
-      previous.setAttribute('aria-hidden', 'true');
-      previous.className = 'frame-outgoing in';
-      stage.insertBefore(previous, img);
-      previous.addEventListener('animationend', () => previous.remove(), { once: true });
-    }
-    current = check;
-    img.alt = check.usable ? viewName(check.view) : 'frame the gate dropped';
-    img.src = source;
-    img.classList.add('in');
-    if (check.width && check.height) {
-      $('frame-boxes').setAttribute('viewBox', `0 0 ${check.width} ${check.height}`);
-    }
-    fitChips();
-    drawBoxes($('frame-boxes'), check);
-    writeMeta(check);
-    renderIntel(check, findings[check.photo_id] || null);
-    const toggle = $('show-all');
-    if (toggle) toggle.hidden = !hasHiddenBoxes(check);
-  };
-  preload.onerror = () => {
-    if (version !== frameVersion) return;
-    current = null;
-    $('show-all').hidden = true;
-    $('frame-img').removeAttribute('src');
-    $('frame-img').alt = 'Photo could not be loaded';
-    $('frame-boxes').replaceChildren();
-    $('frame-chips').replaceChildren();
-    $('frame-meta').textContent = 'Photo could not be loaded. Select another photo to continue.';
-    const intel = $('frame-intel');
-    if (intel) intel.replaceChildren();
-  };
-  preload.src = source;
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    const preload = new Image();
+    preload.onload = () => {
+      if (version !== frameVersion) return settle(false);
+      const stage = $('frame-stage');
+      stage.querySelectorAll('.frame-outgoing').forEach((n) => n.remove());
+      if (img.getAttribute('src') && !reduced()) {
+        const previous = img.cloneNode();
+        previous.removeAttribute('id');
+        previous.alt = '';
+        previous.setAttribute('aria-hidden', 'true');
+        previous.className = 'frame-outgoing in';
+        stage.insertBefore(previous, img);
+        previous.addEventListener('animationend', () => previous.remove(), { once: true });
+        setTimeout(() => previous.remove(), 600);
+      }
+      paintFrame(check, source);
+      settle(true);
+    };
+    preload.onerror = () => {
+      if (version !== frameVersion) return settle(false);
+      current = null;
+      $('show-all').hidden = true;
+      img.removeAttribute('src');
+      img.alt = 'This photo failed to load';
+      $('frame-boxes').replaceChildren();
+      $('frame-chips').replaceChildren();
+      $('frame-meta').textContent = 'This photo failed to load. Select another photo to continue.';
+      settle(false);
+    };
+    preload.src = source;
+  });
 }
 
 // Keep HTML labels aligned with the contained image, including portrait photos.
@@ -181,7 +237,10 @@ function fitChips() {
   if (!current?.width || !current?.height) return;
   const stage = $('frame-stage');
   const scale = Math.min(stage.clientWidth / current.width, stage.clientHeight / current.height);
-  $('frame-chips').style.inset = `${(stage.clientHeight - current.height * scale) / 2}px ${(stage.clientWidth - current.width * scale) / 2}px`;
+  const inset = `${(stage.clientHeight - current.height * scale) / 2}px ${(stage.clientWidth - current.width * scale) / 2}px`;
+  $('frame-chips').style.inset = inset;
+  const field = $('scan-field');
+  if (field) field.style.inset = inset;
 }
 new ResizeObserver(fitChips).observe($('frame-stage'));
 
@@ -194,14 +253,34 @@ const subjectOf = (all, check) =>
   all.find((d) => d.is_subject) ||
   (check.subject_box ? all.find((d) => sameBox(d.box, check.subject_box)) : undefined);
 
+/* Every photo gets an angle mark. YOLO's subject wins; then the gate's
+   subject_box; then the frame itself, because a tire close-up is still
+   a photo of the truck and used to render with no box at all. */
+function angleBox(check, detected) {
+  if (detected && detected.box) return detected.box;
+  if (Array.isArray(check.subject_box) && check.subject_box.length === 4)
+    return check.subject_box;
+  if (check.width && check.height) {
+    const pad = Math.max(8, Math.min(check.width, check.height) * 0.015);
+    return [pad, pad, check.width - pad, check.height - pad];
+  }
+  return null;
+}
+
 function drawBoxes(root, check) {
+  const shownSrc = $('frame-img')?.getAttribute('src') || '';
+  const want = urlFor(check.photo_id);
+  if (!want || shownSrc !== want) return;
+
   root.replaceChildren();
   const chips = $('frame-chips');
   chips.replaceChildren();
   const all = (check.detections || []).filter(
     (d) => d.box && d.box.length === 4 && check.width && check.height);
 
-  const subject = subjectOf(all, check);
+  const detected = subjectOf(all, check);
+  const box = angleBox(check, detected);
+  const subject = detected || (box ? { box } : null);
   const blockedLabel = (refusedAsNotATruck && check.non_truck_subject)
     ? String(check.non_truck_subject).split(' (')[0] : null;
   const disqualifying = blockedLabel
@@ -209,18 +288,23 @@ function drawBoxes(root, check) {
 
   /* Default: the subject, plus whatever the gate refused on. Everything else
      is behind the toggle. */
-  const shown = showAll ? all
-    : [subject, ...disqualifying].filter((d, i, list) => d && list.indexOf(d) === i);
+  const extras = showAll ? all : disqualifying;
+  const shown = [subject, ...extras].filter((d, i, list) => d && list.indexOf(d) === i);
 
   /* Darken the frame outside the subject, drawn as one even-odd path so the
-     subject stays at full brightness without a second image. */
+     subject stays at full brightness without a second image. A close-up's
+     fallback box is the frame itself - dimming that only paints a rim. */
   if (subject && !showAll && check.width && check.height) {
     const [x1, y1, x2, y2] = subject.box;
-    const outer = `M0 0H${check.width}V${check.height}H0Z`;
-    const inner = `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
-    const dim = svg('path', { class: 'dim', d: `${outer} ${inner}`, 'fill-rule': 'evenodd' });
-    root.append(dim);
-    animate(dim, { opacity: [0, 1] }, { duration: 0.45, delay: 0.1 });
+    const frac = (Math.max(1, x2 - x1) * Math.max(1, y2 - y1))
+      / (check.width * check.height);
+    if (frac < 0.85) {
+      const outer = `M0 0H${check.width}V${check.height}H0Z`;
+      const inner = `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+      const dim = svg('path', { class: 'dim', d: `${outer} ${inner}`, 'fill-rule': 'evenodd' });
+      root.append(dim);
+      animate(dim, { opacity: [0, 1] }, { duration: 0.45, delay: 0.1 });
+    }
   }
 
   shown.forEach((d, i) => {
@@ -253,7 +337,7 @@ function drawBoxes(root, check) {
 
     /* The label is HTML over the frame, not inside the scaled viewBox, so it
        renders at its real size whatever the frame is shown at. */
-    const text = isSubject ? 'the truck being appraised'
+    const text = isSubject ? viewAngle(check.view)
       : (blockedLabel && d.label === blockedLabel) ? d.label
       : `${d.label} ${fixed(d.confidence, 2)}`;
     const chip = el('span', 'box-chip', text);
@@ -266,28 +350,30 @@ function drawBoxes(root, check) {
 
     animate(r, { strokeDashoffset: [perim, 0] },
             { duration: 0.55, delay: 0.12 + i * 0.07, ease: [0.2, 0.7, 0.3, 1] });
-    animate(chip, { opacity: [0, 1] }, { duration: 0.25, delay: 0.5 + i * 0.07 });
+    if (!animate(chip, { opacity: [0, 1] }, { duration: 0.25, delay: 0.5 + i * 0.07 })) {
+      chip.style.opacity = '1';
+    }
   });
 
-  // Visible parts and defects are distinct: green/neutral means located,
-  // never "healthy". No geometry is inferred from a view name or truck diagram.
+  /* One inner box at a time: the worst finding, then the next if the viewer
+     stays on the frame. Healthy regions are not drawn. */
   clearPartTour();
   locatedParts(findings[check.photo_id]).forEach((part, index) => {
-    const [x,y,w,h] = part.box;
-    const g = svg('g', {class:'scan-part'});
+    const [x, y, w, h] = part.box;
+    const g = svg('g', { class: 'scan-part' });
     g.dataset.partIndex = String(index);
     g.dataset.kind = part.kind;
-    const rect = svg('rect', {x:x*check.width, y:y*check.height,
-      width:w*check.width, height:h*check.height, pathLength:1});
+    const rect = svg('rect', { x: x * check.width, y: y * check.height,
+      width: w * check.width, height: h * check.height, pathLength: 1 });
     g.append(rect); root.append(g);
     const chip = el('span', 'box-chip scan-part-label',
-      `${String(index+1).padStart(2,'0')} · ${partName(part.component)}${part.kind === 'finding' ? ' · '+part.severity : ' · visible'}`);
+      `${partName(part.component)} · ${part.severity}`);
     chip.dataset.partIndex = String(index);
-    chip.style.left = `${Math.min(x, .65)*100}%`;
-    chip.style.top = `${y*100}%`;
+    chip.style.left = `${Math.min(x, .65) * 100}%`;
+    chip.style.top = `${y * 100}%`;
     if (y > .07) chip.classList.add('above');
     chips.append(chip);
-    if (index) partTimers.push(setTimeout(() => focusPart(index), index*1600));
+    if (index) partTimers.push(setTimeout(() => focusPart(index), index * 1600));
   });
   focusPart(0);
 }
@@ -296,19 +382,13 @@ function writeMeta(check) {
   const meta = $('frame-meta');
   meta.replaceChildren();
   meta.append(el('span', 'fm-view',
-                 check.usable ? viewName(check.view) : 'dropped by the gate'));
+                 check.usable ? viewName(check.view) : 'Dropped'));
   if (!check.usable && (check.reasons || []).length) {
     meta.append(el('span', 'fm-why', check.reasons[0]));
   }
-  /* Why that box, or why none. A close-up of an engine bay with a lorry in
-     the yard behind it gets no box at all, and saying so out loud is the
-     difference between a decision and a silence. */
-  if (check.usable && check.subject_basis) {
-    meta.append(el('span', 'fm-why', check.subject_basis));
+  if (check.usable && evidencePhotos && !evidencePhotos.has(check.photo_id)) {
+    meta.append(el('span', 'fm-why', 'Checked, not sent for a close-up'));
   }
-  /* A capture score of 0.82 means nothing to a seller holding a phone. The
-     word does, and the number is still in the disclosure for anyone who wants
-     to check it. */
   const word = CAPTURE_WORD[check.quality_bucket];
   if (word) {
     const cap = el('span', 'fm-capture', word);
@@ -317,208 +397,9 @@ function writeMeta(check) {
   }
 }
 
-/* ---------- the briefing under the frame ---------- */
-
-/* What the model said about the frame on screen, while it is on screen.
-
-   Every class here is `intel-`-prefixed and every variant travels as a
-   `data-` attribute, because these stylesheets share one global cascade.
-   The column that read the model's blind spots was classed `gaps`, which
-   `result.css` styles as a two-column icon row with a 1.35rem first track -
-   so each line collapsed to its longest word, one item became 440px tall,
-   the card became 3,637px and `.stage-main` became 4,255px against a 768px
-   viewport. Every photograph loaded; all of them were below the fold, with
-   the contact strip and the progress bar. `tests.test_offline.LiveBriefing`
-   pins both halves of that: the namespace, and the height cap.
-
-   Nothing here states a condition the call did not state. An empty issue
-   list means nothing was flagged, which is a fact about the answer - it is
-   not a finding that the component is sound, and the screen does not get to
-   promote one into the other on the model's behalf. */
-
 const WORST = (issues) => issues.some((i) => i.severity === 'major') ? 'major'
   : issues.some((i) => i.severity === 'moderate') ? 'moderate'
   : issues.some((i) => i.severity === 'minor') ? 'minor' : 'cosmetic';
-
-function pill(kind, text) {
-  const node = el('span', 'intel-pill', text);
-  node.dataset.kind = kind;
-  return node;
-}
-
-/* A titled column. `body` is appended as-is; `empty` is the line shown when
-   there is nothing to list, and it says what the model did not say rather
-   than filling the space with a claim. */
-function column(kind, glyph, title, count, items, render, empty) {
-  const col = el('div', 'intel-col');
-  col.dataset.kind = kind;
-  const head = el('h4', 'intel-col-title');
-  head.append(partIcon(glyph), el('span', null, title));
-  if (count !== null) head.append(el('span', 'intel-col-count', String(count)));
-  col.append(head);
-  if (items.length) {
-    const list = el('ul', 'intel-list');
-    items.forEach((item, i) => list.append(render(item, i)));
-    col.append(list);
-  } else {
-    col.append(el('p', 'intel-quiet', empty));
-  }
-  return col;
-}
-
-function issueItem(check, issue, idx) {
-  const li = el('li', 'intel-issue');
-  li.dataset.sev = issue.severity || 'minor';
-  li.dataset.issueId = `${check.photo_id}-${idx}`;
-
-  const head = el('div', 'intel-issue-head');
-  const tag = el('span', 'sev-tag', issue.severity || 'minor');
-  tag.dataset.sev = issue.severity || 'minor';
-  head.append(partIcon(issue.component),
-              el('strong', 'intel-issue-comp', titleise(issue.component)), tag);
-  li.append(head, el('p', 'intel-issue-obs', issue.observation));
-
-  /* The structured half of the finding, in the model's own vocabulary. */
-  const bits = [];
-  if (issue.magnitude) {
-    if (issue.magnitude.state) bits.push(issue.magnitude.state.replace(/_/g, ' '));
-    if (issue.magnitude.extent) bits.push(issue.magnitude.extent.replace(/_/g, ' '));
-    if (issue.magnitude.consumable) bits.push('consumable');
-  }
-  if (issue.price_impact && issue.price_impact !== 'none') {
-    bits.push(`${issue.price_impact} price impact`);
-  }
-  /* Corroboration is a better signal than a confidence decimal, and it is the
-     same one the report uses. */
-  const also = (issue.also_seen_in || []).length;
-  if (also) bits.push(`also in ${also} other photo${also === 1 ? '' : 's'}`);
-  if (bits.length) li.append(el('span', 'intel-mag', bits.join(' · ')));
-
-  /* Hovering a finding lights its box on the frame above, when it has one. */
-  const mark = (on) => {
-    const box = $('frame-boxes')
-      ?.querySelector(`[data-issue-id="${check.photo_id}-${idx}"]`);
-    if (box) box.classList.toggle('highlight', on);
-  };
-  li.addEventListener('mouseenter', () => mark(true));
-  li.addEventListener('mouseleave', () => mark(false));
-  return li;
-}
-
-export function renderIntel(check, finding) {
-  const container = $('frame-intel');
-  if (!container) return;
-  if (container.dataset.photoId !== String(check?.photo_id)) container.scrollTop = 0;
-  container.dataset.photoId = String(check?.photo_id);
-  container.replaceChildren();
-  if (!check) return;
-
-  const card = el('div', 'intel-card');
-  const issues = (finding && !finding.error && finding.issues) || [];
-  const notSelected = !finding && evidencePhotos !== null && !evidencePhotos.has(check.photo_id);
-
-  /* ---- the status line: where this frame is in the run ---- */
-  const top = el('div', 'intel-top');
-  const badge = el('span', 'intel-badge');
-  if (!check.usable) {
-    badge.dataset.level = 'dropped';
-    badge.textContent = 'Not sent to the model';
-  } else if (notSelected) {
-    badge.dataset.level = 'dropped';
-    badge.textContent = 'Photo checked';
-  } else if (!finding) {
-    badge.dataset.level = 'scanning';
-    badge.append(el('span', 'intel-pulse'), document.createTextNode('Reading this frame'));
-  } else if (finding.error) {
-    badge.dataset.level = 'error';
-    badge.textContent = 'This frame could not be read';
-  } else if (!issues.length) {
-    badge.dataset.level = 'clean';
-    badge.textContent = 'Nothing flagged';
-  } else {
-    badge.dataset.level = WORST(issues);
-    badge.textContent = `${issues.length} finding${issues.length === 1 ? '' : 's'}`;
-  }
-  top.append(badge, pill('view',
-    `${viewName(check.view)} · photo ${photoOrdinal(check.photo_id)} of ${checks.length || 1}`));
-
-  if (finding?.odometer_km) {
-    top.append(pill('odo',
-      `${Math.round(finding.odometer_km).toLocaleString('en-US')} km on the dash`));
-  }
-  if (finding?.cropped) top.append(pill('crop', 'cropped to the subject'));
-  /* How the answer was obtained, not how good it is: the close-up is sampled
-     CLOSEUP_SAMPLES times and a fallback names the photo it happened on. */
-  if (finding?.backend) {
-    top.append(pill('backend', finding.samples > 1
-      ? `${finding.samples}× on ${finding.backend}` : finding.backend));
-  }
-  const word = CAPTURE_WORD[check.quality_bucket];
-  if (check.usable && word) top.append(pill('quality', `${word} photo`));
-  card.append(top);
-
-  const parts = locatedParts(finding);
-  if (parts.length) {
-    const nav = el('div', 'intel-parts');
-    nav.setAttribute('aria-label', 'Located parts in this photo');
-    parts.forEach((part, index) => {
-      const button = el('button', 'intel-part', `${index+1} · ${partName(part.component)}`);
-      button.type = 'button'; button.dataset.partIndex = String(index);
-      button.setAttribute('aria-pressed', String(index === 0));
-      button.dataset.active = String(index === 0);
-      button.addEventListener('click', () => { clearPartTour(); focusPart(index); });
-      nav.append(button);
-    });
-    card.append(nav);
-  } else if (finding && !finding.error) {
-    card.append(el('p', 'intel-quiet', 'No reliable part locations returned for this photo. Findings below are not spatially marked.'));
-  }
-
-
-  /* ---- one line: what the frame is of ---- */
-  const headline = el('p', 'intel-headline');
-  if (!check.usable) {
-    headline.dataset.state = 'pending';
-    headline.textContent = `Dropped by the gate: ${(check.reasons || []).join('; ')
-      || 'it did not pass the photo checks'}.`;
-  } else if (notSelected) {
-    headline.dataset.state = 'pending';
-    headline.textContent = 'Not selected for an individual close-up reading.';
-  } else if (!finding) {
-    headline.dataset.state = 'pending';
-    headline.textContent = 'Waiting for this photo’s inspection findings.';
-  } else if (finding.error) {
-    headline.dataset.state = 'pending';
-    headline.textContent = finding.error;
-  } else {
-    headline.textContent = finding.shows
-      || (issues.length ? `${issues.length} observation${issues.length === 1 ? '' : 's'} recorded on this frame.`
-                        : 'Nothing was flagged on this frame.');
-  }
-  card.append(headline);
-
-  /* ---- the three lists ---- */
-  if (finding && !finding.error) {
-    const grid = el('div', 'intel-grid');
-    grid.append(column('issues', 'warning', 'Flagged', issues.length, issues,
-                       (issue, i) => issueItem(check, issue, i),
-                       'Nothing flagged on this frame.'));
-
-    const aside = el('div', 'intel-aside');
-    const strengths = finding.strengths || [];
-    aside.append(column('sound', 'check', 'Named as sound', strengths.length,
-                        strengths, (s) => el('li', null, s),
-                        'Nothing named as sound on this frame.'));
-    const gaps = finding.cannot_tell || [];
-    aside.append(column('gaps', 'search', "Can't tell from this angle",
-                        gaps.length, gaps, (g) => el('li', null, g),
-                        'Nothing recorded as out of view.'));
-    grid.append(aside);
-    card.append(grid);
-  }
-
-  container.append(card);
-}
 
 /* ---------- contact strip ---------- */
 
@@ -612,7 +493,7 @@ export function renderGrid(gate, onPick) {
     img.src = urlFor(c.photo_id);
     img.alt = c.usable ? viewName(c.view) : `dropped: ${(c.reasons || []).join('; ')}`;
     img.loading = 'lazy';
-    b.append(img, el('span', 'thumb-tag', c.usable ? viewName(c.view) : 'not used'));
+    b.append(img, el('span', 'thumb-tag', c.usable ? viewName(c.view) : 'dropped'));
     b.addEventListener('click', () => onPick(c));
     return b;
   }));
@@ -642,7 +523,7 @@ export function openLightbox(check, mark) {
   } else if (check.usable) {
     cap = `${viewName(check.view)} — ${CAPTURE_WORD[check.quality_bucket] || 'unrated'} photo`;
   } else {
-    cap = `Not used: ${(check.reasons || []).join('; ')}`;
+    cap = `Dropped: ${(check.reasons || []).join('; ')}`;
   }
   $('lightbox-cap').textContent = cap;
   $('lightbox').hidden = false;

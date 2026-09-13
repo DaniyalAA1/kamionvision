@@ -32,7 +32,7 @@ async function loadHealth() {
       : 'No vision model is configured, so photos can be checked but not read.';
     $('topbar-state').className = 'topbar-state broken';
   } catch {
-    $('topbar-state').textContent = 'Cannot reach the server.';
+    $('topbar-state').textContent = 'The appraisal server is unreachable.';
     $('topbar-state').className = 'topbar-state broken';
   }
 }
@@ -42,7 +42,7 @@ async function loadGallery() {
     const data = await net.getGallery();
     gallery.render(data, (card) => pick(card, data.declared || {}));
   } catch {
-    gallery.fail('Could not load the trucks.');
+    gallery.fail('The truck gallery failed to load.');
   }
 }
 
@@ -93,9 +93,9 @@ function showSkipped(skipped) {
   const box = $('skipped');
   if (!skipped || !skipped.length) { box.hidden = true; return; }
   box.hidden = false;
-  box.textContent = skipped.length === 1
-    ? `${skipped[0].name} was not used: ${skipped[0].why}.`
-    : `${skipped.length} files were not used: `
+    box.textContent = skipped.length === 1
+      ? `${skipped[0].name} was dropped: ${skipped[0].why}.`
+      : `${skipped.length} files were dropped: `
       + skipped.map((s) => `${s.name} (${s.why})`).join(', ') + '.';
 }
 
@@ -194,7 +194,7 @@ function render(a) {
   if (ev && ev.fell_back_from && ev.fell_back_from.length) {
     fb.hidden = false;
     fb.textContent = 'One of the vision providers was unavailable, so a backup '
-      + 'read the photos instead. The details are under "How I worked this out".';
+      + 'read the photos instead. The details are under "How this number was reached".';
   } else fb.hidden = true;
 
   const askEl = $('asking');
@@ -211,9 +211,9 @@ function render(a) {
 
   if (a.status === 'refused') {
     showRefusal(a.headline,
-                'No photo was sent to a vision model. The checks that run first — '
-                + 'on your machine, in about a second — stopped this before anything '
-                + 'was spent on it.');
+                'The gate stopped the run before any photo was sent to a vision model. '
+                + 'The checks that run first — on your machine, in about a second — '
+                + 'stopped this before anything was spent on it.');
   } else if (price && price.ok) {
     $('band-wrap').hidden = false;
     priceLine(price);
@@ -228,10 +228,6 @@ function render(a) {
   }
 
   renderPanels(a, run.elevationRoot());
-  // A reader inspecting an earlier photo keeps their place when the answer lands.
-  if (run.isFollowing() && !run.hasPendingReview()) {
-    $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
-  }
 }
 
 /* The same band a second time, in US dollars. The price and the bar are in
@@ -282,7 +278,7 @@ function bandNote(price, history) {
   }
   if (Math.abs(price.point - price.baseline_point) <= 1) {
     return 'This is what comparable trucks of this age and mileage are being '
-      + 'asked for. Nothing in the photos moved it.';
+      + 'asked for. Visible condition left the comparable baseline in place.';
   }
   const dir = price.adjustment.pct >= 0 ? 'up' : 'down';
   const why = price.adjustment.pct > 0

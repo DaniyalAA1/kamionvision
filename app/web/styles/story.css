@@ -56,7 +56,7 @@
   margin: 1.1rem 0 1.6rem;
   text-wrap: balance;
 }
-.story-intro .muted { color: #8a9689; }
+.story-intro .muted { color: #4d7ab8; }
 .story-lede {
   max-width: 46ch;
   font-size: clamp(1rem, 1.35vw, 1.18rem);
@@ -694,4 +694,83 @@
   .story.is-driven .act { padding-block: clamp(2.5rem, 6vw, 4.5rem); border-bottom: 1px solid var(--stage-rule); }
   .story.is-driven .beat { display: grid; padding-block: clamp(2rem, 5vw, 3.5rem); border-bottom: 1px solid var(--stage-rule); }
   .story.is-driven .stage-count { display: none; }
+}
+
+/* The frozen sentences stay in the markup. On the pinned stage they yield
+   to the photographs; the type that remains is larger. Each photo deepens
+   the blue wash so the six frames are not the same night. */
+.story-intro {
+  background: linear-gradient(180deg, #d6e8ff 0%, var(--paper) 70%);
+}
+.story-intro .eyebrow,
+.story-lede { display: none; }
+.story-intro h2 {
+  font-size: clamp(3.2rem, 7.2vw, 6.8rem);
+  margin: 0;
+}
+.act h3 { font-size: clamp(2.6rem, 5.8vw, 4.8rem); }
+.beat-verdict .beat-shows {
+  font-size: clamp(1.75rem, 2.9vw, 2.55rem);
+  max-width: 18ch;
+}
+.gate-facts dd { font-size: 1.22rem; }
+.issue-text { font-size: 1.08rem; }
+.readings b { font-size: 1.85rem; }
+.band-values { font-size: clamp(2.3rem, 5.2vw, 4rem); }
+.merge-count { font-size: clamp(2rem, 4vw, 3.2rem); }
+.limits li { font-size: 1.12rem; }
+
+.story.is-driven .act-note,
+.story.is-driven .act-timing,
+.story.is-driven .beat-strengths,
+.story.is-driven .witness-year,
+.story.is-driven .lot-figure figcaption,
+.story.is-driven .check-verdict,
+.story.is-driven .band-usd {
+  display: none;
+}
+
+.story-stage {
+  --tone-a: #12366f;
+  --tone-b: #081b43;
+  position: relative;
+  background:
+    linear-gradient(160deg, var(--tone-a) 0%, var(--tone-b) 52%, var(--stage) 100%);
+  transition: background .55s var(--ease-out);
+}
+.story-stage > * { position: relative; z-index: 1; }
+
+.story[data-tone="identify"] .story-stage { --tone-a: #1a4a86; --tone-b: #0a2248; }
+.story[data-tone="photo-0"]  .story-stage { --tone-a: #4d8fe8; --tone-b: #123a72; }
+.story[data-tone="photo-1"]  .story-stage { --tone-a: #3478d4; --tone-b: #0f3266; }
+.story[data-tone="photo-2"]  .story-stage { --tone-a: #2164c0; --tone-b: #0c2b5a; }
+.story[data-tone="photo-3"]  .story-stage { --tone-a: #1450a8; --tone-b: #0a244e; }
+.story[data-tone="photo-4"]  .story-stage { --tone-a: #0d3d90; --tone-b: #081c40; }
+.story[data-tone="photo-5"]  .story-stage { --tone-a: #082c74; --tone-b: #051428; }
+.story[data-tone="merge"]    .story-stage { --tone-a: #1b5aa0; --tone-b: #0a274c; }
+.story[data-tone="check"]    .story-stage { --tone-a: #1570b8; --tone-b: #0b3060; }
+.story[data-tone="price"]    .story-stage { --tone-a: #0085ff; --tone-b: #0a3470; }
+.story[data-tone="limits"]   .story-stage { --tone-a: #0e3a70; --tone-b: #071428; }
+
+.beat { --beat-tint: #4d8fe8; }
+.beat[data-beat="0"] { --beat-tint: #8ec4ff; }
+.beat[data-beat="1"] { --beat-tint: #5ea0ee; }
+.beat[data-beat="2"] { --beat-tint: #3b82dc; }
+.beat[data-beat="3"] { --beat-tint: #2468c4; }
+.beat[data-beat="4"] { --beat-tint: #154ea4; }
+.beat[data-beat="5"] { --beat-tint: #0b387e; }
+
+.beat-figure .frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--beat-tint) 38%, transparent), transparent 34%),
+    linear-gradient(200deg, transparent 42%, color-mix(in srgb, var(--beat-tint) 32%, #041028));
+}
+.story.is-driven .beat-figure img {
+  box-shadow: 0 24px 60px -22px color-mix(in srgb, var(--beat-tint) 55%, #000);
+  outline-color: color-mix(in srgb, var(--beat-tint) 40%, transparent);
 }

@@ -33,6 +33,24 @@ export const viewName = (s) =>
   titleise(String(s || '').replace(/_34$/, '_three_quarter'))
     .replace(/three quarter/, '¾');
 
+/* The subject-box chip is the angle, not a generic "being appraised" caption.
+   Keys must stay aligned with vision.VIEW_LABELS - a missing one falls back
+   to viewName, and a test asserts the map is exhaustive. */
+export const VIEW_ANGLE = {
+  exterior_front: 'Front',
+  exterior_front_34: 'Front ¾',
+  exterior_side: 'Side',
+  exterior_rear: 'Rear',
+  interior_cab: 'Cab interior',
+  dashboard_odometer: 'Dashboard',
+  tire_wheel: 'Tires',
+  engine_bay: 'Engine bay',
+  chassis_undercarriage: 'Undercarriage',
+  fifth_wheel: 'Fifth wheel',
+  damage_detail: 'Damage close-up',
+};
+export const viewAngle = (s) => VIEW_ANGLE[s] || viewName(s) || 'This truck';
+
 /* Comparable.km and several confidences are nullable on the wire, and the old
    screen did bare arithmetic on them. These return an em dash instead of NaN. */
 export const kkm = (v) =>

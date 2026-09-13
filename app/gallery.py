@@ -176,6 +176,8 @@ def _demo_cards() -> list[dict]:
     for case in resolved_cases():
         folder = REPO / case["folder"]
         photos = pipeline.collect_photos(folder) if folder.exists() else []
+        if not photos:
+            continue
         declared = case.get("declared") or {}
         lid = str(case.get("listing_id") or "")
         out.append({

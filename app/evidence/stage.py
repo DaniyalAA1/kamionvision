@@ -57,7 +57,6 @@ from ..config import (BADGE_MAX_TOKENS, BADGE_READ, CALIBRATION_MAX_TOKENS,
                       MAX_EVIDENCE_PHOTOS, SYNTHESIS_MAX_TOKENS)
 from ..schema import Correction, EvidenceReport, GateReport, PhotoFinding
 from ..subject import WHOLE_VEHICLE_VIEWS
-from ..log import get_logger
 from . import calibration, passes, prompts, sampling
 
 # View priority for photo selection: what a buyer needs, in order.
@@ -256,9 +255,7 @@ def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
     count of finished photos and it stays one.
     """
     findings: list[PhotoFinding] = []
-    logger = get_logger("evidence")
     workers = max(1, min(EVIDENCE_CONCURRENCY, len(selected)))
-    logger.info("Fan-out closeup inspection: %d photos across %d workers", len(selected), workers)
     def inspect(check):
         if on_activity:
             on_activity({"phase": "photo", "photo_id": check.photo_id, "view": check.view})
@@ -278,14 +275,13 @@ def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
                 finding, corrections, fallbacks = future.result()
                 report.corrections.extend(corrections)
                 report.fell_back_from.extend(fallbacks)
-                logger.info("Photo %d (%s) finished in %.2fs with %d issue(s)",
-                            finding.photo_id, finding.view, finding.elapsed_s, len(finding.issues))
             except Exception as exc:
+                # One lost frame is not a lost appraisal, but it is not nothing
+                # either: the reader is told which photo went unread.
                 finding = PhotoFinding(photo_id=check.photo_id, view=check.view,
                                        error=f"{type(exc).__name__}: {exc}")
                 report.parse_warnings.append(
                     f"photo {check.photo_id} ({check.filename}) could not be read: {exc}")
-                logger.warning("Photo %d (%s) read failed: %s", check.photo_id, check.view, exc)
             report.calls.append([f"photo {finding.photo_id}", finding.elapsed_s])
             findings.append(finding)
             if on_photo:
@@ -431,11 +427,14 @@ def run(gate: GateReport, declared: dict | None = None, *,
     # `limit` is pass B's budget and IDENTITY_PHOTOS is pass A's; the smaller
     # wins, so a caller asking for a cheap four-frame run gets one.
     identity_photos = select_identity_photos(gate, min(IDENTITY_PHOTOS, limit))
+    identity_ids = [c.photo_id for c in identity_photos]
     if on_activity:
-        on_activity({"phase": "identity", "detail": "Identifying the truck and checking that the photos show the same vehicle"})
+        on_activity({"phase": "identity", "status": "start",
+                     "detail": "Identifying the truck and checking that the photos show the same vehicle",
+                     "photo_ids": identity_ids})
     read = sampling.identity_consensus(chain, identity_photos, declared,
                                        max_tokens=IDENTITY_MAX_TOKENS, repair=_repair,
-                                       on_activity=on_activity)
+                                       **({"on_activity": on_activity} if on_activity else {}))
     client = read.client
     report.vehicle = read.vehicle
     report.same_vehicle, report.vehicle_mismatch = read.same_vehicle, read.vehicle_mismatch
@@ -444,6 +443,11 @@ def run(gate: GateReport, declared: dict | None = None, *,
     report.corrections.extend(read.corrections)
     report.parse_warnings.extend(read.warnings)
     report.calls.extend(read.calls)
+    if on_activity:
+        on_activity({"phase": "identity", "status": "done",
+                     "make": report.vehicle.make, "model": report.vehicle.model,
+                     "same_vehicle": report.same_vehicle,
+                     "photo_ids": identity_ids})
     vehicle_line = passes.vehicle_line(report.vehicle)
 
     # The truck's own baseline, composed once. `declared` has been in hand

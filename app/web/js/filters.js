@@ -213,7 +213,7 @@ export function create({ bar, pills, onChange }) {
       return row;
     }));
     if (!optionsFor(group.id).length) {
-      menu.append(el('p', 'facet-none', 'Nothing to filter by here.'));
+      menu.append(el('p', 'facet-none', 'This facet is empty.'));
     }
     button.classList.toggle('on', on.size > 0);
     button.querySelector('.facet-n').textContent = on.size ? String(on.size) : '';

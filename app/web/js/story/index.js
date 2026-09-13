@@ -56,6 +56,13 @@ function setup(section) {
 
   const reveal = makeReveals();
   let current = -1;
+  let tone = '';
+
+  function setTone(next) {
+    if (next === tone) return;
+    tone = next;
+    section.dataset.tone = next;
+  }
 
   function apply(p) {
     // Which act, and how far through it.
@@ -84,8 +91,10 @@ function setup(section) {
       const index = Math.min(n - 1, Math.floor(scaled));
       deck.update(index + dwell(scaled - index));
       if (actCount) actCount.textContent = `${index + 1} / ${n}`;
-    } else if (actCount) {
-      actCount.textContent = '';
+      setTone(`photo-${index}`);
+    } else {
+      if (actCount) actCount.textContent = '';
+      setTone(act.dataset.act === 'gate' ? 'identify' : act.dataset.act);
     }
   }
 
@@ -114,6 +123,7 @@ function start() {
     if (off) {
       if (stop) { stop(); stop = null; }
       section.classList.remove('is-driven');
+      delete section.dataset.tone;
       wired.deck?.reset();
       wired.acts.forEach((a) => {
         a.classList.remove('is-live', 'is-done');

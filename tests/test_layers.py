@@ -215,6 +215,23 @@ class Reconciliation(unittest.TestCase):
         self.assertEqual(gate_report.missing_views, ["exterior_front"])
         self.assertNotIn("exterior_front", gate_report.views_present)
 
+    def test_a_part_frame_cannot_keep_an_exterior_view_into_the_closeup(self):
+        """CLIP called a tire exterior_rear; the close-up then invented a
+        fuel tank on the tread. The framing head has to retag the photo
+        before that call, not after."""
+        check = _photo(0, usable=True, view="exterior_rear",
+                       subject_box=[0, 200, 500, 900])
+        check.detections = []
+        gate_report = GateReport(photos=[check], views_present=["exterior_rear"])
+        p = _perception(PhotoPerception(
+            photo_id=0, view="tire_wheel", view_conf=0.95,
+            framing="part", framing_conf=0.95))
+        updates = reconcile.refine_closeup_views(gate_report, p)
+        self.assertEqual(check.view, "tire_wheel")
+        self.assertIsNone(check.subject_box)
+        self.assertEqual(updates[0]["photo_id"], 0)
+        self.assertEqual(updates[0]["view"], "tire_wheel")
+
     def test_a_part_tagged_frame_cannot_clear_an_existing_pricing_block(self):
         gate_report = GateReport(
             photos=[_photo(0, usable=True, view="exterior_side")],

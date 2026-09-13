@@ -143,7 +143,7 @@ def perception_lines(appraisal: Appraisal) -> list[str]:
 def condition_lines(appraisal: Appraisal, evidence: EvidenceReport) -> list[str]:
     out: list[str] = []
     if not evidence.issues:
-        return ["  Nothing flagged in the photos supplied."]
+        return ["  0 findings in the photos supplied."]
     remaining = list(evidence.issues)
     for title, members in COMPONENT_GROUPS:
         group = [i for i in remaining if i.component in members]
@@ -154,7 +154,7 @@ def condition_lines(appraisal: Appraisal, evidence: EvidenceReport) -> list[str]
         out.append(f"  {title}")
         for issue in sorted(group, key=lambda i: -SEVERITY_ORDER.get(i.severity, 0)):
             mark = SEVERITY_MARK.get(issue.severity, "  ")
-            band = ("reported, not graded" if issue.ungraded
+            band = ("reported without a grade" if issue.ungraded
                     else f"{issue.severity}/{issue.price_impact} impact")
             out.append(f"   {mark} [{band}] {issue.observation}")
             out.append(f"        seen in {_photo_label(appraisal, issue.photo_id)}"
