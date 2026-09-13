@@ -131,7 +131,7 @@ def _check_odometer(gate, evidence, report) -> None:
     try:                                                 # RapidOCR loads here
         best_pid, best = None, None
         for c in cands:
-            r = odometer.read(c.path)
+            r = odometer.read(c.path, subject_box=c.subject_box)
             if r.km is None:
                 continue
             if best is None or r.confidence > best.confidence:

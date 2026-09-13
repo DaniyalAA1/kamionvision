@@ -31,18 +31,24 @@ import threading
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+import numpy as np
+from PIL import Image, ImageOps
+
 # Plausible total mileage for a heavy tractor, in km. Below the floor is a trip
 # meter or a gauge tick; above the ceiling is an OCR run-together of two numbers.
 KM_FLOOR = 1_000
 KM_CEILING = 2_000_000
+MILES_TO_KM = 1.60934
+CROP_PAD = 0.08
+CROP_MAX_AREA_FRAC = 0.50
+CROP_MIN_SIDE_PX = 80
 
-# A token like "242780km" or "0499150km": optional leading zero, 4-7 digits, then
-# "km" with nothing after it. The trailing-end anchor is what rejects "km/h",
-# "kmtoE" and "km/l"; requiring pure digits rejects the decimal trip figures
-# ("976.6km", "32.7l/100km").
-_JOINED = re.compile(r"^0?(\d{4,7})km$")
+# A token like "242780km", "242780mi" or "242780miles": optional leading zero,
+# 4-7 digits, then a bare unit. The trailing-end anchor rejects "km/h", "kmtoE"
+# and "km/l"; requiring pure digits rejects decimal trip figures.
+_JOINED = re.compile(r"^0?(\d{4,7})(km|mi|miles)$")
 _BARE_INT = re.compile(r"^0?(\d{4,7})$")
-_LONE_KM = re.compile(r"^km$")
+_LONE_UNIT = re.compile(r"^(km|mi|miles)$")
 
 _LOCK = threading.Lock()
 _OCR = None
@@ -64,7 +70,7 @@ class Candidate:
     text: str
     ocr_conf: float
     box: list[float]          # xyxy in pixels
-    rule: str                 # "joined" | "adjacent"
+    rule: str                 # "joined" | "adjacent" and *_miles variants
 
 
 @dataclass
@@ -89,12 +95,17 @@ def _norm(text: str) -> str:
     t = (text or "").strip().lower().replace(" ", "")
     # OCR sometimes emits fullwidth / OCR-B digits; map the common ones.
     trans = str.maketrans("oOlLiISB", "00111158")
+    # Preserve a real unit suffix while correcting lookalikes in its digit prefix.
+    for unit in ("miles", "km", "mi"):
+        if t.endswith(unit):
+            return t[:-len(unit)].translate(trans) + unit
     return t.translate(trans)
 
 
-def _tokens(image: str | Path):
+def _tokens(image: str | Path | np.ndarray):
     """RapidOCR -> [(text, confidence, xyxy_box)]. Empty on an unreadable frame."""
-    result, _ = _engine()(str(image))
+    source = str(image) if isinstance(image, (str, Path)) else image
+    result, _ = _engine()(source)
     out = []
     for box, text, conf in (result or []):
         xs = [p[0] for p in box]
@@ -103,14 +114,12 @@ def _tokens(image: str | Path):
     return out
 
 
-def read(image: str | Path) -> OdometerRead:
-    """Read the odometer from a single dashboard photo.
+def _in_km(value: int, unit: str) -> int:
+    return round(value * MILES_TO_KM) if unit in {"mi", "miles"} else value
 
-    Returns an `OdometerRead`; `.km is None` when nothing plausible was found,
-    which is a deliberate abstention, not a zero. A wrong six-figure mileage is
-    far more damaging than no reading, because km is a primary price term.
-    """
-    tokens = _tokens(image)
+
+def _select(tokens) -> OdometerRead:
+    """Select one plausible total-mileage token from OCR output."""
     res = OdometerRead(n_text_tokens=len(tokens))
     if not tokens:
         res.reason = "no text found in the frame"
@@ -124,35 +133,40 @@ def read(image: str | Path) -> OdometerRead:
         m = _JOINED.match(_norm(text))
         if not m:
             continue
-        km = int(m.group(1))
+        unit = m.group(2)
+        km = _in_km(int(m.group(1)), unit)
         if KM_FLOOR <= km <= KM_CEILING:
             cands.append(Candidate(km=km, text=text, ocr_conf=round(conf, 3),
-                                   box=[round(v, 1) for v in box], rule="joined"))
+                                   box=[round(v, 1) for v in box],
+                                   rule="joined_miles" if unit != "km" else "joined"))
 
-    # Rule 2 - a bare integer token sitting just left of a lone "km" token on the
-    # same line. Covers phone photos where OCR splits the digits and the unit.
+    # Rule 2 - a bare integer token sitting just left of a lone unit token on the
+    # same line. Covers phone photos where OCR splits the digits and unit.
     if not cands:
-        km_boxes = [box for text, _, box in tokens if _LONE_KM.match(_norm(text))]
+        unit_boxes = [(m.group(1), box) for text, _, box in tokens
+                      if (m := _LONE_UNIT.match(_norm(text)))]
         for text, conf, box in tokens:
             m = _BARE_INT.match(_norm(text))
             if not m:
                 continue
-            km = int(m.group(1))
-            if not (KM_FLOOR <= km <= KM_CEILING):
-                continue
             cy = (box[1] + box[3]) / 2
-            for kb in km_boxes:
+            for unit, kb in unit_boxes:
                 same_line = abs((kb[1] + kb[3]) / 2 - cy) < (box[3] - box[1])
                 to_the_right = 0 <= kb[0] - box[2] < 3 * (box[3] - box[1])
                 if same_line and to_the_right:
-                    cands.append(Candidate(km=km, text=f"{text} km", ocr_conf=round(conf, 3),
-                                           box=[round(v, 1) for v in box], rule="adjacent"))
+                    km = _in_km(int(m.group(1)), unit)
+                    if not (KM_FLOOR <= km <= KM_CEILING):
+                        continue
+                    cands.append(Candidate(
+                        km=km, text=f"{text} {unit}", ocr_conf=round(conf, 3),
+                        box=[round(v, 1) for v in box],
+                        rule="adjacent_miles" if unit != "km" else "adjacent"))
                     break
 
     res.candidates = sorted(cands, key=lambda c: -c.ocr_conf)
     if not res.candidates:
         res.reason = ("no token matched an odometer reading "
-                      "(a plain 4-7 digit integer followed by 'km')")
+                      "(a plain 4-7 digit integer followed by a distance unit)")
         return res
 
     best = res.candidates[0]
@@ -163,6 +177,35 @@ def read(image: str | Path) -> OdometerRead:
                   + (f"; {len(res.candidates)} candidates, highest kept"
                      if len(res.candidates) > 1 else ""))
     return res
+
+
+def _subject_crop(image: str | Path, subject_box) -> np.ndarray | None:
+    if not subject_box or len(subject_box) != 4:
+        return None
+    try:
+        pil = ImageOps.exif_transpose(Image.open(image)).convert("RGB")
+        x1, y1, x2, y2 = (float(v) for v in subject_box)
+    except (OSError, TypeError, ValueError):
+        return None
+    width, height = max(0.0, x2 - x1), max(0.0, y2 - y1)
+    if width * height >= CROP_MAX_AREA_FRAC * pil.width * pil.height:
+        return None
+    px, py = width * CROP_PAD, height * CROP_PAD
+    rect = (max(0, int(x1 - px)), max(0, int(y1 - py)),
+            min(pil.width, int(x2 + px)), min(pil.height, int(y2 + py)))
+    if rect[2] - rect[0] < CROP_MIN_SIDE_PX or rect[3] - rect[1] < CROP_MIN_SIDE_PX:
+        return None
+    return np.asarray(pil.crop(rect))
+
+
+def read(image: str | Path, subject_box=None) -> OdometerRead:
+    """Read one dashboard photo, trying a small subject crop before the frame."""
+    crop = _subject_crop(image, subject_box)
+    if crop is not None:
+        cropped = _select(_tokens(crop))
+        if cropped.km is not None:
+            return cropped
+    return _select(_tokens(image))
 
 
 def read_best(images: list[str | Path]) -> OdometerRead:

@@ -17,10 +17,13 @@ from __future__ import annotations
 
 import json
 import math
+import tempfile
 import unittest
 import unittest.mock
+from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 from app import reconcile
 from app.perception import heads
@@ -177,6 +180,71 @@ class Odometer(unittest.TestCase):
         from app.odometer import OdometerRead
         return OdometerRead(km=km, confidence=confidence, text=f"{km}km")
 
+    def test_joined_miles_converts_to_km(self):
+        from app import odometer as O
+        reading = O._select([("242780mi", 0.9, [0, 0, 10, 10])])
+        self.assertEqual(reading.km, round(242780 * 1.60934))
+        self.assertEqual(reading.rule, "joined_miles")
+
+    def test_adjacent_miles_converts_to_km(self):
+        from app import odometer as O
+        reading = O._select([
+            ("242780", 0.9, [0, 0, 60, 20]),
+            ("miles", 0.8, [65, 0, 95, 20]),
+        ])
+        self.assertEqual(reading.km, round(242780 * 1.60934))
+        self.assertEqual(reading.rule, "adjacent_miles")
+
+    def test_kmh_still_rejected(self):
+        from app import odometer as O
+        reading = O._select([("90km/h", 0.99, [0, 0, 10, 10])])
+        self.assertIsNone(reading.km)
+
+    def test_trip_decimal_still_rejected(self):
+        from app import odometer as O
+        reading = O._select([("976.6km", 0.99, [0, 0, 10, 10])])
+        self.assertIsNone(reading.km)
+
+    def test_subject_crop_is_tried_before_full_frame(self):
+        from app import odometer as O
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "dashboard.jpg"
+            Image.new("RGB", (400, 300)).save(path)
+            with unittest.mock.patch.object(
+                    O, "_tokens",
+                    side_effect=[
+                        [("242780mi", 0.9, [0, 0, 10, 10])],
+                    ]) as tokens:
+                reading = O.read(path, subject_box=[100, 100, 250, 220])
+        self.assertEqual(reading.km, round(242780 * 1.60934))
+        self.assertEqual(tokens.call_count, 1)
+        self.assertIsInstance(tokens.call_args.args[0], np.ndarray)
+
+    def test_full_frame_is_retried_after_crop_abstains(self):
+        from app import odometer as O
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "dashboard.jpg"
+            Image.new("RGB", (400, 300)).save(path)
+            with unittest.mock.patch.object(
+                    O, "_tokens",
+                    side_effect=[[], [("305273km", 0.9, [0, 0, 10, 10])]]) as tokens:
+                reading = O.read(path, subject_box=[100, 100, 250, 220])
+        self.assertEqual(reading.km, 305273)
+        self.assertEqual(tokens.call_count, 2)
+        self.assertEqual(tokens.call_args.args[0], path)
+
+    def test_crop_smaller_than_minimum_side_is_not_used(self):
+        from app import odometer as O
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "dashboard.jpg"
+            Image.new("RGB", (400, 300)).save(path)
+            with unittest.mock.patch.object(
+                    O, "_tokens",
+                    return_value=[("305273km", 0.9, [0, 0, 10, 10])]) as tokens:
+                reading = O.read(path, subject_box=[100, 100, 130, 130])
+        self.assertEqual(reading.km, 305273)
+        tokens.assert_called_once_with(path)
+
     def test_a_missing_odometer_is_recovered_and_fed_to_pricing(self):
         ev = self._ev(odometer_km=None)
         with unittest.mock.patch("app.odometer.read", return_value=self._read(305273)):
@@ -214,6 +282,15 @@ class Odometer(unittest.TestCase):
                                  side_effect=AssertionError("must not OCR")) as m:
             reconcile.apply(self._gate(view="exterior_side"), None, ev)
         m.assert_not_called()
+
+    def test_reconcile_passes_the_gate_subject_box_to_ocr(self):
+        box = [10, 20, 300, 250]
+        gate = self._gate()
+        gate.photos[0].subject_box = box
+        with unittest.mock.patch("app.odometer.read",
+                                 return_value=self._read(None)) as read:
+            reconcile.apply(gate, None, self._ev())
+        read.assert_called_once_with("/tmp/3.jpg", subject_box=box)
 
 
 class Anchor(unittest.TestCase):
