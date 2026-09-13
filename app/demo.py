@@ -1,4 +1,4 @@
-"""The six rehearsed demo cases, and the fixtures that back them.
+"""The nine rehearsed demo cases, and the fixtures that back them.
 
     .venv/bin/python -m app.demo --build     # create demo/ fixtures
     .venv/bin/python -m app.demo             # run every case
@@ -40,6 +40,15 @@ CASES = [
         "folder": "demo/tr_phone",
         "blurb": "Degraded twins - motion blur, underexposure, mud, awkward angles. "
                  "Some frames get dropped; the appraisal still lands.",
+        "expect": "ok|ok_with_requests",
+        "declared_from_listing": ["year", "km", "make", "asking_price"],
+    },
+    {
+        "id": "tr_clean_degraded",
+        "title": "Same Turkish Ford F-MAX, degraded twins",
+        "folder": "demo/tr_clean_degraded",
+        "blurb": "The exact tr_clean truck through phone-quality degradation, so "
+                 "condition stability is a paired comparison.",
         "expect": "ok|ok_with_requests",
         "declared_from_listing": ["year", "km", "make", "asking_price"],
     },
@@ -188,13 +197,22 @@ def build_fixtures(force: bool = False) -> None:
 
     need = {"exterior_front_34", "tire_wheel", "dashboard_odometer", "interior_cab"}
 
-    # 1 + 3: a complete Turkish set, and the close-ups from it on their own.
+    # A complete Turkish set, its degraded twins, and its close-ups on their own.
     lid, group = _pick_listing(IMAGES_CSV, "TR", "original", need)
     paths = [IMAGES.parent / p for p in group.path]
     record("tr_clean", lid)
     record("odometer_lie", lid)
     print(f"tr_clean       <- TR listing {lid}: {_copy(paths, DEMO / 'tr_clean')} photos "
           f"({manifest['tr_clean']['declared']})")
+
+    degraded = pd.read_csv(IMAGES_CSV)
+    degraded = degraded[(degraded.market == "TR")
+                        & (degraded.variant == "degraded")
+                        & (degraded.listing_id.astype(str) == str(lid))]
+    degraded_paths = [IMAGES.parent / p for p in degraded.path]
+    record("tr_clean_degraded", lid)
+    print(f"tr_clean_degraded <- same listing, degraded twins: "
+          f"{_copy(degraded_paths, DEMO / 'tr_clean_degraded')} photos")
 
     closeup_views = {"tire_wheel", "interior_cab", "dashboard_odometer", "engine_bay"}
     closeups = [IMAGES.parent / r.path for r in group.itertuples()
@@ -341,9 +359,47 @@ f"{label} fixtures, from Wikimedia Commons:\n\n"
 
 # --- runner ---------------------------------------------------------------
 
+class CaseResult(dict):
+    """Serializable demo record with the live appraisal kept out of its keys."""
+
+    appraisal_object = None
+
+
+def run_case(case: dict, backend=None) -> dict:
+    """Run one resolved demo case and return a JSON-safe evaluation record."""
+    from . import pipeline, report
+
+    folder = REPO / case["folder"]
+    photos = pipeline.collect_photos(folder)
+    record = CaseResult({
+        "case_id": case["id"],
+        "title": case["title"],
+        "folder": case["folder"],
+        "expected": case["expect"],
+        "photos": len(photos),
+        "declared": case.get("declared") or {},
+    })
+    if not photos:
+        record.update({"missing": True, "note": (
+            f"MISSING fixtures at {case['folder']} - run: python -m app.demo --build")})
+        return record
+
+    result = pipeline.appraise(
+        photos, record["declared"], backend=backend,
+        on_step=lambda s, d: print(f"  ... {s}: {d}", flush=True))
+    record.update({
+        "missing": False,
+        "status": result.status,
+        "appraisal": result.to_dict(),
+        "report_text": report.render_text(result),
+    })
+    record.appraisal_object = result
+    return record
+
+
 def run_demo(only: str | None = None, backend: str | None = None,
              export: str | None = None) -> int:
-    from . import pipeline, report
+    from . import pipeline
 
     cases = [c for c in resolved_cases() if only is None or c["id"] == only]
     if not cases:
@@ -352,25 +408,23 @@ def run_demo(only: str | None = None, backend: str | None = None,
 
     failures, exported = [], []
     for case in cases:
-        folder = REPO / case["folder"]
-        photos = pipeline.collect_photos(folder)
+        photos = pipeline.collect_photos(REPO / case["folder"])
         print("\n" + "#" * 78)
         print(f"# {case['id']}  —  {case['title']}")
         print(f"# expect: {case['expect']}   photos: {len(photos)}"
               + (f"   declared: {case['declared']}" if case.get("declared") else ""))
         print("#" * 78)
-        if not photos:
-            print(f"  MISSING fixtures at {case['folder']} - run: python -m app.demo --build")
+        record = run_case(case, backend=backend)
+        if record["missing"]:
+            print(f"  {record['note']}")
             failures.append((case["id"], "no fixtures"))
             continue
 
-        result = pipeline.appraise(photos, case.get("declared") or {},
-                                   backend=backend,
-                                   on_step=lambda s, d: print(f"  ... {s}: {d}", flush=True))
-        print(report.render_text(result))
+        print(record["report_text"])
 
         if export:
             from .export import write_html
+            result = record.appraisal_object
             out = write_html(result, Path(export) / f"{case['id']}.html",
                              title=f"KamionVision — {case['title']}")
             exported.append({"file": out.name, "title": case["title"],
@@ -379,9 +433,9 @@ def run_demo(only: str | None = None, backend: str | None = None,
             print(f"\n  exported {out} ({out.stat().st_size / 1024:.0f} KB)")
 
         expected = set(case["expect"].split("|"))
-        if result.status not in expected:
-            failures.append((case["id"], f"got {result.status}, expected {case['expect']}"))
-            print(f"\n  ** UNEXPECTED: got {result.status}, expected {case['expect']} **")
+        if record["status"] not in expected:
+            failures.append((case["id"], f"got {record['status']}, expected {case['expect']}"))
+            print(f"\n  ** UNEXPECTED: got {record['status']}, expected {case['expect']} **")
 
     if exported:
         from .export import write_index

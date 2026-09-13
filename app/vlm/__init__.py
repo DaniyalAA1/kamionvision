@@ -57,7 +57,7 @@ def probe_all() -> list[BackendStatus]:
     return out
 
 
-def resolve_chain(preferred: str | None = None) -> list[VLMBackend]:
+def resolve_chain(preferred: str | VLMBackend | None = None) -> list[VLMBackend]:
     """Every usable backend, best first.
 
     `evidence.stage` walks this rather than taking only the first, so a provider
@@ -70,6 +70,9 @@ def resolve_chain(preferred: str | None = None) -> list[VLMBackend]:
     beats failing loudly - but a fallback is never silent, it is recorded on the
     report and shown on screen.
     """
+    if isinstance(preferred, VLMBackend):
+        return [preferred]
+
     from ..config import BACKEND_CHAIN, BACKEND_OVERRIDE
     _load()
     pin = preferred or BACKEND_OVERRIDE

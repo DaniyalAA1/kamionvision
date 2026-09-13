@@ -37,7 +37,7 @@ from eval import cache as evcache
 from eval import cases, replay, scorecard
 from eval.cases import TwinPair
 from eval.suites import DEFAULT_ORDER, SUITES, base as suite_base
-from eval.suites import twin_fp
+from eval.suites import demo_gate, twin_fp
 from eval.suites.base import NotImplementedSuite
 
 
@@ -735,7 +735,7 @@ class Budgets(unittest.TestCase):
                          "two planned calls must never share a key")
 
     def test_stubs_raise_a_recognisable_error(self):
-        for name in ("retest", "monotonic", "distribution", "panel", "demo_gate"):
+        for name in ("retest", "monotonic", "distribution", "panel"):
             plan = SUITES[name].plan("smoke", seed=7, model_id="m")
             with self.assertRaises(NotImplementedSuite):
                 SUITES[name].run(plan, None)
@@ -750,6 +750,49 @@ class Budgets(unittest.TestCase):
 def _cheap(name: str) -> dict:
     """Plan sizes that do not re-encode 1,200 JPEGs just to count them."""
     return {"resolve_keys": False} if name == "twin_fp" else {}
+
+
+class DemoGateScoring(unittest.TestCase):
+    @staticmethod
+    def _record(case_id, appraisal, expect="ok|ok_with_requests"):
+        return {"case_id": case_id, "expected": expect, "status": appraisal["status"],
+                "missing": False, "appraisal": appraisal}
+
+    @staticmethod
+    def _appraisal(*, status="ok", grade="good", multiplier=1.0, coverage=0.9,
+                   prices=True, widened=False, correction=""):
+        low, high = ((80.0, 120.0) if widened else (90.0, 110.0))
+        return {
+            "status": status,
+            "evidence": {"condition_grade": grade,
+                         "condition": {"coverage": coverage}},
+            "reconcile": {"corrections": ([{"kind": correction}] if correction else [])},
+            "price": ({"ok": True, "point": 100.0, "low": low, "high": high,
+                       "baseline_low": 90.0, "baseline_high": 110.0,
+                       "adjustment": {"multiplier": multiplier}} if prices else None),
+        }
+
+    def test_all_documented_checks_pass(self):
+        records = [
+            self._record("tr_clean", self._appraisal()),
+            self._record("tr_phone", self._appraisal(grade="excellent", multiplier=0.98)),
+            self._record("closeups_only",
+                         self._appraisal(status="need_more_photos", grade="unknown",
+                                         coverage=0.4, prices=False),
+                         expect="need_more_photos"),
+            self._record("odometer_lie",
+                         self._appraisal(widened=True, correction="odometer_conflict")),
+            self._record("unseen_brand", self._appraisal(widened=True)),
+        ]
+        result = demo_gate.score(records, demo_gate.plan("smoke"), None, "m")
+        self.assertEqual(result.status, "ok")
+        self.assertTrue(all(g.passed for g in result.gates))
+
+    def test_missing_fixture_is_skipped_with_a_note(self):
+        records = [{"case_id": "tr_clean", "expected": "ok", "missing": True}]
+        result = demo_gate.score(records, demo_gate.plan("smoke"), None, "m")
+        self.assertEqual(result.status, "skipped")
+        self.assertIn("missing", " ".join(result.caveats).lower())
 
 
 class ReplayAndSweep(unittest.TestCase):
