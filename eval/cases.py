@@ -28,6 +28,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.config import DATA, IMAGES_CSV, LISTINGS_CSV
+from app.gallery import _quality_label
 
 # Asked for on every vehicle that has them, before any diversity fill. These
 # three carry most of the money: tread depth is the single most expensive
@@ -89,7 +90,7 @@ def vehicles(images_csv: str | None = None) -> pd.DataFrame:
     for listing_id, group in originals.groupby("listing_id", sort=True):
         first = group.iloc[0]
         views = sorted(set(group["view"].dropna().astype(str)))
-        buckets = group["quality_bucket"].dropna().astype(str)
+        buckets = group["quality_bucket"].dropna().astype(str).tolist()
         rows.append({
             "listing_id": str(listing_id),
             "source_key": str(first.get("source_key", "")),
@@ -104,9 +105,9 @@ def vehicles(images_csv: str | None = None) -> pd.DataFrame:
             "n_photos": int(len(group)),
             "n_views": len(views),
             "views": "|".join(views),
-            # Modal bucket: the label gallery.py uses for the whole set, so a
-            # stratum here means the same thing it means on screen.
-            "quality_bucket": (buckets.mode().iloc[0] if not buckets.empty else "unknown"),
+            # The exact set-level label shown by gallery.py: dealer / mixed /
+            # phone, not the per-frame good / fair / poor vocabulary.
+            "quality_bucket": _quality_label(buckets) if buckets else "unknown",
             "mean_capture_quality": float(
                 pd.to_numeric(group["capture_quality"], errors="coerce").mean()),
         })

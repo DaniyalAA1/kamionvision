@@ -152,12 +152,17 @@ def do_run(args) -> int:
     out_dir = Path(args.out or RUNS) / card.run_id
     (out_dir / "raw").mkdir(parents=True, exist_ok=True)
 
+    completed_records = {}
     for name in names:
         suite = SUITES[name]
         plan_obj = suite.plan(args.tier, seed=args.seed, model_id=client.model_id,
                               effort=args.effort)
         try:
-            records = suite.run(plan_obj, client, gate_checks=gate_checks)
+            run_kwargs = {"gate_checks": gate_checks}
+            if name == "monotonic" and "distribution" in completed_records:
+                run_kwargs["distribution_records"] = completed_records["distribution"]
+            records = suite.run(plan_obj, client, **run_kwargs)
+            completed_records[name] = records
             write_raw(out_dir, name, plan_obj, records)
             result = suite.score(records, plan_obj, cache, client.model_id)
         except NotImplementedSuite as exc:

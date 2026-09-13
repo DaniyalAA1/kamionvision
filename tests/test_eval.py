@@ -37,7 +37,7 @@ from eval import cache as evcache
 from eval import cases, replay, scorecard
 from eval.cases import TwinPair
 from eval.suites import DEFAULT_ORDER, SUITES, base as suite_base
-from eval.suites import demo_gate, twin_fp
+from eval.suites import demo_gate, distribution, monotonic, retest, twin_fp
 from eval.suites.base import NotImplementedSuite
 
 
@@ -734,13 +734,19 @@ class Budgets(unittest.TestCase):
         self.assertEqual(len({c.key for c in plan.calls}), len(plan.calls),
                          "two planned calls must never share a key")
 
-    def test_stubs_raise_a_recognisable_error(self):
-        for name in ("retest", "monotonic", "distribution", "panel"):
+    def test_only_panel_remains_unimplemented(self):
+        for name in ("panel",):
             plan = SUITES[name].plan("smoke", seed=7, model_id="m")
             with self.assertRaises(NotImplementedSuite):
                 SUITES[name].run(plan, None)
             with self.assertRaises(NotImplementedSuite):
                 SUITES[name].score([], plan, None, "m")
+
+    def test_implemented_suites_skip_empty_offline_inputs(self):
+        for name in ("retest", "monotonic", "distribution"):
+            plan = SUITES[name].plan("smoke", seed=7, model_id="m")
+            result = SUITES[name].score([], plan, evcache.ResponseCache(self.id()), "m")
+            self.assertEqual(result.status, "skipped", name)
 
     def test_shared_corpus_suites_budget_nothing_extra(self):
         for name in ("monotonic", "panel"):
@@ -793,6 +799,97 @@ class DemoGateScoring(unittest.TestCase):
         result = demo_gate.score(records, demo_gate.plan("smoke"), None, "m")
         self.assertEqual(result.status, "skipped")
         self.assertIn("missing", " ".join(result.caveats).lower())
+
+
+class RemainingSuiteScoring(unittest.TestCase):
+    @staticmethod
+    def _corpus_record(index, demerit, grade, model_grade, *, market="TR",
+                       quality="dealer"):
+        return {
+            "listing_id": f"v{index}", "source_key": "tr_truckmarket",
+            "market": market, "make": "Ford", "year": 2024 - index,
+            "km": 100_000 + index * 50_000, "quality_bucket": quality,
+            "capture_quality": 0.95 - index * 0.03,
+            "appraisal": {
+                "evidence": {
+                    "condition_grade": grade,
+                    "condition_grade_model": model_grade,
+                    "condition": {"demerit": demerit},
+                }
+            },
+        }
+
+    def test_distribution_returns_histogram_prior_and_signed_bias(self):
+        records = [
+            self._corpus_record(0, 0.1, "excellent", "good"),
+            self._corpus_record(1, 0.4, "good", "good"),
+            self._corpus_record(2, 2.0, "fair", "poor"),
+            self._corpus_record(3, 6.5, "poor", "fair"),
+        ]
+        result = distribution.score(
+            records, distribution.plan("smoke", model_id="m"), None, "m")
+        metrics = {m.name: m for m in result.metrics}
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(metrics["grade_good"].value, 0.25)
+        self.assertEqual(metrics["grade_agreement_model_vs_rollup"].value, 0.25)
+        self.assertEqual(metrics["model_grade_bias"].value, -0.25)
+        self.assertIn("market", result.strata)
+        self.assertEqual(len(result.gates), 2)
+
+    def test_monotonic_scores_distribution_records_and_prints_caveat(self):
+        records = [
+            self._corpus_record(i, float(i), grade, grade)
+            for i, grade in enumerate(("excellent", "good", "fair", "poor", "poor"))
+        ]
+        plan = monotonic.plan("smoke", seed=3, model_id="m")
+        plan.params["null_draws"] = 50
+        self.assertIs(monotonic.run(plan, None, distribution_records=records)[0],
+                      records[0])
+        result = monotonic.score(records, plan, None, "m")
+        metrics = {m.name: m for m in result.metrics}
+        self.assertEqual(metrics["rho_km"].value, 1.0)
+        self.assertIn("NEGATIVE", " ".join(result.caveats))
+        self.assertEqual(result.detail["shared_with"], "distribution")
+
+    def test_retest_scores_cached_photo_and_vehicle_repeats(self):
+        root = Path(tempfile.mkdtemp(prefix="eval-retest-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        cache = evcache.ResponseCache(root)
+        finding = {
+            "component": "drive_tires",
+            "observation": "shoulder wear across the outer ribs",
+            "severity": "minor", "price_impact": "low", "confidence": 0.8,
+        }
+        records = []
+        for repeat, severity in enumerate(("minor", "moderate", "minor")):
+            body = {"shows": "tire", "legible": True, "confidence": 0.8,
+                    "observations": [{**finding, "severity": severity}]}
+            key = f"photo-{repeat}"
+            cache.put("m", key, {"text": json.dumps(body)})
+            records.append({
+                "tier": "photo", "unit": "v:000", "listing_id": "v",
+                "image_index": 0, "view": "tire_wheel", "repeat": repeat,
+                "key": key, "ok": True,
+            })
+        for repeat, (grade, model_grade, multiplier) in enumerate((
+                ("good", "good", 0.99), ("good", "fair", 0.97), ("fair", "fair", 0.95))):
+            records.append({
+                "tier": "vehicle", "unit": "v", "repeat": repeat, "ok": True,
+                "appraisal": {
+                    "evidence": {"condition_grade": grade,
+                                 "condition_grade_model": model_grade},
+                    "price": {"adjustment": {"multiplier": multiplier}},
+                },
+            })
+        plan = retest.plan("smoke", seed=7, model_id="m")
+        plan.params.update(photo_repeats=3, vehicle_repeats=3)
+        result = retest.score(records, plan, cache, "m")
+        metrics = {m.name: m for m in result.metrics}
+        self.assertEqual(result.status, "ok")
+        self.assertAlmostEqual(metrics["severity_disagreement"].value, 2 / 3, places=4)
+        self.assertAlmostEqual(metrics["grade_instability"].value, 2 / 3, places=4)
+        self.assertGreater(metrics["multiplier_sd_log"].value, 0)
+        self.assertEqual(result.detail["matching"], "twin_fp.cluster_observations")
 
 
 class ReplayAndSweep(unittest.TestCase):
