@@ -1,7 +1,7 @@
 {
   "what": "Per-model specification cards for the tractor units this system appraises. Read into the identity and close-up prompts so the vision model knows what specific truck it is looking at, not merely that it is a truck.",
   "why": "The only model-specific thing in the pipeline used to be a string. `passes.vehicle_line` turned the identity read into one sentence and that sentence was everything passes B, C and D knew about the vehicle. A 2015 Ford Cargo tractor and a 2023 F-MAX at the same odometer received the same reference for what 'on schedule' looks like, the same component checklist and the same expectations.",
-  "basis": "Two kinds of row, labelled separately and never mixed. `corpus` blocks are computed from data/metadata/sources/tr_truckmarket.jsonl and are facts about this dataset, not about the model in general. Everything else is hand-curated from the cited sources and carries the same contract as data/reference/new_prices_tr.json - a URL, a date and a source_type per model.",
+  "basis": "Two kinds of row, labelled separately and never mixed. `corpus` blocks are computed from data/metadata/sources/tr_truckmarket.jsonl and are facts about this dataset, not about the model in general. Everything else is hand-curated from the cited sources and carries the same contract as data/reference/new_prices_tr.json - a URL, a date and a source_type per model. Spec, generations, weak points and identity tells were researched against the cited sources. Spec, generations, weak points and identity tells were researched against the cited sources. Spec, generations, weak points and identity tells were researched against the cited sources.",
   "no_prices": "This file is read into a prompt. app/modelspec.py:assert_priceless walks it on load and raises on anything that reads as a currency figure, because 'the VLM never sees or emits a price' is the separation that makes this system more than a thin wrapper. Say what a component does and how it fails, never what it costs.",
   "refresh": "Hand-curated and stamped, the same posture as USD_TRY in app/config.py and the rows in new_prices_tr.json. Re-check the source URLs and update as_of; app.cli doctor reports the age and how many models actually carry a citation.",
   "as_of": "2026-09-13",
@@ -36,16 +36,126 @@
         },
         "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
       },
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul flagship tractor unit; International Truck of the Year 2019",
+      "cab": "Cab-over-engine (COE). One cab only across the tractor range: a 2.5 m full-width high-roof sleeper with a flat floor and up to two bunks - there is no day cab and no low-roof F-MAX, so a low-roofed Ford tractor is NOT an F-MAX. Ford Otosan sells it as F-MAX (4x2), F-MAX L, and F-MAX LL (tandem rear axle), all on the same cab. A limited F-MAX Select edition of 400 units was launched in 2022.",
+      "driveline": "Ford Otosan Ecotorq 12.7 L inline-six Euro 6 diesel, 3,600 mm wheelbase, 600 L aluminium fuel tank. Launch specification (2018 onward): 500 PS / 2,500 Nm, 12-speed ZF Traxon automated gearbox. New F-MAX (2025 model-year update): Ecotorq GEN2 rated 510 PS / 2,600 Nm with a 16-speed automated gearbox Ford calls 'Ecotorq 16S 2600 OD'. Automated gearbox throughout - a manual F-MAX is not offered.",
       "axle_configs": [
-        "4x2"
+        "4x2",
+        "6x2 (F-MAX LL, tandem rear axle)"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "f-max-2018",
+          "years": "2018-2024",
+          "visual_markers": [
+            "Front grille is a large dark/black panel with four horizontal slat openings, contrasting against the body colour - it is NOT painted in the cab colour (the body-coloured grille arrived with the 2025 update)",
+            "Blue Ford oval badge sits centred inside the grille, on the upper slat",
+            "Headlamp bezels are body-coloured or silver, not black",
+            "Conventional glass door mirrors: a large main mirror housing plus a smaller wide-angle housing, carried on tubular arms, one pair each side",
+            "'F-MAX' lettering across the lower bumper, below the grille",
+            "A small power badge ('500') on the upper cab side just behind the door shut line",
+            "'FORD TRUCKS' wordmark with a small red-and-white Ford Trucks logo block on the chassis side skirt below the door"
+          ]
+        },
+        {
+          "id": "f-max-2025",
+          "years": "2025-present (Ford Trucks calls it the New F-MAX)",
+          "visual_markers": [
+            "Front grille surround is painted in the body colour and blends into the cab panel; the black slat openings sit inside a body-coloured frame",
+            "'F-MAX' lettering has moved UP onto the body-coloured panel directly above the grille slats (on the 2018 car it was on the lower bumper)",
+            "Headlamps sit in black bezels as standard, with a white LED daytime-running strip running down the outer edge and along the bottom of each lamp",
+            "New 'ceramic view' Ford badge in the grille",
+            "Digital Mirror System: slim camera arms and a small wedge-shaped camera pod at the top of each A-pillar in place of the large glass mirror housings - the single most reliable way to date a photo of an F-MAX",
+            "Black band across the top of the cab front with a pair of small LED marker lamps at each end",
+            "Interior: 12-inch all-digital instrument cluster and a 12.4-inch central multimedia screen; a 7-inch touch control panel beside the bunk"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "engine_bay",
+          "note": "Ecotorq 12.7 oil consumption and turbocharger failure are the most repeated owner complaints on 2021-2023 trucks, several escalating to bottom-end work (bearings, pistons, liners, rings). One owner attributes piston seizure at roughly 220,000 km to debris from the engine oil cooler entering the oil circuit. Look for a recently cleaned or freshly painted engine, new hose clips, and a turbo/oil-cooler area that is noticeably cleaner than its surroundings."
+        },
+        {
+          "component": "fluid_leaks",
+          "note": "Repeated coolant-hose bursts and oil/water leaks after engine work are among the most frequently reported F-MAX problems. Check for dried coolant staining around hose joints, and for a fresh oil film on the sump, oil cooler and gearbox bellhousing."
+        },
+        {
+          "component": "air_suspension",
+          "note": "Air leaks from the rear suspension bellows on the tractor are reported at around 80,000 km, alongside air-conditioning faults. Check the bags for chafing, perishing and for a sagging or unevenly seated rear end in a side-on photograph."
+        },
+        {
+          "component": "air_tanks_lines",
+          "note": "An owner report under warranty describes the air compressor passing oil and water into the air system. Check the tanks and drain valves for oily residue."
+        },
+        {
+          "component": "exhaust_dpf",
+          "note": "Exhaust and emissions faults, including exhaust replacement, are reported on low-mileage trucks. A brand-new exhaust or DPF canister on an otherwise weathered chassis is worth noting."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "In-cab display failures are reported while still under warranty; a blank, replaced or aftermarket-looking screen is a flag on a truck of this age."
+        },
+        {
+          "component": "cab_interior_seats",
+          "note": "Drivers report the standard seats are hard and the ride harsh over broken surfaces, so seat base and bolster wear can look advanced for the mileage."
+        }
+      ],
+      "identity_tells": [
+        "Very tall, near-vertical two-box front: a deep body-coloured panel carrying a full-width slatted grille, with a one-piece wraparound bumper below it",
+        "Blue Ford oval badge on the grille centreline - Ford Otosan's heavy trucks wear the car company's oval, not a separate truck emblem",
+        "'F-MAX' in widely letter-spaced capitals on the front (lower bumper pre-2025, above the grille from 2025)",
+        "Headlamp clusters are tall vertical units set into the outer lower corners of the bumper, not horizontal lamps in the cab face",
+        "One cab silhouette only: full-width high roof with a straight roofline and an integrated roof deflector - the F-MAX has no low-roof or day-cab body",
+        "'FORD TRUCKS' on the chassis side skirt and a Ford Trucks logo block; on Turkish listings the make is often typed as 'TRUCKS' because of this badge"
+      ],
+      "sources": [
+        {
+          "url": "https://www.fordtrucks.com.tr/en/tractor-series/fmax",
+          "title": "Ford Trucks F-MAX - Europe's Truck of the Year (tractor series page, technical features and New F-MAX exterior description)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://www.fordtrucks.com.tr/en/tractor-series/fmax-ll",
+          "title": "Ford Trucks F-MAX LL Tandem Rear Axle Tractor",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://fordtrucksglobal.com/new-fmax",
+          "title": "Ford Trucks unveiled its New F-MAX (revamped front grille, black bezel headlamps, Digital Mirror System)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://www.fordtrucks.com.tr/en/news/f-line",
+          "title": "Ford Trucks Offers Design, Technology, and Safety with Its New F-LINE Series (also announces the 400-unit F-MAX Select)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Ford_F-Max",
+          "title": "Ford F-Max - Wikipedia (model code H625, 2018-present, COE, 12.7 L Ecotorq 500 PS / 2500 Nm, 12-speed ZF Traxon, 4x2 only, 3600 mm wheelbase)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Ford_Ecotorq_engine",
+          "title": "Ford Ecotorq engine - Wikipedia (12.7 L second generation, 420-500 PS, Euro 3 to Euro 6D; F-Max H625 at 500 PS Euro 6D)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Ford_F-MAX_Blue_Lightning_-_Front_and_left_side_IAA_2018.jpg",
+          "title": "Ford F-MAX Blue Lightning, front and left side, IAA 2018 (reference photograph for the 2018-generation front-end markers)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Ford_F-Max_500_FFSA_(2022).jpg",
+          "title": "Ford F-Max 500 FFSA pace truck, 2022 (reference photograph for the 2018-generation side markers: mirrors, 500 badge, skirt wordmark)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.sikayetvar.com/ford/f-max",
+          "title": "Ford F-Max user experiences and complaints - Sikayetvar (Turkish consumer complaint platform; engine, oil cooler, turbo, coolant hose, air bellows, display, seat reports)",
+          "source_type": "owner_forum"
+        }
+      ]
     },
     {
       "brand": "FORD",
@@ -81,18 +191,106 @@
         },
         "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
       },
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "mid-range and long-haul tractor unit, Ford Otosan's tractor before and alongside the F-MAX. In Turkish listings these are frequently typed as make 'TRUCKS' because the chassis and dealer signage carry the FORD TRUCKS wordmark rather than 'Cargo'.",
+      "cab": "Cab-over-engine (COE). The model number decodes as GVW in tonnes + power in tens of PS + T for cekici (tractor): 1846T = 18 t, 460 PS, tractor. The 2012-onward tractor uses a raised-roof sleeper cab with 1,945 mm interior height (220 mm taller than the 1838T it replaced), cab air suspension, wide steps, roof deflector, folding side deflectors and side skirts. Ford Otosan offers a standard version with a 1,200 mm fifth-wheel height and a lower 'Midilli' version for high-cube trailers - the Midilli sits visibly lower on smaller-diameter tyres. The current F-LINE 1845T is listed with an Extra High Roof OR a Low Roof sleeper cab, so unlike the F-MAX this family does have a low-roof body.",
+      "driveline": "Four tractor generations on one basic cab structure, 2003-2019 (Cargo) and 2022-present (F-LINE). Cargo 1830 (300 PS) and 1838T (9.0 L Ecotorq, 380 PS, Euro 4/5) came first. The 2012-launched 1846T uses an FPT (Iveco) Cursor 10.3 L six, 460 PS at 2,100 rpm and 2,100 Nm from 1,050-1,550 rpm, VGT turbo, SCR Euro 5, 282 kW engine brake, offered with a manual OR an automated gearbox with an integrated 500 kW four-stage intarder; disc brakes, EBS and ESP standard; 60,000 km service interval. The 2016 Euro 6 1848T returns to Ford Otosan's own Ecotorq 12.7 L at 480 PS / 2,500 Nm (1,000-1,200 rpm) and adds the then-mandatory AEBS and lane-departure warning. A 420 PS 12.7 L Euro 6 version was also sold (1842T). The current F-LINE 1845T uses the Ecotorq GEN2 12.7 L at 450 PS / 2,300 Nm with a 16-speed automated 'Ecotorq 16S 2600 DD' gearbox, 3,600 mm wheelbase, 600 L aluminium tank.",
       "axle_configs": [
-        "4x2",
-        "6x2",
-        "8x4"
+        "4x2"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": [],
+      "generations": [
+        {
+          "id": "cargo-tractor-pre-2012",
+          "years": "2003-2012 (Cargo 1830, 1838T)",
+          "visual_markers": [
+            "Same basic cab shell as the later trucks but with the pre-2012 front end and the lower, shallower roof - interior height is 220 mm lower than the 2012 redesign, which in a side-on photograph reads as a shorter cab box above the windows",
+            "Lacks the body-coloured blisters over the front wheel arches that the 2012 redesign introduced"
+          ]
+        },
+        {
+          "id": "cargo-tractor-2012",
+          "years": "2012-2019 (1846T from 2013, 1848T from 2016, 1842T) - this is the body the 'TRUCKS'-badged Turkish listings almost always show",
+          "visual_markers": [
+            "Blue Ford oval badge mounted HIGH on the body-coloured cab panel, above the grille - the opposite of the F-MAX, which carries its oval inside the grille. This one detail separates a Cargo tractor from an F-MAX in almost any front photograph",
+            "Grille is a black honeycomb-mesh panel, roughly trapezoidal, set low in the cab face and running straight into a large dark-grey bumper",
+            "Twin ROUND headlamps per side, stacked vertically in a black bezel at the outer lower corners: a larger main lamp above a smaller lamp. The F-MAX by contrast has tall rectangular lamp clusters",
+            "A body-coloured blister/bulge above each front wheel arch on the cab side",
+            "Dark-grey plastic bumper with a body-coloured lower lip, a centre step and licence-plate recess, and a pair of small round auxiliary lamps low in the centre",
+            "Black band across the top of the windscreen",
+            "Vertical black air-intake duct at the rear corner of the cab side",
+            "Interior: ice-blue backlit instrument cluster; the park brake control is integrated into the instrument panel rather than standing on the floor or console"
+          ]
+        },
+        {
+          "id": "f-line-2022",
+          "years": "2022 announced, on sale from February 2024 (1845T and the road/construction F-LINE models)",
+          "visual_markers": [
+            "Renewed grille, bumper, headlights, front fenders, door and mirror trims over the 2012 Cargo body, styled to echo the F-MAX - but the cab structure and proportions are still the Cargo's, not the F-MAX's",
+            "Badged F-LINE / 1845T rather than Cargo",
+            "Interior: 9-inch multimedia display, new steering wheel and control buttons, new seat materials"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "engine_bay",
+          "note": "The 1846T's bought-in FPT Cursor 10.3 Euro 5 is the family's soft spot. A Turkish truck forum documents melted pistons on a 1846T in milk haulage, with the shop attributing it to poor fuel quality or leaking injectors, and long-running forum opinion there holds that the in-house-engined 1838T gave less trouble than the FPT-engined 1846T. Treat a 1846T with a very clean or recently resealed engine, or with new injector lines, as worth a close-up."
+        },
+        {
+          "component": "fluid_leaks",
+          "note": "Same forum thread describes a post-repair rebuild going wrong on a 1846T. On any tractor of this age look for oil weeping at the rocker cover, sump rail and rear main, and for coolant staining around the radiator and hose joints."
+        }
+      ],
+      "identity_tells": [
+        "Ford oval badge sits on the painted panel ABOVE the grille, not inside it",
+        "Round stacked headlamps in black bezels at the bumper corners",
+        "Honeycomb-mesh black grille low in the cab face, blending into a full-width dark bumper",
+        "Body-coloured bulge over each front wheel arch",
+        "Model designation on the front plate or door is a four-digit number ending in T (1842T, 1845T, 1846T, 1848T); the leading pair is the tonnage and the second pair is the power in tens of PS",
+        "Unlike the F-MAX, a low-roof sleeper cab exists in this family, so a low-roofed Ford tractor is a Cargo or F-LINE",
+        "A visibly lower-riding version on smaller tyres is the 'Midilli' low-fifth-wheel variant"
+      ],
+      "sources": [
+        {
+          "url": "https://www.fordtrucks.com.tr/en/tractor-series/1845t",
+          "title": "Ford Trucks 1845T Mid-Range Tractor (F-LINE tractor: Ecotorq GEN2 12.7 L, 450 PS, 2300 Nm, Ecotorq 16S 2600 DD, Extra High Roof / Low Roof sleeper cab, 4x2, 3600 mm)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://www.fordtrucks.com.tr/en/news/f-line",
+          "title": "Ford Trucks Offers Design, Technology, and Safety with Its New F-LINE Series (renewed grille, bumper, headlights, fenders, door and mirror trims; design inspired by F-MAX; on sale February 2024)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://m.kargohaber.com/yeni-nesil-ford-cargo-artik-daha-cekici-703h.htm",
+          "title": "Yeni Nesil Ford Cargo Artik Daha 'Cekici' - Kargo Haber, 20 September 2012 (1846T launch: 10.3 L six, 460 PS / 2100 Nm, VGT, SCR Euro 5, 282 kW engine brake, manual or automated with 500 kW intarder, raised roof 1945 mm interior height, cab air suspension, side skirts, ice-blue cluster, dash-integrated park brake, 60,000 km service interval)",
+          "source_type": "trade_press"
+        },
+        {
+          "url": "https://www.devirsaati.com/ford-trucks-1848t-ezberbozan/",
+          "title": "Ford Trucks 1848T: Ezberbozan! - devirsaati (four tractor generations 1830 / 1838T / 1846T / 1848T on one basic cab; the big exterior and interior redesign came at 1838T to 1846T; 1846T = FPT Cursor 10.3 Euro 5 460 PS / 2100 Nm, 1848T = Ecotorq 12.7 Euro 6 480 PS / 2500 Nm; standard 1200 mm fifth-wheel height and a Midilli version)",
+          "source_type": "trade_press"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Ford_Ecotorq_engine",
+          "title": "Ford Ecotorq engine - Wikipedia (Cargo H298 7.3 L Euro 3; H476 7.3/9.0 L Euro 4-5; H566 9.0 L 330 PS and 12.7 L 420-480 PS Euro 6)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Ford_Cargo",
+          "title": "Ford Cargo - Wikipedia (also called Ford F-Line; Turkish production at Inonu by Ford Otosan; 9.0 Ecotorq 2012-2019, 12.7 Ecotorq 2016-2019; successor Ford F-Max)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Ford_Trucks_1848T.jpg",
+          "title": "Ford Trucks 1848T (reference photograph for the 2012-generation front-end markers: oval above the grille, stacked round headlamps, mesh grille, wheel-arch blisters)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://forum.donanimhaber.com/tirlar-hakkinda-butun-sorularinizi-yanitlayabilirim-2--90099397-16",
+          "title": "Donanimhaber truck forum thread (1846T melted pistons attributed to fuel quality or leaking injectors; forum view that the 1838T with Ford's own engine gave less trouble than the FPT-engined 1846T)",
+          "source_type": "owner_forum"
+        }
+      ],
       "maintainer_note": "The Turkish listing site records every pre-F-MAX Ford Otosan tractor under the literal model name 'TRUCKS' - 33 of 218 source rows. These are the Cargo-derived tractors and they are a visually different vehicle from an F-MAX. app/pricing/anchor.py already aliases (FORD, TRUCKS) to the 1845T for the new-price lookup; this card is the same correction on the description side."
     },
     {
@@ -111,17 +309,92 @@
         },
         "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
       },
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "all-rounder tractor and chassis: semitrailer tractor, construction and municipal work. The narrow-cab sibling of the TGX, sharing its driveline and its two styling generations.",
+      "cab": "Cab-over-engine, 2,240 mm wide - 200 mm narrower than the TGX cab, which is the surest way to tell them apart. Three cabs: TM (long, medium high, 1,690 mm standing height, up to two bunks), TN (long, standard height, 1,410 mm, one bunk), NN (medium length 1,880 mm external, standard height, no bunk - a day cab). Engine tunnel is 280 mm high against the TGX's 120 mm, so the TGS floor is noticeably humped.",
+      "driveline": "Same Euro 6 inline-sixes as the TGX: D3066 12.7 L (380-560 PS), D2676 12.4 L (440-540 PS), D1556 9.0 L (330-400 PS). No 15.2 L D3876 in the TGS table. MAN TipMatic automated or manual.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "4x4",
+        "6x2",
+        "6x2-",
+        "6x4",
+        "6x4-",
+        "6x6",
+        "8x2-",
+        "8x4",
+        "8x6",
+        "8x8"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "tgs-2007",
+          "years": "2007-2020, sharing the TGX's 2012 and 2016 facelifts",
+          "visual_markers": [
+            "'MAN' wordmark in block letters across the grille with a small lion emblem directly beneath it, on a dark grille panel - note this is the reverse of the 2020 TGX, which puts the lion ABOVE the wordmark in its own chrome frame",
+            "Narrow cab: the cab sides sit close to the chassis rails and the front wheels stand proud of the cab line",
+            "Horizontal headlamp clusters in the outer bumper corners",
+            "Frequently seen with a low or medium roof and no roof spoiler, unlike the TGX"
+          ]
+        },
+        {
+          "id": "tgs-2020",
+          "years": "2020-present (new MAN Truck Generation)",
+          "visual_markers": [
+            "Restyled front shared in architecture with the 2020 TGX - MAN wordmark in the grille with the lion above it in a chrome frame - but on the narrow 2,240 mm cab",
+            "Fully digital instrument cluster"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "air_tanks_lines",
+          "note": "Air tanks are a named item on a used-buyer list for the TGS tipper, as they are on the TGX list. Check for crushed, scraped or re-clamped tanks and for corrosion at the cradles."
+        },
+        {
+          "component": "adblue_tank",
+          "note": "AdBlue is a named item on the same list; look for urea crystallisation around the tank cap, sender and dosing lines."
+        },
+        {
+          "component": "fuel_tank",
+          "note": "Fuel is a named item on the same list; check the tank straps, the filler neck and the area beneath the tank for diesel weeping."
+        },
+        {
+          "component": "fairings_skirts",
+          "note": "Sideguards are a named item; on a tipper-spec TGS they take impact damage and are often bent, missing or replaced with non-original panels."
+        },
+        {
+          "component": "engine_bay",
+          "note": "Engine is the first item on the list, and the TGX's D20/D26 EGR cooler weakness applies to the TGS, which uses the same D2676 and D3066 engines."
+        }
+      ],
+      "identity_tells": [
+        "Chrome lion emblem, as on every MAN",
+        "Narrow cab, 2,240 mm, against the TGX's 2,440 mm; in a front-on photograph the TGS cab does not overhang the front wheels as far",
+        "A high 280 mm engine tunnel inside the cab, versus 120 mm in a TGX - visible in any interior photo as a pronounced hump between the seats",
+        "A 'TGS' badge with a tonnage.power number pair, and very often a day cab (NN) or a low roof, which the TGX range does not offer in the same form"
+      ],
+      "sources": [
+        {
+          "url": "https://www.man.eu/global/en/truck/all-models/the-man-tgs/specifications/tgs-specifications.html",
+          "title": "MAN TGS - All specifications at a glance (chassis table, D3066 / D2676 / D1556 engines, TM / TN / NN cab dimensions and 2,240 mm width, 280 mm engine tunnel)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MAN_TG-range",
+          "title": "MAN TG-range - Wikipedia (TGS introduced alongside the TGX in 2007 as the TGA's replacement; shared 2012, 2016, 2019 facelifts and the 2020 new generation)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:MAN_TGS_18.440.jpg",
+          "title": "MAN TGS 18.440 (reference photograph for the pre-2020 TGS front: MAN wordmark above a lion in the grille, narrow cab)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-man-tgs-tipper-12-common-issues",
+          "title": "Commercial Motor Knowledge Hub, 'Used MAN TGS Tipper: 12 common issues'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 engine, 2 sideguards, 3 transmission, 4 air tanks, 5 hill-hold components, 6 AdBlue, 7 fuel.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "MAN",
@@ -130,17 +403,108 @@
         "TGX 18.480",
         "MAN TGX"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul flagship tractor unit; the TGX cab is the wide cab of the MAN TG range. International Truck of the Year 2021 for the 2020 generation.",
+      "cab": "Cab-over-engine. Current TGX cabs are all 2,440 mm wide and 2,280 mm long externally and differ only in roof height: GX (extra high, 2,070 mm standing height over the engine tunnel, two bunks, 355 l roof rack), GM (medium high, 1,860 mm, two bunks), GN (standard height, 1,580 mm, one bunk). Engine tunnel is a low 120 mm in all three. The 2020 cab sits 10 cm higher on the frame than the 2007-2020 one, and the largest cab no longer uses a special enlarged windscreen.",
+      "driveline": "Inline-six diesels throughout, all Euro 6. Current range: D3876 15.2 L (540 / 580 / 640 PS), D3066 12.7 L (380-560 PS), D2676 12.4 L (440-540 PS), D1556 9.0 L (330-400 PS). Gearboxes: manual, MAN TipMatic automated, and on some models Scania Opticruise after the Traton tie-up. The 16.2 L D2868 V8 was offered from 2007 and dropped around 2012 for lack of demand, replaced by the 15.2 L D3876 six. Power was raised in steps: +20 PS / +100 Nm at the 2016 facelift (Euro 6c) and +10 PS / +100 Nm in 2019 (Euro 6d).",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x2-",
+        "6x4",
+        "8x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "tgx-2007",
+          "years": "2007-2012 (replaced the TGA)",
+          "visual_markers": [
+            "Chrome lion figure sits alone at the top centre of a dark trapezoidal grille; the chrome-lion grille treatment arrived in 2012, so a pre-2012 TGX front looks plainer",
+            "Model designation stamped in small chrome-look lettering on the upper cab side behind the door, in the form 'TGX 18.440'"
+          ]
+        },
+        {
+          "id": "tgx-2012",
+          "years": "2012-2020, with facelifts in 2016 and 2019",
+          "visual_markers": [
+            "Dark trapezoidal grille with a chrome lion at the top centre; from the 2016 facelift the lion sits on a black backing and the lower bumper is reshaped",
+            "Headlamps are wide horizontal clusters set into the outer bumper corners, each split into an upper main lamp and a lower fog/auxiliary section behind a chrome-look trim ring",
+            "Body-coloured roof spoiler as a separate add-on piece above the cab, commonly carrying a roof light bar",
+            "Large glass mirror housings (main plus wide-angle) on black tubular arms",
+            "Model designation 'TGX nn.nnn' in chrome-look lettering on the upper cab side behind the door"
+          ]
+        },
+        {
+          "id": "tgx-2020",
+          "years": "2020-present (new MAN Truck Generation, unveiled in Bilbao 10 February 2020)",
+          "visual_markers": [
+            "'MAN' in large block capitals sits IN the grille itself, with the chrome lion in its own chrome frame directly above the wordmark - on the 2007-2020 truck there is a lion but no MAN wordmark in the grille",
+            "Below the wordmark the grille is a set of black horizontal slats stepping outward and downward",
+            "Headlamps are narrow horizontal units dropped to the outer lower corners of the bumper and clearly separated from the grille block",
+            "Deeply sculpted body-coloured lower bumper with a central lower splitter",
+            "Cab sits about 10 cm higher on the chassis than the previous generation, so the step-to-door gap in a side photo is taller",
+            "Fully digital instrument cluster - a MAN first, and a good interior tell",
+            "Door mirrors are body-coloured housings mounted to the A-pillar, with black door-top wind deflectors"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "air_tanks_lines",
+          "note": "A used-buyer guide for the TGX opens its list with rear air tanks fouling on trailer landing legs when the fifth-wheel position has not been checked before reversing under a trailer. Look for crushed, scraped or re-clamped air tanks behind the cab and for fresh weld or paint on the tank cradles."
+        },
+        {
+          "component": "engine_bay",
+          "note": "MAN's own Euro 5 service advice called for extra EGR checks because high coolant temperatures raise the risk of EGR cooler leaks, and EGR cooler failure is the fault owners of D20/D26-engined TGX name most often, alongside intercoolers, compressor clutch solenoid, liners and cylinder head. A coolant loss with no external leak, or an unusually clean EGR/intercooler area, is worth a close-up. Reported through an owner group rather than measured."
+        }
+      ],
+      "identity_tells": [
+        "Chrome lion emblem on the front - no other maker uses one, and it appears on every TGX generation",
+        "Model designation reads 'TGX' followed by a number pair such as 18.500, where the first pair is the GVW in tonnes and the second the power in PS",
+        "TGX cab is 2,440 mm wide against the TGS cab's 2,240 mm: a TGX cab overhangs the chassis noticeably more, and side-by-side the TGX looks a full hand wider",
+        "'MAN' spelled out in the grille means 2020 or later; a lion with no MAN wordmark in the grille means 2007-2020"
+      ],
+      "sources": [
+        {
+          "url": "https://www.man.eu/global/en/truck/all-models/the-man-tgx/specifications/tgx-specifications.html",
+          "title": "MAN TGX - Specifications (chassis table, D3876 / D3066 / D2676 / D1556 engine and power table, GX / GM / GN cab dimensions)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://www.man.eu/global/en/truck/all-models/the-man-tgx/your-strong-partner.html",
+          "title": "Your strong partner: The MAN TGX (model overview)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MAN_TG-range",
+          "title": "MAN TG-range - Wikipedia (first generation TGA 1999-2007; second generation 2007-2020 with the 2012 chrome lion grille, the 2016 black-backed lion and reshaped lower bumper, the 2019 interior facelift; third generation unveiled 10 February 2020 in Bilbao, cab 10 cm higher, digital cluster, largest cab loses its special windscreen)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://press.mantruckandbus.com/corporate/man-truck--bus-introduces-new-truck-generation/",
+          "title": "MAN Truck & Bus introduces new MAN Truck Generation (February 2020 TGX launch; headlamps with integrated daytime running lights and indicators, 89-degree door opening, stair-like straight entry)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:MAN_TGX_41.640.jpg",
+          "title": "MAN TGX 41.640 (reference photograph for the 2012-2020 front-end and side markers)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:MAN_TGX_18.640_XXL_Modell_2020_Fahrerhaus.jpg",
+          "title": "MAN TGX 18.640, 2020 model (reference photograph for the 2020-generation grille wordmark, lion frame and lamp placement)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-man-tgx-10-problems-look-out",
+          "title": "Used MAN TGX: 10 problems to look out for - Commercial Motor Knowledge Hub (rear air tanks fouling on trailer legs). Retrieved through the Firecrawl search index; a direct fetch of this URL returned 404 at compile time, so only the passage the index returned is used here.",
+          "source_type": "trade_press"
+        },
+        {
+          "url": "https://www.facebook.com/groups/1427613750910510/posts/2725742201097652/",
+          "title": "MAN truck owners' group thread, 'Are you satisfied with the quality of the MAN TGX trucks? What problems...' (owners name EGR cooler, intercoolers, compressor clutch solenoid valve, liners, cylinder head and clutch). Retrieved through the Firecrawl search index.",
+          "source_type": "owner_forum"
+        }
+      ]
     },
     {
       "brand": "MERCEDES-BENZ",
@@ -156,17 +520,129 @@
         "median_km": 773025,
         "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
       },
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul and heavy-distribution tractor unit; Mercedes-Benz's flagship heavy truck since 1996.",
+      "cab": "Cab-over-engine. The long-haul cab family is named by space: ClassicSpace (short/day), StreamSpace, BigSpace and GigaSpace, the last two being the tall long-haul sleepers. Mercedes also splits by width - the 'L cab' proven design is 2.30 m wide, and the wide 2.5 m cab is what BigSpace and GigaSpace normally sit on. From 2024 the Actros L adds the aerodynamic ProCabin, offered as ProCabin Stream, ProCabin Big and ProCabin Giga. Older MP3-era naming used S (day/construction), M (distribution sleeper), L (low-roof long-haul) and LH MegaSpace (high-roof long-haul).",
+      "driveline": "Inline-six Euro 6 diesels from the fourth generation on: OM471 12.8 L (about 422-530 PS) and OM473 15.6 L (about 517-625 PS), common rail at 2,800 bar with twin overhead camshafts and 24 valves. The first three generations used V-engines instead - OM501 12 L V6 (310-480 PS) and OM502 V8 (350-652 PS) - so an Actros with a V6 or V8 under the cab is an MP1/MP2/MP3, and that is a useful dating check. PowerShift automated gearbox; MP3 was the first in the segment to make an automatic standard.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2 (several lift/steer axle layouts)",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "actros-mp3",
+          "years": "2008-2011",
+          "visual_markers": [
+            "Mirror brackets are closed-loop, adopted from the previous generation's special editions",
+            "Bi-xenon headlamps, lightly revised from MP2",
+            "A V6 or V8 engine (OM501/OM502) rather than an inline six"
+          ]
+        },
+        {
+          "id": "actros-mp4",
+          "years": "2011-2018 (launched July 2011 as 'the New Actros'; shares no components with its predecessors)",
+          "visual_markers": [
+            "Large chrome three-pointed star in a chrome ring centred on the grille, with a chrome 'Actros' script immediately to its right on the same grille bar",
+            "Grille is built from body-coloured horizontal bars over fine mesh, split into a narrow upper section carrying the star and a deeper lower mesh section",
+            "Headlamps are horizontal rectangular clusters in the outer lower corners with a small round fog lamp inboard of each",
+            "CONVENTIONAL glass door mirrors on black arms - a large main housing plus a wide-angle housing",
+            "Wraparound body-coloured bumper with a dark central step insert and licence-plate recess",
+            "Black roof-front band carrying LED marker lamps",
+            "Inline-six OM471 or OM473 under the cab, not a V-engine"
+          ]
+        },
+        {
+          "id": "actros-mp5",
+          "years": "2018-2023 (revealed September 2018 at the IAA in Hannover as the 2019 Actros)",
+          "visual_markers": [
+            "MirrorCam: no glass exterior mirrors at all. Slim black camera arms are mounted at the top of each A-pillar and arc outward and downward. This is the single most decisive Actros dating tell in a photograph - MirrorCam means MP5 or later, glass mirrors mean MP4 or earlier",
+            "Interior: two colour displays - a touchscreen and an instrument display behind the wheel - replacing the conventional analogue cluster, plus two vertical MirrorCam screens on the A-pillars",
+            "Grille architecture is carried over from MP4 (star in a ring, Actros script beside it) so the front alone is a weak discriminator; check the mirrors"
+          ]
+        },
+        {
+          "id": "actros-l-procabin",
+          "years": "2024-present",
+          "visual_markers": [
+            "ProCabin: the front grille is 80 mm longer than the previous cab and the bumper is reshaped around it, so the nose reads as visibly deeper",
+            "Sold as ProCabin Stream, Big and Giga"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "adblue_tank",
+          "note": "The Euro 6 SCR system is the Actros's most-reported weak area: NOx sensor failures and AdBlue dosing-injector crystallisation, the latter brought on by off-spec urea or short runs that never heat the system through. An in-tank AdBlue heater element burnout is also documented and can let the solution gel and crack the tank or dosing lines. Look for white urea crystallisation around the dosing injector and tank fittings, and for a wet or stained AdBlue tank seam."
+        },
+        {
+          "component": "exhaust_dpf",
+          "note": "DPF blocking is one of the commonest reasons an Actros shows a warning lamp, on trucks doing short regional or urban cycles rather than steady highway kilometres. Sticking EGR valves and faulty exhaust temperature sensors also produce spurious DPF warnings. A recently replaced or exchanged DPF canister on an otherwise weathered exhaust is worth noting."
+        },
+        {
+          "component": "engine_bay",
+          "note": "OM471-specific: injector tip wear on high-kilometre trucks without service history (black smoke and rising consumption), fuel rail pressure sensor faults, and EGR valve carbon sticking. Reconditioning shops also list injector leakage, turbo wear, oil pressure loss, camshaft wear, piston ring degradation, cylinder scoring and excessive crankcase pressure as the OM471 jobs they see."
+        },
+        {
+          "component": "warning_lights",
+          "note": "Early MP4 production (roughly pre-2014) has a documented water-ingress problem where moisture tracks down the wiring looms to the ECUs, corroding connector pins and producing intermittent engine management, instrument cluster and PSM faults; some trucks needed a full engine harness. On a high-kilometre MP4, a cluster with lit or flickering warnings is worth more weight than on other makes."
+        },
+        {
+          "component": "brakes_hubs",
+          "note": "The EBS itself is reliable; the reported faults are wheel speed sensors fouled by brake dust setting ABS/EBS codes. On a high-kilometre truck also check air dryer cartridge condition and brake adjusters."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "Wiper motor failure is a recurring minor fleet complaint on high-kilometre MP4s, and the instrument cluster is one of the units affected by the early-MP4 loom water ingress."
+        }
+      ],
+      "identity_tells": [
+        "Three-pointed star in a chrome ring at the centre of the grille, with a chrome 'Actros' script beside it - no other maker in this class puts a script next to the badge like this",
+        "Model number is a four-digit code such as 1845, 1851, 1863: the first pair is GVW in tonnes, the second the power in tens of PS",
+        "Cab name badges (GigaSpace, BigSpace, StreamSpace) are often applied to the roof band or lower door and give the cab variant directly",
+        "MirrorCam camera arms instead of glass mirror housings dates the truck to 2018 or later"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Mercedes-Benz_Actros",
+          "title": "Mercedes-Benz Actros - Wikipedia (MP1 1996-2003, MP2 2003, MP3 2008-2011 with closed mirror brackets and revised bi-xenon lamps, MP4 from July 2011 with OM471 12.8 L and OM473 15.6 L inline sixes, MP5 revealed September 2018 with two colour displays and cameras in place of outside mirrors; MP3-era S/M/L/LH MegaSpace cab names; OM501 V6 and OM502 V8 on the earlier cars)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.mercedes-benz-trucks.com/int/en/trucks/eactros.html",
+          "title": "eActros - Mercedes-Benz Trucks International (confirms the current cab naming: proven cab as ClassicSpace and StreamSpace, the L cab at 2.30 m width, and ProCabin in Stream, Big and Giga)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://www.mercedes-benz-trucks.com/tr/tr/trucks/actros-l.html",
+          "title": "Actros L (Turkish market page: ProCabin Stream / Big / Giga, OM 473 15.6 L, axle configurations 4x2 / 6x2 in several layouts / 6x4, front grille 80 mm longer)",
+          "source_type": "oem_official"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Mercedes-Benz_Actros_-_2012_design.JPG",
+          "title": "Mercedes-Benz Actros, 2012 design (reference photograph for MP4 grille, star-and-script, headlamps and glass mirrors)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Mercedes-Benz_Actros_1851_MirrorCam_Pop_Art.jpg",
+          "title": "Mercedes-Benz Actros 1851 MirrorCam (reference photograph for the MP5 camera arms replacing glass mirrors)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.carify.com.au/mercedes-benz/actros/problems",
+          "title": "Mercedes-Benz Actros Common Problems - Carify (AdBlue/SCR NOx sensor and dosing injector faults, in-tank heater burnout, DPF regeneration, PowerShift clutch actuator fault 27F3E7, OM471 injector and rail-sensor and EGR faults, pre-2014 MP4 loom water ingress, EBS wheel-speed sensor codes, wiper motor; plus Australian recall campaigns for an airbag inflator and a rear axle weld defect)",
+          "source_type": "trade_press"
+        },
+        {
+          "url": "https://www.starkfleet.co.uk/post/mercedes-actros-mp4-om471-full-engine-reconditioning-the-complete-guide-for-keeping-your-fleet-o",
+          "title": "Mercedes Actros MP4 (OM471) Full Engine Reconditioning - Stark Fleet (workshop list of common OM471 issues: injector misfires and leakage, crankshaft bearing failure, turbo wear, EGR clogging, oil pressure loss, camshaft wear, piston ring degradation, cylinder scoring, crankcase pressure, overheating)",
+          "source_type": "trade_press"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-mercedes-benz-actros-10-problems-look-out",
+          "title": "Commercial Motor Knowledge Hub, 'Used Mercedes-Benz Actros: 10 problems to look out for'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "IVECO",
@@ -181,16 +657,90 @@
         "median_km": 830175,
         "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
       },
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit. The Stralis ran 2002-2021 and was replaced by the S-Way from 2019; both cover roughly 19 to 44 tonnes and sit above the Eurocargo.",
+      "cab": "Cab-over-engine. Stralis launch naming was Active Day (urban day cab), Active Time (regional) and Active Space (long distance). The 2012 Stralis Hi-Range restyle renamed them Hi-Way (long-haul sleeper), Hi-Road (sleeper) and Hi-Street (day cab). The S-Way cab comes in 2,300 mm and 2,500 mm widths.",
+      "driveline": "FPT Cursor inline-six throughout. Stralis: Cursor 8 7.8 L (310-360 PS), Cursor 10 10.3 L (420-450 PS), Cursor 13 12.9 L (500-560 PS), all with the Iveco Turbobrake decompression exhaust brake and the EuroTronic automated gearbox - the original 2002 Stralis was the first heavy truck to make an automated gearbox standard equipment. S-Way: Cursor 9 8.7 L, Cursor 11 11.1 L and Cursor 13 12.9 L diesels plus Cursor 9 NP and Cursor 13 NP natural-gas versions, all SCR and Euro 6d, with the 12-speed HI-TRONIX automated gearbox. The Cursor 10 is also the engine Ford Otosan bought in for the Cargo 1846T, which is a useful cross-check when a listing is ambiguous.",
       "axle_configs": [
-        "4x2"
+        "4x2",
+        "6x2",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "stralis-2002",
+          "years": "2002-2012, with a cabin and front-end revision in 2007",
+          "visual_markers": [
+            "Pre-2012 front: the 'IVECO' wordmark and grille sit lower and squarer than on the Hi-Way restyle, without the large black vertical air-intake slots at the cab corners"
+          ]
+        },
+        {
+          "id": "stralis-hi-range-2012",
+          "years": "2012-2021 (Stralis Hi-Range, Euro 6, International Truck of the Year 2013 as Hi-Way)",
+          "visual_markers": [
+            "'IVECO' in large chrome block capitals fixed directly to the body-coloured cab panel ABOVE the grille - no emblem, just the letters",
+            "Grille is a black mesh panel, broadly rectangular with angled outer ends, flanked on each side by a tall black vertical air-intake slot at the cab corner",
+            "Headlamps are horizontal clusters low in the bumper corners containing a pair of round projector lamps stacked vertically inside a chrome-look housing",
+            "Cab variant name spelled out on the front edge of the roof deflector: 'HI-WAY'",
+            "Model badge low on the cab side near the front corner reading e.g. 'STRALIS 560'"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "warning_lights",
+          "note": "A used-buyer list for the Stralis opens with warning lights and electrical problems as items one and two - on this model a lit cluster is a headline item rather than a footnote."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "Electrical faults are the second item on the same list; check that the cluster, switches and screens all wake and behave in the photographs you are given."
+        },
+        {
+          "component": "cab_floor_trim",
+          "note": "Interior trim is listed third: on a used Stralis the trim panels, mats and mouldings degrade and detach sooner than the cab structure around them."
+        },
+        {
+          "component": "doors_handles",
+          "note": "Door reflectors are called out as a recurring item, and the same list ends with a further door-related entry."
+        },
+        {
+          "component": "undercarriage",
+          "note": "Propshaft joints are a named wear point. In an undercarriage photograph look for grease thrown around the universal joints and for a centre bearing sitting off-square."
+        }
+      ],
+      "identity_tells": [
+        "'IVECO' spelled out in large block capitals on the painted panel above the grille - Iveco is the only maker in this class that uses a plain wordmark and no emblem there",
+        "A tall black vertical air-intake slot at each front cab corner, beside the grille, on Stralis Hi-Way",
+        "Cab name written on the roof deflector front edge (HI-WAY / HI-ROAD / HI-STREET) on the 2012-2021 Stralis",
+        "Model code in the form AS440S48 on the chassis plate: AS = Active Space tractor, 44 = GCW class, S48 = about 480 PS",
+        "A sculpted, chevron-barred black grille means S-Way; a flat rectangular mesh grille with corner intake slots means Stralis Hi-Way"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Iveco_Stralis",
+          "title": "Iveco Stralis - Wikipedia (2002-2021; Active Day / Active Time / Active Space bodystyles; 2007 cabin and front revision; 2012 Stralis Hi-Range with Euro 6 and the Hi-Way / Hi-Road / Hi-Street cabs; Cursor 8 7.8 L 310-360 PS, Cursor 10 10.3 L 420-450 PS, Cursor 13 12.9 L 500-560 PS; Iveco Turbobrake; EuroTronic automated gearbox standard from 2002)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Iveco_S-Way",
+          "title": "Iveco S-Way - Wikipedia (introduced 2 July 2019 as the Stralis successor; Cursor 9 8.7 L, Cursor 11 11.1 L, Cursor 13 12.9 L diesel plus NP natural gas; 12-speed HI-TRONIX; cab widths 2,300 and 2,500 mm; X-Way moved to the S-Way cab in Q4 2020)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Iveco_Stralis_560_e5_Hi-way_2014_(14074818177).jpg",
+          "title": "Iveco Stralis 560 Hi-Way, 2014 (reference photograph for the wordmark placement, mesh grille, corner intake slots, round-projector headlamps and roof-deflector HI-WAY lettering)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Iveco_S-Way_2022.jpg",
+          "title": "Iveco S-Way, 2022 (reference photograph for the chevron-barred grille and L-signature headlamps)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-iveco-stralis-10-common-problems",
+          "title": "Commercial Motor Knowledge Hub, 'Used Iveco Stralis: 10 common problems'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 warning lights, 2 electrical problems, 3 interior trim, 4 door reflectors, 5 propshaft joints, 6 hydraulic steering, 7 sunroof, 8 doors.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "IVECO",
@@ -200,16 +750,83 @@
         "S WAY",
         "IVECO S-WAY"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit. The Stralis ran 2002-2021 and was replaced by the S-Way from 2019; both cover roughly 19 to 44 tonnes and sit above the Eurocargo.",
+      "cab": "Cab-over-engine. Stralis launch naming was Active Day (urban day cab), Active Time (regional) and Active Space (long distance). The 2012 Stralis Hi-Range restyle renamed them Hi-Way (long-haul sleeper), Hi-Road (sleeper) and Hi-Street (day cab). The S-Way cab comes in 2,300 mm and 2,500 mm widths.",
+      "driveline": "FPT Cursor inline-six throughout. Stralis: Cursor 8 7.8 L (310-360 PS), Cursor 10 10.3 L (420-450 PS), Cursor 13 12.9 L (500-560 PS), all with the Iveco Turbobrake decompression exhaust brake and the EuroTronic automated gearbox - the original 2002 Stralis was the first heavy truck to make an automated gearbox standard equipment. S-Way: Cursor 9 8.7 L, Cursor 11 11.1 L and Cursor 13 12.9 L diesels plus Cursor 9 NP and Cursor 13 NP natural-gas versions, all SCR and Euro 6d, with the 12-speed HI-TRONIX automated gearbox. The Cursor 10 is also the engine Ford Otosan bought in for the Cargo 1846T, which is a useful cross-check when a listing is ambiguous.",
       "axle_configs": [
-        "4x2"
+        "4x2",
+        "6x2",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "s-way-2019",
+          "years": "2019-present (debuted 2 July 2019; the X-Way construction derivative switched to the S-Way cab in Q4 2020)",
+          "visual_markers": [
+            "'IVECO' block letters remain on the body-coloured panel, but the grille below them becomes a large sculpted black assembly of angular chevron-shaped bars sweeping outward and downward - far more three-dimensional than the flat Stralis mesh",
+            "Headlamps are slim angular units set into the black grille surround at the lower outer corners with an L-shaped LED signature, rather than the Stralis's round projectors in a chrome box",
+            "Deep body-coloured lower bumper with a central lower spoiler",
+            "Small 'S-WAY' badge on the upper cab side behind the door",
+            "Black band across the roof front carrying LED marker lamps"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "warning_lights",
+          "note": "A used-buyer list for the Stralis opens with warning lights and electrical problems as items one and two - on this model a lit cluster is a headline item rather than a footnote."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "Electrical faults are the second item on the same list; check that the cluster, switches and screens all wake and behave in the photographs you are given."
+        },
+        {
+          "component": "cab_floor_trim",
+          "note": "Interior trim is listed third: on a used Stralis the trim panels, mats and mouldings degrade and detach sooner than the cab structure around them."
+        },
+        {
+          "component": "doors_handles",
+          "note": "Door reflectors are called out as a recurring item, and the same list ends with a further door-related entry."
+        },
+        {
+          "component": "undercarriage",
+          "note": "Propshaft joints are a named wear point. In an undercarriage photograph look for grease thrown around the universal joints and for a centre bearing sitting off-square."
+        }
+      ],
+      "identity_tells": [
+        "'IVECO' spelled out in large block capitals on the painted panel above the grille - Iveco is the only maker in this class that uses a plain wordmark and no emblem there",
+        "A tall black vertical air-intake slot at each front cab corner, beside the grille, on Stralis Hi-Way",
+        "Cab name written on the roof deflector front edge (HI-WAY / HI-ROAD / HI-STREET) on the 2012-2021 Stralis",
+        "Model code in the form AS440S48 on the chassis plate: AS = Active Space tractor, 44 = GCW class, S48 = about 480 PS",
+        "A sculpted, chevron-barred black grille means S-Way; a flat rectangular mesh grille with corner intake slots means Stralis Hi-Way"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Iveco_Stralis",
+          "title": "Iveco Stralis - Wikipedia (2002-2021; Active Day / Active Time / Active Space bodystyles; 2007 cabin and front revision; 2012 Stralis Hi-Range with Euro 6 and the Hi-Way / Hi-Road / Hi-Street cabs; Cursor 8 7.8 L 310-360 PS, Cursor 10 10.3 L 420-450 PS, Cursor 13 12.9 L 500-560 PS; Iveco Turbobrake; EuroTronic automated gearbox standard from 2002)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Iveco_S-Way",
+          "title": "Iveco S-Way - Wikipedia (introduced 2 July 2019 as the Stralis successor; Cursor 9 8.7 L, Cursor 11 11.1 L, Cursor 13 12.9 L diesel plus NP natural gas; 12-speed HI-TRONIX; cab widths 2,300 and 2,500 mm; X-Way moved to the S-Way cab in Q4 2020)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Iveco_Stralis_560_e5_Hi-way_2014_(14074818177).jpg",
+          "title": "Iveco Stralis 560 Hi-Way, 2014 (reference photograph for the wordmark placement, mesh grille, corner intake slots, round-projector headlamps and roof-deflector HI-WAY lettering)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Iveco_S-Way_2022.jpg",
+          "title": "Iveco S-Way, 2022 (reference photograph for the chevron-barred grille and L-signature headlamps)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-iveco-stralis-10-common-problems",
+          "title": "Commercial Motor Knowledge Hub, 'Used Iveco Stralis: 10 common problems'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 warning lights, 2 electrical problems, 3 interior trim, 4 door reflectors, 5 propshaft joints, 6 hydraulic steering, 7 sunroof, 8 doors.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "SCANIA",
@@ -221,17 +838,75 @@
         "R500",
         "R SERIES"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit. R is the high forward-control cab; S, added in 2016, is the flat-floor flagship above it. Both sit in Scania's modular PRT range alongside the lower P, G and L cabs.",
+      "cab": "Cab-over-engine, fully modular. First-generation R (2004-2017) was offered with Highline and Topline roofs and, from 2013, in aerodynamic Streamline form. The second generation, launched 23 August 2016, brought a new R sleeper cab and the all-new S-series, which is the first Scania with a genuinely flat interior floor - no engine tunnel to step over. The low-entry L-series followed in December 2017.",
+      "driveline": "Inline-sixes and V8s across the modular range: DC09 9.3 L I5, DC11 10.6 L I6, DC13 12.7 L I6, DC16 15.6 / 16.4 L V8, with range-wide outputs from about 220 to 770 hp. Manual was standard on the first generation; Scania Opticruise automated is standard on the second. In April 2010 the V8 reached 730 hp and 3,500 Nm. The second generation added two touchscreen infotainment packages, 5-inch base and 7-inch premium, with CarPlay from April 2017.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x4",
+        "8x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "scania-r-2004",
+          "years": "2004-2017, with a significant restyle in September 2009 and the Streamline aerodynamic version from March 2013",
+          "visual_markers": [
+            "Grille is a body-coloured panel with a horizontal chrome bar carrying the Scania griffin badge, and the SCANIA wordmark is NOT spelled out across a black grille panel",
+            "The September 2009 upgrade gave sharper exterior styling with visibly larger grille openings; the front air filter grilles on G and R were redesigned again in 2014",
+            "Front air-intake grille panels flank the main grille at the cab corners"
+          ]
+        },
+        {
+          "id": "scania-next-gen-2016",
+          "years": "2016-present (R and S launched 23 August 2016 at the Grand Palais, Paris; cab developed with Porsche Engineering)",
+          "visual_markers": [
+            "'SCANIA' in large light-coloured block capitals across the top of a black grille panel, with the griffin badge to the right of the wordmark",
+            "Below the wordmark, three broad horizontal black slat bars with mesh behind, inside a body-coloured surround",
+            "Headlamps are angular units at the outer lower corners with a hooked LED daytime-running signature running along the outer edge",
+            "Model designation such as 'R 500' or 'S 730' printed small on the lower front panel beside the headlamp",
+            "S versus R at a glance: the S cab front is deeper and flatter and its lower edge sits higher off the road, with no step recess cut into the centre of the bumper - the R keeps a stepped centre bumper because it still has a cab floor to climb into. In a straight-on pair photograph the S's grille sits visibly higher than the R's"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "mirrors_visor",
+          "note": "The first item on a used-buyer list for the R-series is wiring between the door and the mirror, which corrodes and chafes where the loom passes through the door mirror. Check the rubber grommet at the mirror arm and the mirror housing for a repaired or taped loom."
+        },
+        {
+          "component": "cab_interior_seats",
+          "note": "Seats are the second named item; on a high-mileage R the driver's seat bolster and base wear is a recognised inspection point."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "The stereo/head unit is the third named item on the same list."
+        }
+      ],
+      "identity_tells": [
+        "The Scania griffin badge - a crowned griffin head in a red roundel or on a chrome bar",
+        "'SCANIA' spelled out in block capitals across a black grille means the 2016-onward generation; a chrome bar with a griffin and no wordmark means 2004-2017",
+        "Model designation is a letter and a number - R 450, S 500 - where the letter is the cab family and the number the horsepower, unlike the German makers' tonnage.power pairs",
+        "A flat cab floor with no engine tunnel means an S-series; any Scania with a step up into the cab interior from the door sill is an R, G, P or L",
+        "V8 models carry a V8 badge on the cab side and are the only V8s left in this class"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Scania_PRT-range",
+          "title": "Scania PRT-range - Wikipedia (R-series 31 March 2004; P and T 20 August 2004; G-series 5 September 2007; 17 September 2009 upgraded R with sharper styling and larger grille openings; 2013 Streamline; 2014 front air filter redesign on G and R; second generation launched 23 August 2016 in Paris with the new R sleeper cab and the flat-floor S-series; L-series December 2017; DC09 / DC11 / DC13 / DC16 engines, 220-770 hp; Opticruise standard on the second generation; 5-inch and 7-inch touchscreens)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:New_generation_Scania_R_%26_S.jpg",
+          "title": "New generation Scania R & S (reference photograph, both cabs side by side: SCANIA wordmark in the grille, slat bars, hooked LED signature, and the R-versus-S front-height difference)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-scania-r-series-12-issues-look-out",
+          "title": "Commercial Motor Knowledge Hub, 'Used Scania R-series: 12 issues to look out for'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 wiring between door and mirror corroding and wearing where it passes through the door mirror, 2 seats, 3 stereo.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "SCANIA",
@@ -242,17 +917,66 @@
         "S500",
         "S SERIES"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit. R is the high forward-control cab; S, added in 2016, is the flat-floor flagship above it. Both sit in Scania's modular PRT range alongside the lower P, G and L cabs.",
+      "cab": "Cab-over-engine, fully modular. First-generation R (2004-2017) was offered with Highline and Topline roofs and, from 2013, in aerodynamic Streamline form. The second generation, launched 23 August 2016, brought a new R sleeper cab and the all-new S-series, which is the first Scania with a genuinely flat interior floor - no engine tunnel to step over. The low-entry L-series followed in December 2017.",
+      "driveline": "Inline-sixes and V8s across the modular range: DC09 9.3 L I5, DC11 10.6 L I6, DC13 12.7 L I6, DC16 15.6 / 16.4 L V8, with range-wide outputs from about 220 to 770 hp. Manual was standard on the first generation; Scania Opticruise automated is standard on the second. In April 2010 the V8 reached 730 hp and 3,500 Nm. The second generation added two touchscreen infotainment packages, 5-inch base and 7-inch premium, with CarPlay from April 2017.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x4",
+        "8x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "scania-next-gen-2016",
+          "years": "2016-present (R and S launched 23 August 2016 at the Grand Palais, Paris; cab developed with Porsche Engineering)",
+          "visual_markers": [
+            "'SCANIA' in large light-coloured block capitals across the top of a black grille panel, with the griffin badge to the right of the wordmark",
+            "Below the wordmark, three broad horizontal black slat bars with mesh behind, inside a body-coloured surround",
+            "Headlamps are angular units at the outer lower corners with a hooked LED daytime-running signature running along the outer edge",
+            "Model designation such as 'R 500' or 'S 730' printed small on the lower front panel beside the headlamp",
+            "S versus R at a glance: the S cab front is deeper and flatter and its lower edge sits higher off the road, with no step recess cut into the centre of the bumper - the R keeps a stepped centre bumper because it still has a cab floor to climb into. In a straight-on pair photograph the S's grille sits visibly higher than the R's"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "mirrors_visor",
+          "note": "The first item on a used-buyer list for the R-series is wiring between the door and the mirror, which corrodes and chafes where the loom passes through the door mirror. Check the rubber grommet at the mirror arm and the mirror housing for a repaired or taped loom."
+        },
+        {
+          "component": "cab_interior_seats",
+          "note": "Seats are the second named item; on a high-mileage R the driver's seat bolster and base wear is a recognised inspection point."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "The stereo/head unit is the third named item on the same list."
+        }
+      ],
+      "identity_tells": [
+        "The Scania griffin badge - a crowned griffin head in a red roundel or on a chrome bar",
+        "'SCANIA' spelled out in block capitals across a black grille means the 2016-onward generation; a chrome bar with a griffin and no wordmark means 2004-2017",
+        "Model designation is a letter and a number - R 450, S 500 - where the letter is the cab family and the number the horsepower, unlike the German makers' tonnage.power pairs",
+        "A flat cab floor with no engine tunnel means an S-series; any Scania with a step up into the cab interior from the door sill is an R, G, P or L",
+        "V8 models carry a V8 badge on the cab side and are the only V8s left in this class"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Scania_PRT-range",
+          "title": "Scania PRT-range - Wikipedia (R-series 31 March 2004; P and T 20 August 2004; G-series 5 September 2007; 17 September 2009 upgraded R with sharper styling and larger grille openings; 2013 Streamline; 2014 front air filter redesign on G and R; second generation launched 23 August 2016 in Paris with the new R sleeper cab and the flat-floor S-series; L-series December 2017; DC09 / DC11 / DC13 / DC16 engines, 220-770 hp; Opticruise standard on the second generation; 5-inch and 7-inch touchscreens)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:New_generation_Scania_R_%26_S.jpg",
+          "title": "New generation Scania R & S (reference photograph, both cabs side by side: SCANIA wordmark in the grille, slat bars, hooked LED signature, and the R-versus-S front-height difference)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-scania-r-series-12-issues-look-out",
+          "title": "Commercial Motor Knowledge Hub, 'Used Scania R-series: 12 issues to look out for'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 wiring between door and mirror corroding and wearing where it passes through the door mirror, 2 seats, 3 stereo.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "DAF",
@@ -262,17 +986,93 @@
         "XF 105",
         "XF 106"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit; DAF's flagship cab-over since 1997 and a three-time International Truck of the Year (XF105 in 2007, XF106 in 2018, New Generation XF in 2022).",
+      "cab": "Cab-over-engine. Roof variants are named Space Cab and Super Space Cab (and Space Cab Plus). From the 2021 New Generation the larger cabs were split off under their own model names, XG and XG+, leaving XF as the shorter-cab designation - so on a 2021-or-later truck, XF, XG and XG+ are three different cab sizes rather than trim levels.",
+      "driveline": "PACCAR MX-11 10.8 L and PACCAR MX-13 12.9 L inline-sixes, with ZF AS Tronic or ZF Traxon gearboxes in manual and automated form; 330-390 kW for the combustion models. Shares its chassis family with the DAF CF.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "xf105",
+          "years": "2005-2012 (International Truck of the Year 2007)",
+          "visual_markers": [
+            "'DAF' in block letters at the LEFT of the lower cab panel and 'XF' at the RIGHT, split apart across the panel rather than grouped in a grille",
+            "A small DAF diamond badge - a triangle inside a diamond outline - near the bottom right of the cab panel",
+            "The upper grille is a body-coloured panel with horizontal louvres; the black slatted grille sits below it in the bumper",
+            "Large rectangular headlamp clusters in the bumper corners",
+            "Flat, square cab front with no rounding at the corners",
+            "'DAF' moulded into the mudflaps"
+          ]
+        },
+        {
+          "id": "xf106",
+          "years": "2013-2021 (Euro 6, International Truck of the Year 2018)",
+          "visual_markers": [
+            "Restyled front over the XF105, with a larger dark grille area, but still the flat square cab front and the split DAF/XF lettering on the cab panel rather than a wordmark inside the grille"
+          ]
+        },
+        {
+          "id": "xf-new-generation-2021",
+          "years": "2021-present (New Generation; larger cabs renamed XG and XG+)",
+          "visual_markers": [
+            "'DAF' in large silver block capitals sits INSIDE the grille at the top, with horizontal slats stepping down beneath it - the lettering has moved off the body panel and into the grille",
+            "Cab front and A-pillars are visibly rounded and the nose is longer, a consequence of the new EU length rules; the flat square face of the XF105/XF106 is gone",
+            "Headlamps are slim angular units at the outer lower corners with an amber indicator section",
+            "Power figure printed small at the bottom of the grille, e.g. '530'",
+            "'XF' badge high on the cab side behind the door - on this generation that badge is a cab-size statement, not just a range name, because the taller cabs say XG or XG+",
+            "Slim body-coloured mirror housings mounted low on the door"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "brakes_hubs",
+          "note": "Hub seals and brake discs are the first two items on a used-buyer list for the XF. Look for oil tracking from the hub onto the inside of the wheel and drum/disc face, and for heat cracking or a deep lip on the disc."
+        },
+        {
+          "component": "air_tanks_lines",
+          "note": "The rear axle modulator valve is a named item; check for corrosion at the valve body and for chafed or re-routed air lines to the rear axle."
+        },
+        {
+          "component": "exhaust_dpf",
+          "note": "NOx sensors and exhaust heat shields are both named items. A missing or rattling heat shield and a recently replaced NOx sensor are both visible from underneath."
+        },
+        {
+          "component": "dashboard_instruments",
+          "note": "A gauge-related item appears on the same list."
+        }
+      ],
+      "identity_tells": [
+        "DAF diamond emblem, and the DAF wordmark - on the cab panel before 2021, inside the grille from 2021",
+        "'XF', 'XG' or 'XG+' badge on the cab side behind the door; from 2021 these are three cab sizes on the same truck",
+        "Model number in the form XF 105.460 on the older trucks: 105 is the range and 460 the power in PS; the newer trucks simply say XF 480 or XF 530",
+        "A rounded, long nose with DAF written inside the grille dates the truck to 2021 or later; a flat square face with DAF and XF split across the cab panel is 2005-2021"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/DAF_XF",
+          "title": "DAF XF - Wikipedia (produced since 1997, badged DAF 95XF 1997-2002; PACCAR MX-11 10.8 L and MX-13 12.9 L; ZF AS Tronic or ZF Traxon in manual and automatic; International Truck of the Year for the XF105 in 2007, the XF106 in 2018 and the New Generation XF in 2022; from the 2021 generation the larger cabs are named XG and XG+; related to the DAF CF)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:DAF_XF_105.460_-_Pflanzenlogistik_(2022).jpg",
+          "title": "DAF XF 105.460 (reference photograph for the split DAF / XF cab-panel lettering, the diamond badge, the louvred upper panel and the flat square cab front)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:DAF_XF_530_2021.jpg",
+          "title": "DAF XF 530, 2021 (reference photograph for the New Generation: DAF lettering inside the grille, rounded nose, slim corner headlamps, cab-side XF badge)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-daf-xf-10-common-issues",
+          "title": "Commercial Motor Knowledge Hub, 'Used DAF XF: 10 common issues'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 hub seals, 2 brake discs, 3 rear axle modulator valve, 4 NOx sensors, 5 heat shields, 6 gauges.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "VOLVO",
@@ -283,17 +1083,64 @@
         "FH 460",
         "FH 500"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit; Volvo's flagship cab-over since 1993.",
+      "cab": "Cab-over-engine, offered as Sleeper, Globetrotter, Globetrotter XL and Globetrotter XXL. The cab is built at Umea from hot-dip galvanised high-tensile steel, which is worth knowing when judging corrosion on an older example.",
+      "driveline": "Inline-six turbodiesel with intercooler throughout, historically badged by displacement (FH12 12.1 L, FH13 13 L, FH16 16 L). Volvo's own D-series engines; 14-speed synchro-manual gearboxes in the early cars and I-Shift automated later. In September 2011 the FH16 750 became the most powerful large-scale production truck at 750 hp and 3,550 Nm.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "fh-2012",
+          "years": "2012-present. Volvo re-launched the FH in September 2012 with significant technology upgrades; this is the cab most Turkish and European used listings from 2013 onward show",
+          "visual_markers": [
+            "The grille is crossed by the Volvo signature diagonal slash with the round Volvo iron-mark roundel set into it, offset from centre - no other maker in the class uses a diagonal grille bar",
+            "Cab front is V-sculpted: the grille slats angle down toward a central point",
+            "Cab name spelled out on the black band across the roof front: 'GLOBETROTTER'",
+            "Model number badge on the cab side behind the door, e.g. '500', above a chrome underline",
+            "Headlamps are large angular units at the outer corners with an upward-swept outer edge"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "windscreen_glass",
+          "note": "The first item on a used-buyer list for the FH is seals: poor window seals that whistle at speed. Check the windscreen and side-window rubbers for perishing, lifting and past resealing."
+        },
+        {
+          "component": "doors_handles",
+          "note": "Leaking door seals are named in the same first item; look for water staining down the inside of the door card and a discoloured or displaced door rubber."
+        },
+        {
+          "component": "fluid_leaks",
+          "note": "The cab tilt cylinder is named alongside the seals. A leaking tilt ram leaves hydraulic oil on the chassis rail and the back of the front crossmember - visible in almost any low front-three-quarter photograph."
+        }
+      ],
+      "identity_tells": [
+        "The circular Volvo iron mark on a diagonal bar crossing the grille",
+        "GLOBETROTTER or GLOBETROTTER XL spelled out on the roof-front band - that band names the cab variant directly",
+        "Model badge is a bare power figure (460, 500, 540, 750) on the cab side rather than a tonnage.power pair",
+        "FH12 / FH13 / FH16 badging on older trucks names the engine displacement, so it dates and specifies the truck at once"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Volvo_FH",
+          "title": "Volvo FH - Wikipedia (1993-present; COE with Sleeper, Globetrotter, Globetrotter XL and Globetrotter XXL cabs; inline-six intercooled turbodiesels D12A onward; first generation 1993-2002 with a 1998 facelift and the TEA electrical architecture; second generation 2002-2012; re-launched September 2012 with significant technology upgrades; cab built at Umea from hot-dip galvanised high-tensile steel; FH16 750 the most powerful large-scale production truck from September 2011)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Volvo_FH4_500_Globetrotter_-_Autotransport_-_Pre%C5%A1ov,_SK.jpg",
+          "title": "Volvo FH 500 Globetrotter (reference photograph for the diagonal grille bar with the iron mark, the roof-band GLOBETROTTER lettering and the cab-side power badge)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-volvo-fh-14-common-issues",
+          "title": "Commercial Motor Knowledge Hub, 'Used Volvo FH: 14 common issues'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 seals - poor window seals causing whistling while driving, leaking door seals, cab tilt cylinder.",
+          "source_type": "trade_press"
+        }
+      ]
     },
     {
       "brand": "RENAULT",
@@ -304,17 +1151,60 @@
         "T480",
         "T HIGH"
       ],
-      "segment": null,
-      "cab": null,
-      "driveline": null,
+      "segment": "long-haul tractor unit; replaced the Renault Premium and Magnum together. International Truck of the Year 2015.",
+      "cab": "Cab-over-engine, offered as Day Cab, Night & Day Cab, Sleeper Cab and High Sleeper Cab. The tall long-haul version is badged T High, and the largest living space is the Maxispace.",
+      "driveline": "Two Euro VI inline-sixes: DTI 11 (11 L, 380 / 430 / 460 hp) and DTI 13 (13 L, 440 / 480 / 520 hp), with the robotised 12-speed Optidriver automated gearbox as standard. The T was designed by Herve Bertrand and shares some parts with the contemporary Volvo FH - Renault Trucks has been part of the Volvo Group since 2001 - so a Renault T and a Volvo FH of the same year can share chassis and driveline components while looking nothing alike.",
       "axle_configs": [
         "4x2",
-        "6x2"
+        "6x2",
+        "6x4"
       ],
-      "generations": [],
-      "known_weak_points": [],
-      "identity_tells": [],
-      "sources": []
+      "generations": [
+        {
+          "id": "renault-t-2013",
+          "years": "2013-present (presented 11 June 2013, on sale from the end of 2013)",
+          "visual_markers": [
+            "A steeply raked, forward-leaning windscreen - the T's cab front slopes back far more than any German rival's and is the quickest way to spot one at distance",
+            "Renault's diamond/lozenge emblem centred in a narrow black lower grille, beneath a broad body-coloured upper panel",
+            "Headlamps are large angular wrap-around units at the outer corners carrying an amber indicator lens within the cluster",
+            "Two-tier front: a body-coloured upper bumper band above a dark grille and valance",
+            "Cab variant written on the front plate area or lower door, e.g. 'T HIGH MAXISPACE'"
+          ]
+        }
+      ],
+      "known_weak_points": [
+        {
+          "component": "mudflaps_guards",
+          "note": "The first item on a used-buyer list for the Range T is the rear mudguards and their brackets, which are prone to failure. A drooping, cracked or missing rear mudguard on a T is a known model fault rather than a one-off impact."
+        },
+        {
+          "component": "cab_steps",
+          "note": "The second item is the exterior steps, described as flimsy and prone to damage on early models. Check the step treads and their mounting brackets for bending and for repair welds."
+        }
+      ],
+      "identity_tells": [
+        "Renault diamond emblem in the grille",
+        "The strongly inclined windscreen and wedge-shaped cab front",
+        "Badging is a bare power figure after the letter - T 460, T 480, T 520",
+        "'T HIGH' on a tall cab identifies the long-haul roof variant"
+      ],
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Renault_Trucks_T",
+          "title": "Renault Trucks T - Wikipedia (presented 11 June 2013, introduced end of 2013, built at Bourg-en-Bresse; Day Cab / Night & Day Cab / Sleeper Cab / High Sleeper Cab; DTI 11 at 380, 430, 460 hp and DTI 13 at 440, 480, 520 hp; 12-speed Optidriver standard; designed by Herve Bertrand, shares parts with the new Volvo FH; International Truck of the Year 2015; replaced the Premium and Magnum)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://commons.wikimedia.org/wiki/File:Renault_Trucks_T_High_520_Maxispace_-_Front_and_left_side_IAA_2018.jpg",
+          "title": "Renault Trucks T High 520 Maxispace, IAA 2018 (reference photograph for the raked windscreen, diamond emblem placement, wrap-around headlamps and two-tier front)",
+          "source_type": "encyclopedic"
+        },
+        {
+          "url": "https://www.commercialmotor.com/knowledge-hub/article/used-renault-range-t-15-points-look-out",
+          "title": "Commercial Motor Knowledge Hub, 'Used Renault Range T: 15 points to look out for'. The numbered list this draws on was retrieved through the Firecrawl search index; a direct fetch of the live URL returned 404 at compile time, so only the list headings the index returned are used, and only the first few items were recoverable. Items recovered: 1 rear mudguards and brackets prone to failure, 2 exterior steps flimsy and prone to damage on early models.",
+          "source_type": "trade_press"
+        }
+      ]
     }
   ]
 }

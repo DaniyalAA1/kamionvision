@@ -42,9 +42,27 @@ MODEL_SPECS = REPO / "data" / "reference" / "models_tr.json"
 # Anything that smells like money. Deliberately broad: the cost of a false
 # positive here is a maintainer rewording a spec note, and the cost of a false
 # negative is a currency figure in front of the model that assigns severity.
+#
+# "Euro" is the one word that has to be handled rather than matched. A spec card
+# says "Euro 6" constantly - it is the emission standard every tractor unit in
+# this market is described by - and it is not a currency. So the euro tokens
+# carry a negative lookahead for a following standard number or Roman numeral,
+# which keeps "Euro 6", "Euro-6" and "Euro VI" legal while "500 euro" is still
+# caught. Getting this wrong in the other direction is what turns a guard off:
+# a check that fires on the most common phrase in its own subject matter gets
+# deleted, and then the real leak goes through.
+_EURO_STANDARD = r"(?!\s*-?\s*(?:[0-9]|VI\b|V\b|IV\b|III\b))"
 _PRICE = re.compile(
-    r"(₺|\$|€|£|\bTRY\b|\bUSD\b|\bEUR\b|\bTL\b|\blira\b|\bdolar\b|\beuro\b"
-    r"|\bprice[sd]?\b|\bcost(s|ing)?\b|\bworth\b|\bfiyat\b)", re.IGNORECASE)
+    r"(₺|\$|€|£|\bTRY\b|\bUSD\b|\bTL\b|\blira\b|\bdolar\b"
+    rf"|\bEUR\b|\beuros?\b{_EURO_STANDARD}"
+    r"|\bprice[sd]?\b|\bpricing\b|\bcost(s|ing)?\b|\bfiyat\b"
+    # "worth" only when a figure follows it. A spec card says "worth noting",
+    # "worth a close-up" and "worth knowing when judging corrosion" constantly -
+    # all six hits on the first researched card were that - while the shape that
+    # actually leaks is "worth 500,000". Same lesson as Euro 6 above: a guard
+    # that cries wolf on its own subject matter stops being run.
+    r"|\bworth\s+(?:about\s+|around\s+|roughly\s+)?[₺$€£\d]"
+    r"|\bexpensive\b|\bcheap(er|est)?\b)", re.IGNORECASE)
 
 _REFERENCE: dict | None = None
 _LOCK = threading.Lock()
