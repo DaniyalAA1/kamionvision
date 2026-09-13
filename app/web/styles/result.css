@@ -10,7 +10,7 @@
    a hairline, because a wall of identical rounded panels is what this screen
    looked like before and it made every section feel equally important. */
 
-.result { padding-top: var(--s-6); animation: lights-up .55s var(--ease-out); }
+.result { padding-top: var(--s-6); scroll-margin-top: var(--s-5); animation: lights-up .55s var(--ease-out); }
 @keyframes lights-up {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }

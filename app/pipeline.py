@@ -26,6 +26,7 @@ from . import identity as identity_stage
 from . import reconcile as reconcile_stage
 from .perception import heads as perception_stage
 from .config import IMAGE_SUFFIXES, LISTINGS_CSV
+from .log import ExecutionTracker, get_logger
 from .pricing import model as pricing
 from .schema import Appraisal, GateDecision, PriceEstimate, TraceStep
 
@@ -202,16 +203,32 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     """
     from . import __version__
 
+    logger = get_logger("pipeline")
+    tracker = ExecutionTracker(source="appraise", metadata={
+        "declared": declared or {}, "market": market, "backend": backend,
+        "n_photos": len(photos),
+    })
+    logger.info("Starting appraisal: %d photos, declared=%s, market=%s, backend=%s",
+                len(photos), declared, market, backend)
+
     t0 = time.time()
     result = Appraisal(declared=declared or {}, version=__version__)
+    result.execution_id = tracker.run_id
     note = on_step or (lambda *_: None)
 
     # --- 1. gate ----------------------------------------------------------
     note("gate", "checking the photos")
+    tracker.stage_started("gate", f"checking {len(photos)} photos")
     gate = gate_stage.run(photos)
     result.gate = gate
     result.trace.append(TraceStep("gate", gate.headline, gate.elapsed_s))
     result.requests = list(gate.requests)
+    tracker.stage_completed("gate", gate.elapsed_s, {
+        "decision": gate.decision.value,
+        "usable_photos": len(gate.usable_photo_ids),
+        "headline": gate.headline,
+        "requests": list(gate.requests),
+    })
 
     # The gate is complete ~1 s in and the vision call that follows takes half a
     # minute. Handing the finished report over now lets a caller show the real
@@ -225,15 +242,19 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
                GateDecision.REFUSE_NO_PHOTOS)
     if history_stage.enabled() and gate.decision not in refused:
         note("history", "reading vehicle plates and checking available history records")
+        tracker.stage_started("history")
         history_started = time.time()
         result.history = history_stage.scan(gate, backend=backend)
+        hist_elapsed = round(time.time() - history_started, 2)
         result.trace.append(TraceStep("history", f"{len(result.history.observations)} vehicle plate reads",
-                                      round(time.time() - history_started, 2)))
+                                      hist_elapsed))
+        tracker.stage_completed("history", hist_elapsed, {"status": result.history.status})
 
     if gate.decision in refused:
         result.status = "refused"
         result.headline = gate.headline
         result.elapsed_s = round(time.time() - t0, 2)
+        tracker.complete(result.status, {"headline": result.headline, "requests": result.requests})
         return result
 
     early = pricing_blocker(None, gate=gate)
@@ -243,6 +264,7 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         result.headline = headline
         result.requests.insert(0, "one set of photos of the single truck you are selling")
         result.elapsed_s = round(time.time() - t0, 2)
+        tracker.complete(result.status, {"headline": headline, "reason": reason})
         return result
 
     # --- 1b. perception ---------------------------------------------------
@@ -275,6 +297,7 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     # instead of a progress bar guessing at it.
     sent = evidence_stage.select_photos(gate)
     note("evidence", f"reading {len(sent)} of {len(gate.usable_photo_ids)} usable frames")
+    tracker.stage_started("evidence", f"reading {len(sent)} of {len(gate.usable_photo_ids)} usable frames")
     ev = evidence_stage.run(gate, declared, backend=backend, on_photo=on_photo,
                             **({"on_activity": on_activity} if on_activity else {}))
     result.evidence = ev
@@ -285,15 +308,20 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     if ev.fell_back_from:
         detail += f" — fell back from {len(ev.fell_back_from)} failed backend(s)"
     result.trace.append(TraceStep("evidence", detail, ev.elapsed_s))
-    # Deliberately NOT merged into result.requests: the gate's requests are
-    # canonical views the seller can go and shoot right now, the evidence's
-    # coverage gaps are things that could not be assessed at all. Collapsing
-    # them produced a re-ask list with every item in it twice.
+    tracker.stage_completed("evidence", ev.elapsed_s, {
+        "photos_read": ev.photos_read,
+        "photos_failed": ev.photos_failed,
+        "n_issues": len(ev.issues),
+        "condition_grade": ev.condition_grade,
+        "backend": ev.backend,
+        "model": ev.model,
+    })
 
     # --- 2b. reconcile ----------------------------------------------------
     # Placed before the blocks_pricing return on purpose: a set that stops here
     # still gets its re-ask list corrected, so a seller is never asked for a
     # photo the trained head can already see in what they sent.
+    tracker.stage_started("reconcile")
     recon = reconcile_stage.apply(gate, perception, ev, declared)
     if recon.n:
         result.reconcile = recon
@@ -302,37 +330,18 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         result.trace.append(TraceStep(
             "reconcile", f"{recon.n} correction(s) against the vision model: {kinds}",
             recon.elapsed_s))
-    # Deliberately does NOT clear gate.blocks_pricing. The two conditions that
-    # set it - no truck-dominant frame, no whole-vehicle view - are decided by
-    # the gate's own ladder before `missing_views` is ever computed, so there
-    # is no coverage restore that legitimately answers them. Lifting a pricing
-    # block on a 0.60-confidence head prediction would be exactly the
-    # confident wrong answer the brief singles out.
+    tracker.stage_completed("reconcile", recon.elapsed_s, {
+        "corrections": recon.n,
+        "widening": recon.widening,
+    })
 
     # --- 2c. who is this truck --------------------------------------------
-    # Every read that can name the vehicle, adjudicated in one place: the
-    # sampled identity pass, the badge crop, the chassis-plate WMI and the
-    # trained head. Until this existed the only identity number the pipeline
-    # had was the vision model's opinion of its own answer, and only body type
-    # and same_vehicle could stop the run - so nothing could say "I do not know
-    # what this truck is well enough to put a band on it", even though brand is
-    # a term in the price model.
-    #
-    # Placed after reconcile because reconcile is what fills the WMI, and
-    # before the pricing block for the same reason reconcile is: a set that
-    # stops here still gets an honest re-ask list.
     ev.identity = identity_stage.decide(ev.vehicle, perception,
                                         head_classes=_head_classes())
-    # One widening per fact. reconcile records a correction when the head
-    # disputes the badge and another when the plate does; each multiplier is
-    # right alone and wrong together, so the verdict supersedes them.
     recon.widening = identity_stage.merge_widening(ev.identity, recon.widening)
     if ev.identity.status != "confirmed":
         result.trace.append(TraceStep(
             "identity", f"{ev.identity.status}: {ev.identity.reason}", 0.0))
-    # The re-ask path for identity, which existed only for capture quality.
-    # Ordered behind the gate's own requests - those are canonical views the
-    # seller can shoot right now.
     if ev.identity.reask and ev.identity.status in ("unknown", "disputed"):
         if ev.identity.reask not in result.requests:
             result.requests.append(ev.identity.reask)
@@ -341,10 +350,12 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         result.status = "need_more_photos"
         result.headline = gate.headline
         result.elapsed_s = round(time.time() - t0, 2)
+        tracker.complete(result.status, {"headline": gate.headline, "gate_blocks_pricing": True})
         return result
 
     # --- 3. price ---------------------------------------------------------
     note("price", "looking up comparables")
+    tracker.stage_started("price", "calculating valuation and comparables")
     t = time.time()
 
     blocked = pricing_blocker(ev)
@@ -360,6 +371,8 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         if not ev.same_vehicle:
             result.requests.insert(0, "one set of photos of the single truck you are selling")
         result.elapsed_s = round(time.time() - t0, 2)
+        tracker.stage_completed("price", price.elapsed_s, {"blocked": True, "reason": reason})
+        tracker.complete(result.status, {"headline": headline, "blocked_reason": reason})
         return result
 
     widening = [tuple(w) for w in (recon.widening if recon else [])]
@@ -382,17 +395,23 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
         (f"{price.low:,.0f}-{price.high:,.0f} {price.currency}" if price.ok
          else f"declined: {price.reason}"),
         price.elapsed_s))
+    tracker.stage_completed("price", price.elapsed_s, {
+        "ok": price.ok,
+        "point": price.point,
+        "low": price.low,
+        "high": price.high,
+        "baseline_point": price.baseline_point,
+        "baseline_low": price.baseline_low,
+        "baseline_high": price.baseline_high,
+        "currency": price.currency,
+        "reason": price.reason,
+    })
 
     # --- headline ---------------------------------------------------------
     if not price.ok:
         result.status = "need_more_photos"
         result.headline = price.reason
     else:
-        # The headline deliberately does not call this "the 80% band". The
-        # measured coverage belongs to the comparable-asking interval; this
-        # number is that interval moved by what the photos show, and labelling
-        # it with someone else's measurement is the exact conflation the two
-        # separate bands exist to prevent.
         grade = ev.condition_grade if ev else "unknown"
         band = (f"{price.low:,.0f}–{price.high:,.0f} {price.currency}")
         if abs(price.point - price.baseline_point) > 1:
@@ -408,4 +427,9 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
                                f"{len(gate.usable_photo_ids)} photos.")
 
     result.elapsed_s = round(time.time() - t0, 2)
+    tracker.complete(result.status, {
+        "headline": result.headline,
+        "price_point": price.point if price and price.ok else None,
+        "currency": price.currency if price else "",
+    })
     return result

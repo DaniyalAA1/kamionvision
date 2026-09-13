@@ -17,6 +17,8 @@ from app import server
 
 class _Result:
     gate = SimpleNamespace(photos=[])
+    status: str = "ok"
+    headline: str = "Appraisal complete"
 
     def to_dict(self):
         return {"status": "ok"}
@@ -39,7 +41,7 @@ class AppraisalSerialization(unittest.TestCase):
         first_response = []
 
         def fake_appraise(photos, declared, *, market, backend, on_step,
-                         on_gate, on_photo):
+                         on_gate, on_photo, **kwargs):
             on_step("gate", "started")
             entered.set()
             self.assertTrue(release.wait(5), "test did not release appraisal")

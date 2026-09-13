@@ -46,8 +46,9 @@ import pandas as pd
 
 from .. import condition as C
 from ..condition import IMPACT_WEIGHT, SEVERITY_WEIGHT  # noqa: F401  (re-exported)
-from ..config import (FX_AS_OF, LISTINGS_CSV, PRICE_MODEL, USD_TRY,
-                      euro_norm_for_year)
+from ..config import (FX_AS_OF, LISTINGS_CSV, PRICE_MODEL, SALVAGE_VALUE_TRY,
+                      SALVAGE_VALUE_USD, USD_TRY, euro_norm_for_year)
+from ..log import get_logger
 from ..schema import (AskingVerdict, Comparable, ConditionAdjustment, EvidenceReport,
                        PriceEstimate)
 from . import anchor
@@ -349,11 +350,13 @@ def judge_asking_price(asking: float, est: PriceEstimate) -> AskingVerdict:
     label is the comparables one, because that is the measured band.
     """
     comp_mid = (est.baseline_low + est.baseline_high) / 2 or est.baseline_point
+    inside_est = bool(est.low <= asking <= est.high) if (est.low is not None and est.high is not None) else False
     v = AskingVerdict(
         asking=round(asking, -3), currency=est.currency,
         vs_comparables_pct=round((asking / comp_mid - 1) * 100, 1) if comp_mid else 0.0,
         vs_estimate_pct=round((asking / est.point - 1) * 100, 1) if est.point else 0.0,
         inside_comparable_band=bool(est.baseline_low <= asking <= est.baseline_high),
+        inside_estimate_band=inside_est,
     )
     if v.inside_comparable_band:
         v.label = "in line with the market"
@@ -372,6 +375,8 @@ def judge_asking_price(asking: float, est: PriceEstimate) -> AskingVerdict:
         direction = "more" if v.vs_estimate_pct > 0 else "less"
         v.summary += (f" Against the condition-adjusted estimate it is "
                       f"{abs(v.vs_estimate_pct):.0f}% {direction}.")
+    if v.inside_comparable_band and not v.inside_estimate_band and est.high and asking > est.high:
+        v.summary += " Note: Exceeds the condition-adjusted valuation for this vehicle's specific observed wear."
     return v
 
 
@@ -477,12 +482,42 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     # The model predicts log price in the NATIVE currency of the market it was
     # fit on - no FX inside the fit, because a conversion is an additive
     # constant in log space that the market dummy absorbs. So exp(mu) is TRY
-    # for a Turkish query and USD for an American one, and the only conversion
-    # happens here, for display.
+    # for a Turkish query. If the model was fitted exclusively on Turkish listings (tr_only),
+    # exp(mu) is in TRY and must be converted to USD for non-TR displays.
     native = math.exp(mu + adj_log)
     lo_native = math.exp(mu + adj_log + lo_off * factor_cond)
     hi_native = math.exp(mu + adj_log + hi_off * factor_cond)
-    to_usd = (1.0 / USD_TRY) if est.currency == "TRY" else 1.0
+    base_pt = math.exp(mu)
+    base_lo = math.exp(mu + lo_off * factor)
+    base_hi = math.exp(mu + hi_off * factor)
+
+    model_markets = [m.upper() for m in model.meta.get("markets", ["TR"])]
+    model_is_tr_only = (model_markets == ["TR"]) or (model.meta.get("training_set") == "tr_only")
+    if model_is_tr_only and est.currency == "USD":
+        native /= USD_TRY
+        lo_native /= USD_TRY
+        hi_native /= USD_TRY
+        base_pt /= USD_TRY
+        base_lo /= USD_TRY
+        base_hi /= USD_TRY
+        to_usd = 1.0
+    else:
+        to_usd = (1.0 / USD_TRY) if est.currency == "TRY" else 1.0
+
+    floor = SALVAGE_VALUE_TRY if est.currency == "TRY" else SALVAGE_VALUE_USD
+    if native < floor:
+        get_logger("pricing").info("Predicted price %.0f %s below physical salvage floor %.0f; flooring",
+                                   native, est.currency, floor)
+        native = max(native, floor)
+        lo_native = max(lo_native, floor * 0.85)
+        hi_native = max(hi_native, floor * 1.15)
+        widened.append(f"a physical salvage floor of {floor:,.0f} {est.currency} applies; "
+                       f"commercial heavy tractors maintain intrinsic value in powertrain and chassis steel")
+
+    if base_pt < floor:
+        base_pt = floor
+        base_lo = max(base_lo, floor * 0.85)
+        base_hi = max(base_hi, floor * 1.15)
 
     est.point, est.low, est.high = (round(native, -3), round(lo_native, -3),
                                     round(hi_native, -3))
@@ -491,14 +526,20 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
     # because the anchor is a statement about the vehicle's specification, not
     # about what the photos show - the split this pair protects is
     # spec-vs-condition, not comparables-vs-anchor.
-    est.baseline_point = round(math.exp(mu), -3)
-    est.baseline_low = round(math.exp(mu + lo_off * factor), -3)
-    est.baseline_high = round(math.exp(mu + hi_off * factor), -3)
+    est.baseline_point = round(base_pt, -3)
+    est.baseline_low = round(base_lo, -3)
+    est.baseline_high = round(base_hi, -3)
     est.point_usd = round(native * to_usd, -2)
     est.low_usd = round(lo_native * to_usd, -2)
     est.high_usd = round(hi_native * to_usd, -2)
     est.adjustment = adj
     est.widened = widened
+    get_logger("pricing").info(
+        "Priced %s %s (%s, %s km, %s): baseline=%s-%s %s (point %s), condition-adj=%s-%s %s (point %s)",
+        make, vehicle_model or "", year, km, market,
+        f"{est.baseline_low:,.0f}", f"{est.baseline_high:,.0f}", est.currency, f"{est.baseline_point:,.0f}",
+        f"{est.low:,.0f}", f"{est.high:,.0f}", est.currency, f"{est.point:,.0f}",
+    )
     est.drivers = model.contributions(vector)
     est.inputs = {"year": int(year), "km": int(km), "make": make, "market": market,
                   "model": vehicle_model or "",

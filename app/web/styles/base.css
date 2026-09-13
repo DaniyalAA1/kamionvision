@@ -115,6 +115,11 @@ a { color: inherit; }
   padding-top: var(--s-5);
   border-top: 1px solid var(--edge);
 }
+/* Suppress the footer while the dark appraisal stage is active and results have not landed */
+#run:not([hidden]) ~ #result[hidden] ~ .appfoot,
+body:has(#run:not([hidden])):has(#result[hidden]) .appfoot {
+  display: none !important;
+}
 .appfoot .brand { font-size: 20px; }
 .appfoot > span { font: 8px var(--mono); letter-spacing: .7px; color: var(--steel-dim); }
 .appfoot-back { font-size: var(--t-sm); text-decoration: none; color: var(--ink); }

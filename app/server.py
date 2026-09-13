@@ -24,6 +24,9 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from . import evidence, gallery, pipeline, report
 from .config import HEIF_SUPPORT, IMAGE_SUFFIXES, IMAGES, REPO, WEB
+from .log import get_logger
+
+logger = get_logger("server")
 
 app = FastAPI(title="KamionVision", docs_url="/api/docs")
 
@@ -194,6 +197,7 @@ async def upload(files: list[UploadFile] = File(...)) -> dict:
                      "url": f"/api/photo/{sid}/{target.name}"})
     if not kept:
         raise HTTPException(400, "No usable image files in that upload.")
+    logger.info("Upload: kept %d photos, skipped %d (session=%s)", len(kept), len(skipped), sid)
     return {"session": sid, "photos": kept, "skipped": skipped}
 
 
@@ -211,6 +215,7 @@ def upload_sample(case: str = Form(...)) -> dict:
     out = _new_session(paths)
     out["declared"] = match.get("declared") or {}
     out["title"] = match["title"]
+    logger.info("Sample loaded: case=%s into session=%s (%d photos)", case, out["session"], len(paths))
     return out
 
 
@@ -232,6 +237,7 @@ def upload_truck(truck: str = Form(...)) -> dict:
                                          ("make", card.get("make")))
                        if v not in (None, "", "—")}
     out["title"] = f"{card.get('make', '')} {card.get('model', '')}".strip()
+    logger.info("Truck loaded: truck=%s into session=%s (%d photos)", truck, out["session"], len(paths))
     return out
 
 
@@ -248,6 +254,8 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
              make: str | None = None, market: str = "TR",
              asking: float | None = None,
              backend: str | None = None) -> StreamingResponse:
+    logger.info("Appraise request: session=%s, year=%s, km=%s, make=%s, asking=%s, backend=%s",
+                session, year, km, make, asking, backend)
     folder = (SESSIONS / session).resolve()
     if not str(folder).startswith(str(SESSIONS.resolve())) or not folder.is_dir():
         raise HTTPException(404, "unknown session")
@@ -299,8 +307,11 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
             payload["photo_urls"] = urls_for(result.gate.photos)
             payload["text_report"] = report.render_text(result)
             events.put({"type": "result", "appraisal": payload})
+            logger.info("Session %s completed appraisal: status=%s, headline=%s",
+                        session, getattr(result, "status", "unknown"), getattr(result, "headline", ""))
             _expire_sessions()
         except Exception as exc:
+            logger.exception("Appraisal failed for session %s: %s", session, exc)
             events.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
         finally:
             global _APPRAISALS_IN_FLIGHT

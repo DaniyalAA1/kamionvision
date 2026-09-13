@@ -90,7 +90,7 @@ export function clear() {
 
 function pendingCard() {
   const n = el('div', 'thought-pending');
-  n.append(partIcon('camera'), el('span', null, 'reading a photo…'));
+  n.append(partIcon('camera'), el('span', null, 'analyzing photo with vision model…'));
   return n;
 }
 

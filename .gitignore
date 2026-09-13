@@ -6,6 +6,8 @@ data/images/
 # Tooling caches and session artifacts
 .firecrawl/
 .playwright-mcp/
+.claude/
+graphify-out/
 
 # macOS
 .DS_Store

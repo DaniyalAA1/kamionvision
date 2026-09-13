@@ -61,6 +61,10 @@ export function onActivity(msg) {
     activityDetail = msg.detail || '';
     if (msg.phase === 'synthesis') {
       activePhotos.clear(); clearInterval(activityTimer); activityTimer = null;
+      progress('Cross-checking observations & synthesizing report...', 0.90);
+    } else if (msg.phase === 'identity') {
+      const frac = 0.08 + (msg.sample ? 0.04 * msg.sample : 0.04);
+      progress(activityDetail, Math.min(0.22, frac));
     }
     if (!hasPendingReview()) $('scan-status').textContent = activityDetail;
   }
@@ -358,4 +362,5 @@ export function onError(message) {
   progress(message, 0);
   $('rail-title').textContent = 'Something broke';
   $('rail-sub').textContent = message;
+  $('view-result').hidden = false;
 }

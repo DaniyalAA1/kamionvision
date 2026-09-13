@@ -89,6 +89,16 @@ ANTHROPIC_MODEL = os.environ.get("KAMION_ANTHROPIC_MODEL", "claude-opus-5").stri
 # reasoning one, so it does not need the default "high".
 ANTHROPIC_EFFORT = os.environ.get("KAMION_ANTHROPIC_EFFORT", "low").strip()
 
+# Timeout in seconds for an individual VLM completion call. Protects against
+# hangs from stalled network connections or unresponsive provider agents.
+VLM_TIMEOUT_SECONDS = int(os.environ.get("KAMION_VLM_TIMEOUT", "90"))
+
+# Physical salvage and scrap value floor for a heavy semi-tractor in Turkey (TRY).
+# Heavy commercial tractors retain significant intrinsic value in powertrain, axles,
+# alloy fuel tanks, chassis steel, and recyclable materials even at high age/mileage.
+SALVAGE_VALUE_TRY = float(os.environ.get("KAMION_SALVAGE_FLOOR_TRY", "250000.0"))
+SALVAGE_VALUE_USD = float(os.environ.get("KAMION_SALVAGE_FLOOR_USD", "7500.0"))
+
 # Photos sent to the vision model per appraisal. A phone-toting seller
 # uploads 15-40 near-identical frames; the evidence stage gets a view-diverse
 # subset instead, which is both cheaper and measurably less repetitive.

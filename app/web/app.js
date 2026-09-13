@@ -107,6 +107,8 @@ function fail(message) {
 function start(session) {
   if (stream) stream.close();
   $('intake').hidden = true;
+  const foot = document.querySelector('.appfoot');
+  if (foot) foot.hidden = true;
   run.begin();
   stream = net.openStream(session, declaredParams(), {
     gate: (m) => run.onGate(m),
@@ -118,7 +120,9 @@ function start(session) {
       stream.close();
       run.onError('Something broke while appraising.');
       showRefusal('Something broke while appraising.', m.message);
-      $('intake').hidden = false;
+      const f = document.querySelector('.appfoot');
+      if (f) f.hidden = false;
+      $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
     },
   });
 }
@@ -162,6 +166,8 @@ function render(a) {
   $('refusal').hidden = true;
   $('band-wrap').hidden = true;
   $('price-usd').hidden = true;
+  const foot = document.querySelector('.appfoot');
+  if (foot) foot.hidden = false;
 
   run.onResult(a);
   frames.showFrame(frames.checkFor(frames.currentPhotoId())
@@ -339,6 +345,8 @@ function startOver() {
   $('intake').hidden = false;
   $('run').hidden = true;
   $('result').hidden = true;
+  const foot = document.querySelector('.appfoot');
+  if (foot) foot.hidden = false;
   elevation.reset(run.elevationRoot());
   window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
 }

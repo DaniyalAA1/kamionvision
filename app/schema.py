@@ -572,6 +572,7 @@ class AskingVerdict(_Dict):
     vs_comparables_pct: float = 0.0
     vs_estimate_pct: float = 0.0
     inside_comparable_band: bool = False
+    inside_estimate_band: bool = False
     label: str = ""            # priced with the market | above | below
     summary: str = ""
 
@@ -658,3 +659,4 @@ class Appraisal(_Dict):
     trace: list[TraceStep] = field(default_factory=list)
     elapsed_s: float = 0.0
     version: str = ""
+    execution_id: str = ""

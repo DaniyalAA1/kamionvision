@@ -2329,7 +2329,7 @@ class ViewPromptEnsemble(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parent.parent
         checked = 0
         for path in root.rglob("*.py"):
-            if ".venv" in path.parts:
+            if any(p.startswith(".") for p in path.parts[:-1]):
                 continue
             src = path.read_text()
             if "VIEW_PROMPTS" not in src or "VIEW_PROMPTS = [" in src:

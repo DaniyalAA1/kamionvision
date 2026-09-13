@@ -9,6 +9,7 @@ freight platform — and judged live on photos the team has never seen.
 - [`kamion-truck-appraisal-brief.md`](kamion-truck-appraisal-brief.md) — the sponsor's brief: what the system has to do and how it will be judged.
 - [`hackathon-plan.md`](hackathon-plan.md) — the build plan scoped to that brief. Its [appendix](hackathon-plan.md#appendix-long-term-product-blueprint-not-weekend-scope) carries the long-form product blueprint as reference material, not weekend scope.
 - [`data/DATASET_CARD.md`](data/DATASET_CARD.md) — the shareable dataset bundle: scale, sources, cleaning, quality distribution, fields and limitations.
+- [`docs/2026-09-13-session-improvements.md`](docs/2026-09-13-session-improvements.md) — structured logging, pricing enhancements, and UI layout containment fixes.
 
 ```bash
 uv venv --python 3.12 .venv

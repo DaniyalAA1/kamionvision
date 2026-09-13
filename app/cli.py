@@ -240,6 +240,54 @@ def cmd_demo(args) -> int:
     return run_demo(only=args.case, backend=args.backend)
 
 
+def cmd_logs(args) -> int:
+    import time
+    from . import log
+
+    if args.tail:
+        path = log.LOG_FILE
+        if not path.exists():
+            print("No log file found at runs/kamion.log")
+            return 0
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for line in lines[-args.limit:]:
+            print(line)
+        return 0
+
+    if args.run_id:
+        events = log.get_execution_events(args.run_id)
+        if not events:
+            print(f"No execution events found for run '{args.run_id}'")
+            return 1
+        print(f"Execution trace for {args.run_id} ({len(events)} events):\n" + "=" * 65)
+        for ev in events:
+            t = ev.get("elapsed_s", 0.0)
+            name = ev.get("event", "")
+            data = ev.get("data", {})
+            print(f"  +{t:6.2f}s  [{name:<15}] {json.dumps(data, ensure_ascii=False)}")
+        return 0
+
+    runs = log.list_recent_executions(limit=args.limit, errors_only=args.errors_only)
+    if not runs:
+        print("No recent appraisal executions found in runs/executions/index.jsonl.")
+        return 0
+
+    print(f"Recent Appraisal Executions (showing {len(runs)}):\n" + "=" * 65)
+    for r in runs:
+        run_id = r.get("run_id", "")
+        status = r.get("status", "")
+        elapsed = r.get("total_time_s", 0.0)
+        errs = r.get("error_count", 0)
+        start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r.get("start_time", 0)))
+        summary = r.get("summary", {})
+        headline = summary.get("headline", "")
+        mark = " OK " if status == "ok" and errs == 0 else "FAIL" if errs > 0 else status.upper()
+        print(f"[{mark:^4}] {start}  {run_id:<28} {elapsed:5.1f}s  errors={errs}")
+        if headline:
+            print(f"       -> {headline[:80]}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="kamionvision",
                                  description="Appraise a used semi-tractor from photos.")
@@ -273,6 +321,13 @@ def main(argv=None) -> int:
     m.add_argument("--case", help="run only this case")
     m.add_argument("--backend")
     m.set_defaults(func=cmd_demo)
+
+    l = sub.add_parser("logs", help="view recent execution runs and debugging logs")
+    l.add_argument("-n", "--limit", type=int, default=10, help="number of entries to show (default 10)")
+    l.add_argument("--errors-only", action="store_true", help="show only runs that had errors or non-ok status")
+    l.add_argument("--run-id", help="show full event trace for a specific execution run ID")
+    l.add_argument("--tail", action="store_true", help="tail lines from runs/kamion.log instead of run index")
+    l.set_defaults(func=cmd_logs)
 
     args = ap.parse_args(argv)
     return args.func(args)

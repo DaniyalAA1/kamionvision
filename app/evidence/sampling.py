@@ -402,7 +402,8 @@ def combine_identity(reads: list[tuple], *, quorum: int | None = None
 
 def identity_consensus(chain, selected: list, declared: dict | None, *,
                        max_tokens: int, samples: int | None = None,
-                       quorum: int | None = None, repair=None) -> IdentityRead:
+                       quorum: int | None = None, repair=None,
+                       on_activity=None) -> IdentityRead:
     """`samples` reads of the identity call, on one backend, combined into one.
 
     Sequential, like `closeup_consensus`: the samples are three waves of one
@@ -428,6 +429,11 @@ def identity_consensus(chain, selected: list, declared: dict | None, *,
     backend = model_id = ""
 
     for index in range(max(1, samples)):
+        if on_activity:
+            on_activity({
+                "phase": "identity",
+                "detail": f"Identifying truck make & specs (consensus sample {index + 1} of {samples})",
+            })
         order = ([pinned] + [c for c in chain if c is not pinned]) if pinned else list(chain)
         for position, client in enumerate(order):
             try:

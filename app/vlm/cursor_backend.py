@@ -18,6 +18,7 @@ not sufficient.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -96,8 +97,17 @@ class CursorBackend(VLMBackend):
                   f"photo_id 0 through {len(images) - 1}, in the order attached.\n\n")
         text = (f"{system}\n\n{header}{prompt}" if system else header + prompt)
 
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        from ..log import get_logger
+        from ..config import VLM_TIMEOUT_SECONDS
+
+        logger = get_logger("vlm.cursor")
+        logger.debug("Dispatched Cursor inference (%s) with %d images", self.model, len(images))
+
         t0 = time.time()
-        try:
+        timeout = float(os.environ.get("KAMION_VLM_TIMEOUT", VLM_TIMEOUT_SECONDS))
+
+        def _execute():
             with Agent.create(AgentOptions(
                 model=ModelSelection(id=self.model, params=[
                     ModelParameterValue(id="reasoning", value=effort or self.effort),
@@ -109,25 +119,41 @@ class CursorBackend(VLMBackend):
                 run = agent.send(UserMessage(text=text, images=sdk_images))
                 out = run.text()
                 result = run.wait()
-                if result.status != "finished":
-                    raise VLMError(f"Cursor run ended with status {result.status}")
-                actual_model = getattr(result.model, "id", None)
-                if actual_model != self.model:
-                    raise VLMError(
-                        f"Cursor model mismatch: requested {self.model}, returned {actual_model}")
-                if not out.strip():
-                    raise VLMError("Cursor returned an empty inference response")
+                return out, result
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_execute)
+                out, result = future.result(timeout=timeout)
+
+            if result.status != "finished":
+                err_detail = getattr(result, "result", None) or getattr(result, "error", None)
+                msg = f": {err_detail}" if err_detail else ""
+                raise VLMError(f"Cursor run ended with status {result.status}{msg}")
+            actual_model = getattr(result.model, "id", None)
+            if actual_model != self.model:
+                raise VLMError(
+                    f"Cursor model mismatch: requested {self.model}, returned {actual_model}")
+            if not out.strip():
+                raise VLMError("Cursor returned an empty inference response")
+        except FuturesTimeout as exc:
+            elapsed = round(time.time() - t0, 2)
+            logger.error("Cursor SDK call timed out after %.1fs (limit %ss)", elapsed, timeout)
+            raise VLMError(f"cursor call timed out after {timeout:.0f}s") from exc
         except Exception as exc:
             detail, blocked = _classify(exc)
             hint = (" - the Cursor account is blocked, not the key; clear it at "
                     "cursor.com/dashboard" if blocked else "")
+            logger.warning("Cursor call failed: %s%s", detail, hint)
             raise VLMError(f"cursor call failed: {detail}{hint}") from exc
 
+        elapsed_s = round(time.time() - t0, 2)
         usage = {}
         if getattr(result, "usage", None) is not None:
             for field in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
                 value = getattr(result.usage, field, None)
                 if value is not None:
                     usage[field] = value
+        logger.info("Cursor inference completed in %.2fs [%s] tokens=%s", elapsed_s, actual_model, usage)
         return VLMResponse(text=out, backend=self.name, model=actual_model,
-                           elapsed_s=round(time.time() - t0, 2), usage=usage)
+                           elapsed_s=elapsed_s, usage=usage)

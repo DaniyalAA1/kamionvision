@@ -14,6 +14,7 @@
   color: var(--stage-text);
   border-radius: var(--radius);
   animation: lights-down .5s var(--ease-out);
+  min-height: 85vh;
 }
 @keyframes lights-down {
   from { opacity: .4; transform: translateY(8px); }
@@ -129,9 +130,13 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: var(--stage);
+  z-index: 5;
+  overflow: hidden;
+  contain: paint layout;
 }
 @media (max-width: 940px) {
-  .stage-main { position: static; max-height: none; display: block; }
+  .stage-main { position: static; max-height: none; display: block; overflow: visible; contain: none; }
 }
 
 /* ---------- the featured frame ---------- */
@@ -141,18 +146,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Shrinks last and least: the photograph is the subject of the screen, and
-     the briefing below it is the thing that can afford to scroll instead. */
-  flex: 0 .35 auto;
+  flex: 1 1 auto;
 }
 .frame-stage {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   min-height: 11rem;
+  max-height: min(460px, calc(100vh - var(--run-head-room) - 18rem));
   background: var(--stage-lift);
   border-radius: var(--radius);
   overflow: hidden;
+  margin: 0 auto;
 }
 .strip, .stage-foot { flex: 0 0 auto; }
 .frame-stage img {
@@ -412,8 +417,10 @@
   gap: var(--s-4);
   flex-wrap: wrap;
   padding-top: var(--s-4);
+  padding-bottom: var(--s-4);
   border-top: 1px solid var(--stage-rule);
   margin-top: var(--s-2);
+  background: var(--stage);
 }
 .progress { display: grid; gap: .45rem; flex: 1 1 220px; }
 .progress-label { font-size: var(--t-sm); color: var(--stage-haze); }
@@ -497,8 +504,8 @@
      instead, so how much the model has to say can never decide whether the
      photographs are visible. */
   flex: 0 1 auto;
-  min-height: 6.5rem;
-  max-height: clamp(8rem, 30vh, 19rem);
+  min-height: 4.5rem;
+  max-height: clamp(6rem, 25vh, 16rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
