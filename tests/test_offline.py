@@ -1208,7 +1208,10 @@ class FanOutFailure(unittest.TestCase):
         def complete(self, prompt, images, **kw):
             from app.vlm.base import VLMError, VLMResponse
             self.calls += 1
-            if self.calls in self.fail_on:
+            # By filename rather than by call number: each photo is now read
+            # CLOSEUP_SAMPLES times by a pool, so "the second call" is whatever
+            # thread got there first and would make this test a coin toss.
+            if images and images[0].name in self.fail_on:
                 raise VLMError("provider said no")
             return VLMResponse(text=json.dumps({
                 "shows": "a tire", "legible": True, "odometer_km": None,
@@ -1226,10 +1229,10 @@ class FanOutFailure(unittest.TestCase):
     def test_a_failed_photo_is_recorded_not_swallowed(self):
         from app.evidence import stage as run_module
         import tempfile
-        client = self._Client(fail_on={2})
+        client = self._Client(fail_on={"2.jpg"})
         report = EvidenceReport()
         with tempfile.TemporaryDirectory() as tmp:
-            findings = run_module._fan_out(client, self._checks(3), "a truck",
+            findings = run_module._fan_out([client], self._checks(3), "a truck",
                                            Path(tmp), None, report)
         failed = [f for f in findings if f.error]
         self.assertEqual(len(failed), 1)
@@ -1238,10 +1241,10 @@ class FanOutFailure(unittest.TestCase):
     def test_the_surviving_photos_still_produce_findings(self):
         from app.evidence import stage as run_module
         import tempfile
-        client = self._Client(fail_on={1})
+        client = self._Client(fail_on={"1.jpg"})
         report = EvidenceReport()
         with tempfile.TemporaryDirectory() as tmp:
-            findings = run_module._fan_out(client, self._checks(3), "a truck",
+            findings = run_module._fan_out([client], self._checks(3), "a truck",
                                            Path(tmp), None, report)
         self.assertEqual(sum(1 for f in findings if not f.error), 2)
 
