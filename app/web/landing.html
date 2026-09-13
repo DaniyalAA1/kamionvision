@@ -16,151 +16,160 @@
 <h3>Which of these is being sold?</h3>
 <figure class="lot-figure" data-lot data-detections="[{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.612,&quot;box&quot;:[0.2732,0.0006,0.9649,0.9051],&quot;area_frac&quot;:0.6255,&quot;is_subject&quot;:true},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.511,&quot;box&quot;:[0.823,0.1739,0.9994,0.5885],&quot;area_frac&quot;:0.0731,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.509,&quot;box&quot;:[0.1902,0.4142,0.2542,0.4758],&quot;area_frac&quot;:0.004,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.44,&quot;box&quot;:[0.2392,0.4038,0.3044,0.4932],&quot;area_frac&quot;:0.0058,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.373,&quot;box&quot;:[0.1284,0.4063,0.202,0.4778],&quot;area_frac&quot;:0.0053,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.316,&quot;box&quot;:[0.6924,0.2413,0.8578,0.5535],&quot;area_frac&quot;:0.0517,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.305,&quot;box&quot;:[0.2767,0.0062,0.6238,0.617],&quot;area_frac&quot;:0.212,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.288,&quot;box&quot;:[0.2715,0.4052,0.3023,0.4369],&quot;area_frac&quot;:0.001,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;bus&quot;,&quot;confidence&quot;:0.28,&quot;box&quot;:[0.6177,0.2631,0.7658,0.5277],&quot;area_frac&quot;:0.0392,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.276,&quot;box&quot;:[0.2496,0.4024,0.3012,0.438],&quot;area_frac&quot;:0.0018,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;person&quot;,&quot;confidence&quot;:0.27,&quot;box&quot;:[0.0,0.0,0.1678,0.9972],&quot;area_frac&quot;:0.1674,&quot;is_subject&quot;:false}]"><span class="frame"><img src="/static/assets/story/lot.jpg" width="1100" height="825" alt="A dealer lot frame in which the detector found 10 vehicles and 1 other object" loading="lazy" decoding="async"></span><figcaption>10 vehicles and 1 other object in this one frame. The subject fills 62.5% of it and matches the vehicle the rest of the set is about (cosine 0.87).</figcaption></figure>
 <div class="gate-side">
-<dl class="gate-facts"><div><dt>Photos accepted</dt><dd><span data-count>21</span> of <span data-count>21</span></dd></div><div><dt>Read in depth</dt><dd><span data-count>16</span>, one vision call each</dd></div><div><dt>Views covered</dt><dd><span data-count>7</span> of <span data-count>11</span></dd></div><div><dt>Identified as</dt><dd>Ford Trucks F-MAX 500, 4x2 tractor unit</dd></div></dl>
+<dl class="gate-facts"><div><dt>Photos accepted</dt><dd><span data-count>21</span> of <span data-count>21</span></dd></div><div><dt>Read in depth</dt><dd><span data-count>16</span>, one vision call each</dd></div><div><dt>Views covered</dt><dd><span data-count>7</span> of <span data-count>11</span></dd></div><div><dt>Identified as</dt><dd>Ford F-MAX, 4x2 tractor unit</dd></div></dl>
+<div class="witnesses"><h4>How it knows</h4><ul>
+<li><span>The vision model, over every photo</span><b>FORD</b><em>100%</em></li>
+<li><span>The badge, read off a full-resolution crop</span><b>FORD</b><em>90.0%</em></li>
+<li><span>The trained brand head</span><b>FORD</b><em>99.8%</em></li>
+</ul>
+<p class="witness-verdict agree">3 independent reads agree this is a FORD. The identity pass is asked 3 times and agreed with itself 100% of the time &mdash; a measured rate, not the model&rsquo;s opinion of itself.</p>
+<p class="witness-year">The original F-MAX cab face, vertically stacked lower lamps and first-design black grille identify the 2018-2025 design and are consistent with the claimed 2021 year.</p>
+</div>
 <p class="act-note">The vehicle in 8 of 10 boxed frame(s) recurs, seeded from 3 unambiguous whole-vehicle frame(s) at mean cosine 0.82. Truck detection is decided across the set, never frame by frame: a tire close-up contains no truck-shaped object and is still a photo of the truck.</p>
-<p class="act-timing">Stage 1 took 5.4s, on this machine, before any vision call.</p>
+<p class="act-timing">Stage 1 took 4.7s, on this machine, before any vision call.</p>
 </div>
 </article>
 <ol class="act act-read" data-act="read">
 <li class="beat" data-beat="0" data-photo="1" data-box="[0.2306, 0.0375, 0.7031, 0.795]">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/000.jpg" width="1100" height="825" alt="A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit." loading="lazy" decoding="async"></span></figure>
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/000.jpg" width="1100" height="825" alt="A head-on exterior view of a red Ford F-MAX high-sleeper tractor unit." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 1 of 6</p>
-<p class="beat-shows">A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit.</p>
+<p class="beat-shows">A head-on exterior view of a red Ford F-MAX high-sleeper tractor unit.</p>
 <p class="beat-clean">Nothing wrong found in this frame.</p>
 <details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
-<li>Visible front cab panels and bumper sit square, with parallel gaps and no evident distortion.</li>
-<li>Red paint matches across the visible cab front, bumper corners and roof section.</li>
-<li>Front bumper and lower valance are complete and aligned, with only ordinary road-use marks visible.</li>
-<li>Grille is complete, securely seated and free of visible cracks or missing sections.</li>
-<li>Both headlamp assemblies are complete and their lenses appear clear and undamaged.</li>
-<li>Windscreen is clear in the visible area, with no evident chips or cracks.</li>
-<li>Mirror housings and arms on both sides are complete and appear correctly aligned.</li>
-<li>Roof deflector and upper cab trim appear complete, straight and securely fitted.</li>
+<li>Front cab panels and bumper sit square, with parallel gaps and no visible distortion.</li>
+<li>Red paint matches across the visible front panels; minor road film is consistent with normal use.</li>
+<li>Grille, headlights and lower lamp units are complete and visibly intact.</li>
+<li>Windscreen shows no visible crack, and both mirror housings appear complete.</li>
+<li>Red paint matches across the visible cab, roof deflector and bumper panels.</li>
+<li>Roof deflector is complete, aligned and free of visible cracking or delamination.</li>
+<li>Windscreen appears intact, and both wiper arms sit correctly.</li>
+<li>Front bumper and lower valance are complete and show no visible impact deformation.</li>
 </ul></details>
 </div></li>
-<li class="beat" data-beat="1" data-photo="18" data-box="[0.004, 0.0071, 0.7378, 0.9282]">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/001.jpg" width="1100" height="825" alt="A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear." loading="lazy" decoding="async"></span></figure>
+<li class="beat" data-beat="1" data-photo="0" data-box="[0.0, 0.1973, 0.3656, 0.832]">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/001.jpg" width="1100" height="825" alt="An oblique rear view of the tractor&#x27;s drive-axle tires, rear mudguard and lamp-and-plate carrier, with most coupling and chassis detail outside the frame." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 2 of 6</p>
-<p class="beat-shows">A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear.</p>
+<p class="beat-shows">An oblique rear view of the tractor&#x27;s drive-axle tires, rear mudguard and lamp-and-plate carrier, with most coupling and chassis detail outside the frame.</p>
 <ul class="beat-issues">
-<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>paint finish</b><span class="issue-text">The lower-centre rear cab panel carries a local band of pale paint scuffing; the panel itself remains straight with no visible split or distortion.</span></li>
+<li class="sev-minor"><span class="sev-chip">minor</span><b>fuel tank</b><span class="issue-text">The near-side tank face has a broad shallow inward dent ahead of the vertical strap; the strap remains aligned and no split or wet diesel trace is visible.</span></li>
 </ul>
 <details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
-<li>The fifth-wheel plate is complete and level, with a grease film across the working face and no visible cracking, distortion or pronounced throat step.</li>
-<li>The visible catwalk sections, rear lamp clusters and suzie coils are present, with no obvious breakage or severed lines.</li>
-<li>Both rear mudflaps, guards and their brackets are present and substantially straight.</li>
-<li>Visible chassis rails and crossmembers retain their paint, with no lifting scale, perforation or deformation apparent.</li>
-<li>The visible drive tires have matching-looking tread patterns, substantial tread standing proud of the wear area and no obvious irregular shoulder wear or sidewall damage.</li>
-<li>The rear cab panel and adjacent covers appear straight, with parallel closures and no visible impact distortion.</li>
-<li>The fifth-wheel plate appears flat and complete, with a grease film and only ordinary coupling marks; no crack or distortion is visible.</li>
-<li>The rear cab structure and visible side fairing run straight without abnormal panel-gap divergence.</li>
+<li>The visible drive-tire pair carries substantial, broadly even tread with no visible sidewall bulge or cracking.</li>
+<li>The rear mudguard and its visible mounting points are present and appear straight.</li>
+<li>The visible rear lamp cluster is complete, with no cracked or missing lens apparent.</li>
+<li>The visible drive-tire crowns retain deep, similarly worn block tread with no obvious cupping or localized shoulder scrub.</li>
+<li>Visible chassis rails and crossmembers retain attached paint without lifting scale, pitting, cracking or deformation.</li>
+<li>The visible steer rim is straight, and the hub area appears dry.</li>
+<li>The visible catwalk section is present and appears straight; the fuel-tank strap remains seated.</li>
+<li>The visible drive duals are matched in size and carry similarly pronounced tread with no obvious shoulder collapse, exposed cords or sidewall bulges.</li>
 </ul></details>
 </div></li>
-<li class="beat" data-beat="2" data-photo="2">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/002.jpg" width="1100" height="825" alt="Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible." loading="lazy" decoding="async"></span></figure>
+<li class="beat" data-beat="2" data-photo="19">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/002.jpg" width="1100" height="825" alt="A close view of one steer tire and its steel rim." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 3 of 6</p>
-<p class="beat-shows">Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible.</p>
+<p class="beat-shows">A close view of one steer tire and its steel rim.</p>
 <ul class="beat-issues">
-<li class="sev-minor"><span class="sev-chip">minor</span><b>drive tires</b><span class="issue-text">The outer dual has a broad shoulder scrub band worn noticeably below the centre ribs, with local chunking along the tread edge; this is uneven wear beyond the stated distance and calls for tire replacement plus pressure, alignment and suspension checks. The angle does not prove that the lowest area is level with the wear bars or expose casing, either of which would require immediate removal from service.</span></li>
+<li class="sev-moderate"><span class="sev-chip">moderate</span><b>steer tires</b><span class="issue-text">The outer shoulder is worn substantially below the centre ribs across the visible circumference, with its tread grooves largely scrubbed away; this requires tire replacement plus alignment and steering-suspension checks, and would be unroadworthy if a gauge confirms it is at or below the wear bars.</span></li>
 </ul>
 <details class="beat-strengths"><summary>5 things this frame confirms are in order</summary><ul>
-<li>The inner dual&#x27;s visible crown retains defined tread blocks and grooves standing proud of the wear bars.</li>
-<li>No bulge, exposed cord or casing-deep cut is visible on the exposed outer sidewall.</li>
-<li>The visible rim edge appears straight, without an evident crack or heavy kerbing.</li>
-<li>The inner drive tire&#x27;s visible tread remains clearly proud of the wear bars, without obvious cupping or scalloping.</li>
-<li>The visible rim edge appears straight and free of cracking.</li>
+<li>The visible sidewall has no evident bulge or deep cut away from the failed shoulder area.</li>
+<li>The steel rim appears straight, with no visible cracking around the bolt holes.</li>
+<li>No obvious oil staining is visible around the exposed hub area.</li>
+<li>The visible sidewall shows no bulge, casing cut or exposed cord.</li>
+<li>The visible steel rim flange remains straight, with no crack or heavy corrosion apparent around the exposed wheel fixings.</li>
 </ul></details>
 </div></li>
 <li class="beat" data-beat="3" data-photo="15">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/003.jpg" width="1100" height="825" alt="A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame." loading="lazy" decoding="async"></span></figure>
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/003.jpg" width="1100" height="825" alt="A close-up of a front steer tire, rim and hub beneath the wheel arch." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 4 of 6</p>
-<p class="beat-shows">A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame.</p>
+<p class="beat-shows">A close-up of a front steer tire, rim and hub beneath the wheel arch.</p>
 <ul class="beat-issues">
-<li class="sev-minor"><span class="sev-chip">minor</span><b>steer tires</b><span class="issue-text">The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service.</span> <span class="also">also seen in 1 other photo</span></li>
+<li class="sev-moderate"><span class="sev-chip">moderate</span><b>steer tires</b><span class="issue-text">Visible tread is heavily worn across the crown, with shallow centre and shoulder grooves approaching the wear indicators; replacement is due, although a tread-depth gauge is required to confirm present legal status.</span></li>
 </ul>
 <details class="beat-strengths"><summary>6 things this frame confirms are in order</summary><ul>
-<li>The visible sidewall shows no obvious bulge, exposed cord or deep cracking.</li>
-<li>The wheel rim appears straight, with all visible wheel fasteners present and no obvious hub-fluid streaking.</li>
-<li>The steel wheel rim appears circular and serviceable, with no visible impact distortion.</li>
-<li>Wheel fasteners are present, and the visible hub area is dry with no oil sling or active leakage.</li>
-<li>The wheel rim appears straight without visible impact distortion; all visible wheel nuts are present.</li>
-<li>The hub face is dry, with no visible fresh lubricant leakage.</li>
+<li>The visible sidewall shows no bulge, exposed cord or obvious cracking.</li>
+<li>The rim and hub show no visible cracking, distortion, fresh leakage or oil sling.</li>
+<li>All visible wheel nuts are present, and the tire bead appears evenly seated.</li>
+<li>Wheel rim appears straight, with all visible fasteners present.</li>
+<li>Hub area appears dry, without visible oil streaking.</li>
+<li>The visible hub area is dry, with no evident lubricant staining.</li>
 </ul></details>
 </div></li>
 <li class="beat" data-beat="4" data-photo="10">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/004.jpg" width="1100" height="825" alt="The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat." loading="lazy" decoding="async"></span></figure>
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/004.jpg" width="1100" height="825" alt="The upper rear sleeper area, raised bunk, overhead storage, roof hatch and part of a seat are visible." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 5 of 6</p>
-<p class="beat-shows">The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat.</p>
+<p class="beat-shows">The upper rear sleeper area, raised bunk, overhead storage, roof hatch and part of a seat are visible.</p>
 <ul class="beat-issues">
-<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>bunk sleeper</b><span class="issue-text">Light grey handling and scuff soiling is visible along the lower edge of the folded bunk mattress; the covering remains intact.</span></li>
+<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>bunk sleeper</b><span class="issue-text">The raised bunk mattress has light grey soiling along its lower edge, with no visible tear or deformation.</span></li>
 </ul>
 <details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
-<li>The visible bunk upholstery holds its shape with no tear, collapse or damp staining apparent.</li>
-<li>Overhead storage doors sit shut and aligned, and the retaining net remains secured.</li>
-<li>The headliner and roof-hatch surround appear dry, clean and free of sagging or water marks.</li>
-<li>Visible sleeper trim and panels are complete and uncracked, with wear consistent with the stated distance.</li>
-<li>The visible portion of the passenger seat retains its shape without apparent bolster collapse.</li>
-<li>The visible sleeper upholstery is intact, with no tears, damp marks or mould staining apparent.</li>
-<li>The folded bunk mattress holds its shape and shows no visible tears, cracked covering or damp staining.</li>
-<li>The luggage net is complete, taut and securely mounted.</li>
+<li>The visible bunk mattress retains its shape and shows no tear, split seam or collapsed section.</li>
+<li>Overhead storage doors sit aligned and appear complete, with no visible cracks or missing handles.</li>
+<li>The storage net is intact and properly secured.</li>
+<li>The headliner and roof-hatch surround appear dry, clean and free from visible water staining or sagging.</li>
+<li>The partially visible seat upholstery holds its shape and shows no tear or collapsed bolster.</li>
+<li>The folded bunk holds an even shape and its visible covering and pull strap are intact.</li>
+<li>Overhead storage doors sit closed with sound, aligned panels; the retaining net is secured and undamaged.</li>
+<li>Visible portions of both seat backs retain their shape and show no tears or collapsed bolsters.</li>
 </ul></details>
 </div></li>
 <li class="beat" data-beat="5" data-photo="4" data-box="[0.0, 0.0008, 0.9897, 1.0]">
-<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/005.jpg" width="1100" height="825" alt="The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres." loading="lazy" decoding="async"></span></figure>
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/005.jpg" width="1100" height="825" alt="The photograph shows the live instrument cluster of a stationary Ford F-MAX with the engine stopped and the odometer reading 164374 km." loading="lazy" decoding="async"></span></figure>
 <div class="beat-verdict">
 <p class="beat-index">Photo 6 of 6</p>
-<p class="beat-shows">The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres.</p>
-<p class="beat-clean">Nothing wrong found in this frame.</p>
+<p class="beat-shows">The photograph shows the live instrument cluster of a stationary Ford F-MAX with the engine stopped and the odometer reading 164374 km.</p>
+<ul class="beat-issues">
+<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>dashboard instruments</b><span class="issue-text">Fuel display reads 0 km to E and the amber low-fuel lamp is illuminated, so the tank requires refuelling; this is an operating consumable state rather than a vehicle defect.</span></li>
+</ul>
 <p class="beat-odo">Odometer read here: <b>164,374 km</b></p>
 <details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
-<li>Odometer reads 164374 km, with &quot;km&quot; printed beside the digits; no digits are guessed.</li>
-<li>Cluster is live and displays neutral, zero road speed and zero engine speed.</li>
-<li>Fuel is at or very near empty: the display reads &quot;0 km to E&quot; and the amber low-fuel lamp is lit.</li>
-<li>AdBlue gauge appears approximately one-third full; no numeric quantity is displayed.</li>
-<li>Red parking-brake and seat-belt reminder lamps are lit while stationary. The red battery/charging lamp is also lit with the engine evidently stopped; no engine, ABS/EBS or emissions fault lamp is visible.</li>
-<li>The displayed message is the trip-reset instruction &quot;Sıfırlamak için OK basılı tutun&quot;; no service-interval, DPF-regeneration or fault-code message is shown.</li>
-<li>Visible trip data reads 1492.4 km, 65 km/h average speed, 27.6 l/100km average consumption and 22:40:03 elapsed time.</li>
-<li>Instrument surround and visible dash top are complete, aligned and free from visible cracking or delamination.</li>
+<li>The odometer reads 164374 km, with &quot;km&quot; printed beside the digits; no digits are inferred.</li>
+<li>The cluster is live, with the speedometer and tachometer at zero and transmission in neutral.</li>
+<li>No engine, ABS/EBS, emissions or brake-system fault indicator is visible; the red parking-brake-applied lamp is lit.</li>
+<li>The red battery/charging tell-tale is lit with the engine stopped, consistent with ignition on and not evidence here of a charging fault.</li>
+<li>The yellow low-fuel tell-tale is lit, the fuel gauge is at empty and the display states &quot;0 km to E&quot;.</li>
+<li>The AdBlue gauge shows a partial fill, approximately one-third.</li>
+<li>An amber seat-belt reminder is illuminated at the lower right of the cluster.</li>
+<li>The trip display shows 22:40:03, 1492.4 km, 65 km/h average and 27.6 l/100 km; 22:40:03 is trip time, not a confirmed engine-hours reading.</li>
 </ul></details>
 </div></li>
 </ol>
 <article class="act act-merge" data-act="merge">
 <h3>One defect seen twice is one defect.</h3>
-<p class="merge-count"><b><span data-count>13</span></b> raw observations <span aria-hidden="true">&rarr;</span> <b><span data-count>6</span></b> findings</p>
+<p class="merge-count"><b><span data-count>16</span></b> raw observations <span aria-hidden="true">&rarr;</span> <b><span data-count>9</span></b> findings</p>
 <div class="merge-side">
-<p class="merge-example"><b>steer tires</b> &mdash; The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service. <span class="also">seen in 2 photos</span></p>
+<p class="merge-example"><b>steering wheel controls</b> &mdash; The steering-wheel rim covering is heavily polished and abraded along the right-hand grip, with wear around the stitched edge beyond the light shine expected at the stated distance; retrimming would be cosmetic rather than safety-critical unless inspection finds the rim loose. <span class="also">seen in 2 photos</span></p>
 <p class="act-note">1 finding had a raised severity clamped because only one sample of that photo reported it, and 1 had samples that disagreed with each other. Both are shown with the change recorded, never deleted &mdash; changing your mind is allowed, doing it quietly is not.</p>
 </div>
 </article>
 <article class="act act-check" data-act="check">
 <h3>Then it checks itself.</h3>
 <div class="check"><h4>The odometer, read twice</h4><ul class="readings"><li><span>Seller typed</span><b><span data-count>164,374</span> km</b></li><li><span>Vision model read</span><b><span data-count>164,374</span> km</b></li><li><span>Offline OCR read</span><b><span data-count>164,374</span> km</b><em>confidence 0.99</em></li></ul><p class="check-verdict agree">All three agree, so the band does not widen. Had they disagreed past 2%, both figures would be shown and the range would widen 1.25&times; rather than the number quietly moving.</p></div>
-<div class="check"><h4>The price, reached twice</h4><ul class="readings"><li><span>From 84 comparable listings</span><b><span data-count>₺2,451,000</span></b></li><li><span>From new price &times; fitted retention</span><b><span data-count>₺2,472,000</span></b></li></ul><p class="check-verdict agree">Two routes that share no inputs, 0.9% apart. The second starts from ₺7,433,143 new (<a href="https://www.fordtrucks.com.tr/fiyat-listesi" rel="nofollow noopener">Ford Trucks Turkiye official price list</a>, 2026-09-08) and applies 33.3% retention at 164,374 km.</p></div>
+<div class="check"><h4>The price, reached twice</h4><ul class="readings"><li><span>From 84 comparable listings</span><b><span data-count>₺2,431,000</span></b></li><li><span>From new price &times; fitted retention</span><b><span data-count>₺2,472,000</span></b></li></ul><p class="check-verdict agree">Two routes that share no inputs, 1.7% apart. The second starts from ₺7,433,143 new (<a href="https://www.fordtrucks.com.tr/fiyat-listesi" rel="nofollow noopener">Ford Trucks Turkiye official price list</a>, 2026-09-08) and applies 33.3% retention at 164,374 km.</p></div>
 </article>
 <article class="act act-price" data-act="price">
 <h3>And only then, a number.</h3>
-<div class="story-band" data-band><div class="band-row" data-band-row="adjusted"><span class="band-label">Photo-adjusted estimate</span><span class="band-values"><span data-count>₺2,015,000</span> &ndash; <span data-count>₺2,619,000</span></span><span class="band-sub">The comparable estimate moved by what the photos show. No measured coverage guarantee.</span></div><div class="band-row" data-band-row="baseline"><span class="band-label">Comparable-market baseline</span><span class="band-values"><span data-count>₺2,084,000</span> &ndash; <span data-count>₺2,604,000</span></span><span class="band-sub">80.3% of held-out listings fall inside this band &mdash; measured, and it belongs to this row only.</span></div></div>
-<p class="band-usd">About $41,500 &ndash; $53,900 at 48.596 TRY/USD.</p>
+<div class="story-band" data-band><div class="band-row" data-band-row="adjusted"><span class="band-label">Photo-adjusted estimate</span><span class="band-values"><span data-count>₺2,278,000</span> &ndash; <span data-count>₺2,607,000</span></span><span class="band-sub">The comparable estimate moved by what the photos show. No measured coverage guarantee.</span></div><div class="band-row" data-band-row="baseline"><span class="band-label">Comparable-market baseline</span><span class="band-values"><span data-count>₺2,351,000</span> &ndash; <span data-count>₺2,660,000</span></span><span class="band-sub">80.4% of held-out listings fall inside this band &mdash; measured on the price model fitted 2026-09-13, and it belongs to this row only.</span></div></div>
+<p class="band-usd">About $46,900 &ndash; $53,600 at 48.596 TRY/USD.</p>
 <p class="band-asking">The seller asks ₺2,550,000 &mdash; in line with the market. The asking price sits inside the band that comparable trucks of this age and mileage are listed at.</p>
-<p class="band-grade">Condition <b>good</b> &mdash; 6 finding(s), none of them severe enough or confident enough to set a grade on its own; the wear totals 0.2 against a 1.8 threshold for fair.</p>
+<p class="band-grade">Condition <b>fair</b> &mdash; the drive tires carry a moderate defect the model rates medium price impact at 1.00 confidence.</p>
 <p class="act-note">The vision model never sees a price and never emits one. The price model never sees the photographs. The only thing that crosses between them is a condition multiplier, and these are estimated asking prices, not confirmed sale prices.</p>
 </article>
 <article class="act act-limits" data-act="limits">
 <h3>And what it will not say.</h3>
 <ul class="limits">
-<li>Measured tread depth, tire date codes, retread status, concealed dual sidewalls and opposite steer-tire condition</li>
-<li>Brake linings, discs or drums and complete hub inspection</li>
-<li>Air bags, shocks, steering and suspension condition</li>
-<li>Fifth-wheel jaws, locking action and mounting play</li>
-<li>Engine, driveline, fluid leakage and running condition</li>
-<li>AdBlue tank, exhaust and DPF condition</li>
-<li>Driver&#x27;s seat, pedals and entry-step wear</li>
-<li>Engine hours and running-engine warning-lamp check</li>
+<li>Measured tread depths, DOT dates, retread status and complete axle-wide tire matching</li>
+<li>Brake wear and internal hub condition</li>
+<li>Air bags, shocks, suspension joints, air tanks, lines and drain valves</li>
+<li>Fifth-wheel throat, jaws, locking action and mounting play</li>
+<li>Engine bay, driveline leakage, exhaust/DPF and AdBlue-system condition</li>
+<li>Complete chassis underside and hidden corrosion</li>
+<li>Pedal wear, bunk underside and hidden sleeper damp</li>
 </ul>
 <a class="button orange-button" href="/app">Run this on your truck <span>&#8599;</span></a>
 </article>

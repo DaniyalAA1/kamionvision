@@ -422,9 +422,12 @@ scripts/
   package_dataset.py          manifest, CSVs, splits, dataset card
   cache_embeddings.py         CLIP embedding per image, what the heads train on
   probe_residual_signal.py    the measurement that killed the learned price head
+  freeze_story.py             turns one real appraisal into the landing page's
+                              scroll story - photos, story.json and the markup
 
 data/reference/
   new_prices_tr.json          hand-curated new-truck list prices, each row cited
+  story_appraisal.json        the appraisal the landing page is a record of
 
 models/
   gate_thresholds.json        capture floors, from quantiles of the degraded twins
