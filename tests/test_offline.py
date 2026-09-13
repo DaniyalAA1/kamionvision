@@ -1502,11 +1502,7 @@ class Gallery(unittest.TestCase):
             self.assertLess(index, card["n_photos"])
 
     def test_rehearsed_cases_inherit_the_backing_lot(self):
-        demos = {c["case_id"]: c for c in self.cards if c["demo"]}
-        self.assertEqual(demos["tr_clean"]["market"], "TR")
-        self.assertEqual(demos["tr_phone"]["market"], "TR")
-        self.assertEqual(demos["unseen_brand"]["market"], "US")
-        self.assertIsNone(demos["not_a_truck"]["market"])
+        # The corpus half needs only data/; assert it unconditionally.
         real = [c for c in self.cards if not c["demo"]]
         self.assertTrue(real)
         self.assertTrue(all(c.get("market") in ("TR", "US") for c in real))
@@ -1514,6 +1510,18 @@ class Gallery(unittest.TestCase):
         self.assertGreater(sum(1 for c in real if c["market"] == "US"), 0)
         lots = self.g.facets()["markets"]
         self.assertEqual(lots["TR"] + lots["US"], len(real))
+        # A demo card's lot comes from the listing that backs it, which only
+        # `python -m app.demo --build` records (demo/ is gitignored). Without
+        # that artifact every demo market is None, so gate the inheritance
+        # assertions on it rather than fail a corpus-only checkout.
+        from app.demo import FIXTURE_MANIFEST
+        if not FIXTURE_MANIFEST.exists():
+            self.skipTest("demo fixtures not built (python -m app.demo --build)")
+        demos = {c["case_id"]: c for c in self.cards if c["demo"]}
+        self.assertEqual(demos["tr_clean"]["market"], "TR")
+        self.assertEqual(demos["tr_phone"]["market"], "TR")
+        self.assertEqual(demos["unseen_brand"]["market"], "US")
+        self.assertIsNone(demos["not_a_truck"]["market"])
 
     def test_the_lot_filter_does_not_change_how_a_truck_is_priced(self):
         # A US card on the wall is still sent as market=TR. The old dropdown

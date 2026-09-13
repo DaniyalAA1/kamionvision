@@ -7,6 +7,9 @@ data/images/
 .firecrawl/
 .playwright-mcp/
 
+# macOS
+.DS_Store
+
 # Python
 .venv/
 __pycache__/
@@ -22,6 +25,9 @@ runs/
 .env
 .env.*
 !.env.example
+# A bare `env` is not what config.py reads (it loads `.env`), but it turns up as
+# a stray holding real keys - keep it from ever being committed.
+/env
 
 # Exported offline reports (rebuild: python -m app.demo --export demo_reports/)
 demo_reports/
