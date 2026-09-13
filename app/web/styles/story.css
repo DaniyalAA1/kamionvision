@@ -500,8 +500,10 @@
   inset: 0;
   padding-block: 0;
   border-bottom: 0;
+  /* An act taller than the stage has to be scrollable, and it must chain back
+     to the page when it reaches its end - `overscroll-behavior: contain` here
+     trapped the wheel inside the act on a short viewport. */
   overflow-y: auto;
-  overscroll-behavior: contain;
   opacity: 0;
   visibility: hidden;
   transform: translateY(18px);
@@ -510,7 +512,10 @@
 }
 .story.is-driven .act:not(.act-read) {
   display: grid;
-  align-content: center;
+  /* `safe` so that content too tall for the stage falls back to top-aligned.
+     Plain `center` overflows equally in both directions and puts the first
+     line above the scroll origin, where it cannot be reached at all. */
+  align-content: safe center;
 }
 .story.is-driven .act.is-live {
   opacity: 1;
@@ -555,7 +560,6 @@
   width: min(42%, 460px);
   max-height: 84%;
   overflow-y: auto;
-  overscroll-behavior: contain;
   transform: translateY(-50%);
   opacity: 0;
   pointer-events: none;

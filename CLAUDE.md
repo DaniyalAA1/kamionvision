@@ -106,8 +106,16 @@ app/
     js/band.js          the two price bands drawn apart, in lira; the dollar
                         equivalent sits under the price
     js/panels.js        the result blocks and the "how I worked this out" body
-    styles/             tokens, base, gallery, run, reasoning, result, elevation
+    landing.html        `/` - the hero, Kip, and the scroll story between the
+                        `<!-- story:start -->` / `<!-- story:end -->` markers
+    js/landing.js       Kip, the speech bubble, the cruise toggle
+    js/story/           the scroll story: scroll.js (one shared reader),
+                        deck.js (the six-card deck), boxes.js, reveal.js,
+                        index.js (wires acts to scroll progress)
+    styles/             tokens, base, gallery, run, reasoning, result, elevation,
+                        landing, story
     assets/             tractor-elevation.svg, self-hosted woff2 + OFL
+    assets/story/       the frozen run's six hero photos + story.json
     vendor/motion.min.js  Motion 13.2.0, MIT, vendored - never a CDN
 ```
 
@@ -124,6 +132,8 @@ app/
 .venv/bin/python scripts/cache_embeddings.py             # CLIP embedding cache (~2 min, once)
 .venv/bin/python -m app.perception.train                 # refit the three perception heads
 .venv/bin/python scripts/probe_residual_signal.py        # is there image signal in price? (it says no)
+.venv/bin/python scripts/freeze_story.py data/reference/story_appraisal.json
+.venv/bin/python scripts/freeze_story.py data/reference/story_appraisal.json --check
 ```
 
 ### Invariants the appraisal system encodes — don't break these either
@@ -353,6 +363,35 @@ app/
 - **HEIC is registered in `config.py` at import.** iPhones shoot it by default and the brief is
   "a seller with a phone". `config.IMAGE_SUFFIXES` is the single source of truth; the CLI folder
   walk and the web upload filter both read it, and a test asserts they agree.
+- **Nothing on the landing page's scroll story is authored prose about the truck.** Its whole
+  argument is that this is not a thin wrapper, and a page that argued that with copywriting would
+  be self-refuting. Every sentence comes out of one run that actually happened
+  (`data/reference/story_appraisal.json`, 2021 Ford F-MAX, 21 photos, 231 s, cursor/gpt-5.6-sol),
+  and `scripts/freeze_story.py` is the only thing allowed to put it on the page. Edit the region
+  between the `story:start` / `story:end` markers by hand and `tests/test_story.py` fails, because
+  it regenerates the region and diffs it. Re-freeze rather than retype. The two claims it reshapes
+  rather than quotes - capitalising `subject_evidence`, dropping the grade `grade_reason` restates -
+  each have their own test asserting no substance was lost.
+- **The static markup is the fallback, not a second implementation.** `freeze_story.py` writes the
+  whole section into `landing.html` as a readable document; `js/story/index.js` only adds
+  `.is-driven`, and every pinned, absolutely-positioned or transformed rule in `story.css` is scoped
+  to it. No-JS, `prefers-reduced-motion: reduce` and anything under 820px therefore all land on the
+  *same* page. A test walks the stylesheet asserting `position: sticky` never escapes that scope, so
+  a rule written one level too high does not silently stack six photographs on top of each other.
+- **The measured 80.3% is asserted to be in the comparable-asking row and nowhere else.** It is the
+  same invariant as everywhere else in the repo, but the landing page is where getting it wrong is
+  worst: it would put a measured guarantee on the photo-adjusted band in the largest type on the
+  site. `tests/test_story.py` reads the two `band-row`s and checks the figure appears in one and not
+  the other, and that the adjusted row carries its disclaimer.
+- **`vector-effect: non-scaling-stroke` takes the dash pattern out of user space too.** The subject
+  box draws itself with `stroke-dashoffset`, and a perimeter computed in the viewBox's 0-1 units
+  became 2.6 *screen pixels*, so the box rendered dotted rather than drawing. The perimeter is
+  measured in the frame's `offsetWidth`/`offsetHeight`, which is the space the dash is really in.
+- **The odometer OCR is re-read at freeze time, because `reconcile` is silent when it agrees.** That
+  silence is correct in the pipeline and useless on a page whose point is the agreement, so
+  `freeze_story.py` calls `odometer.read` itself and records all three figures. A test re-runs it
+  against the shipped frame. RapidOCR is a soft dependency everywhere else; here its absence drops
+  act 4's OCR line rather than asserting a reading nobody took.
 
 ## Dataset pipeline
 
