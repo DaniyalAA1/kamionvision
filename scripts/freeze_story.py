@@ -143,6 +143,19 @@ def read_odometer(path: Path, subject_box) -> dict:
             "reason": r.reason, "rule": r.rule}
 
 
+def _frozen_ocr() -> dict | None:
+    """The odometer OCR block from the committed story.json, if any. It carries
+    the canonical run's confidence, which is what the page states - see build()
+    for why a live re-read's confidence is not used for display."""
+    path = OUT / "story.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))["cross_checks"]["odometer"]["ocr"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 # COCO's vehicle classes, as the gate treats them. `person` is detected too and
 # is kept in the story - a box the subject rule had to rule out is evidence that
 # it ran - but it must not be counted as a vehicle in the caption.
@@ -232,6 +245,16 @@ def build(appraisal: dict, folder: Path) -> dict:
     odo_check = checks.get(odo_id) if odo_id is not None else None
     ocr = (read_odometer(folder / odo_check["filename"], odo_check.get("subject_box"))
            if odo_check else {"available": False, "why": "no odometer frame"})
+    # The mileage OCR reads is deterministic; the confidence float it reports is
+    # not - the same 164,374 km comes back at 0.99 on one machine and 0.81 on
+    # another, from the OCR runtime's own numerics. The story is a frozen artifact
+    # of one canonical run, so the confidence in the committed story.json is the
+    # value the page states. Re-read to confirm the reading itself still holds,
+    # but adopt the frozen confidence so the page and --check reproduce anywhere.
+    frozen = _frozen_ocr()
+    if ocr.get("available") and frozen and frozen.get("km") == ocr.get("km"):
+        ocr["confidence"] = frozen["confidence"]
+        ocr["reason"] = frozen.get("reason", ocr["reason"])
 
     raw_issues = sum(len(f.get("issues") or []) for f in ev["photo_findings"])
     clamped = [c for c in ev.get("corrections") or []
@@ -285,7 +308,12 @@ def build(appraisal: dict, folder: Path) -> dict:
     return {
         "frozen_at": date.today().isoformat(),
         "source": {
-            "case": folder.name, "folder": str(folder),
+            # Repo-relative, not absolute: an absolute path bakes the freezing
+            # machine's home directory into a committed artifact and churns it on
+            # the next machine to re-freeze.
+            "case": folder.name,
+            "folder": str(folder.relative_to(REPO)) if folder.is_relative_to(REPO)
+                      else str(folder),
             "backend": ev.get("backend", ""), "model": ev.get("model", ""),
             "elapsed_s": round(appraisal.get("elapsed_s", 0), 1),
             "vision_calls": len(ev.get("calls") or []),
@@ -709,14 +737,7 @@ def main() -> int:
     if args.check:
         page = LANDING.read_text(encoding="utf-8")
         current = START + page.split(START, 1)[1].split(END, 1)[0] + END
-        # The odometer confidence is a live OCR re-read, and its exact decimal
-        # varies with the OCR runtime's numerics across machines - the same
-        # 164,374 km reads at 0.99 on one box and 0.81 on another. The reading,
-        # the verdict and the band it accompanies do not vary, and those are what
-        # a stale freeze changes. Do not fail --check on confidence jitter alone.
-        def _stable(s: str) -> str:
-            return re.sub(r"confidence \d\.\d+", "confidence X", s)
-        if _stable(current) != _stable(markup):
+        if current != markup:
             print("landing.html story region has drifted from the JSON", file=sys.stderr)
             return 1
         print("story region matches")

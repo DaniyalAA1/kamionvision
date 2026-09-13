@@ -2,7 +2,7 @@
   "frozen_at": "2026-09-13",
   "source": {
     "case": "tr_clean",
-    "folder": "/Users/m3-max/Documents/GitHub/kamionvision/demo/tr_clean",
+    "folder": "demo/tr_clean",
     "backend": "cursor",
     "model": "gpt-5.6-sol",
     "elapsed_s": 395.0,
