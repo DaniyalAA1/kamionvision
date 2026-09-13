@@ -203,6 +203,7 @@ export function onStage(msg) {
 /* One photo's own vision call has returned. */
 export function onPhoto(msg) {
   const finding = msg.finding;
+  frames.setFinding(finding);
   reasoning.add(finding);
   read += 1;
   $('scan-status').textContent = `${read} of ${evidenceIds.length || read} photos read`;
@@ -261,14 +262,15 @@ export function showFrozen(a) {
   const lead = (gate.decision === 'refuse_not_a_truck' && frames.smokingGun())
     || (gate.photos || []).find((c) => c.usable) || gate.photos[0];
   frames.buildStrip(gate.photos, selectFrame);
-  if (lead) { frames.showFrame(lead); frames.markCell(lead.photo_id); }
   /* The rail is rebuilt from the findings the export carries, so a frozen file
      shows the same per-photo reasoning the live run showed. */
   const ev = a.evidence;
   if (ev && (ev.photo_findings || []).length) {
+    ev.photo_findings.forEach((f) => frames.setFinding(f));
     reasoning.begin(ev.photo_findings.length);
     [...ev.photo_findings].reverse().forEach((f) => reasoning.add(f));
   }
+  if (lead) { frames.showFrame(lead); frames.markCell(lead.photo_id); }
   /* render() calls onResult itself, so the drawing and the rail's closing
      state both land through the one path. */
 }

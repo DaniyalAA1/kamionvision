@@ -12,17 +12,63 @@
    sixteen open paragraphs is unreadable in the minute the calls take. */
 
 import { $, el, viewName, reduced, titleise } from './dom.js';
-import { urlFor, citePhoto } from './frames.js';
+import { urlFor, citePhoto, checkFor, showFrame, markCell } from './frames.js';
 import { partIcon } from './icons.js';
 
 const SEV_RANK = { major: 3, moderate: 2, minor: 1, cosmetic: 0 };
 
 let expected = 0;
 let landed = 0;
+let currentFilter = 'all';
+let allFindings = [];
+
+function updateFilterCounts() {
+  const all = allFindings.length;
+  const issues = allFindings.filter((f) => (f.issues || []).length > 0).length;
+  const clean = allFindings.filter((f) => !f.error && (!f.issues || f.issues.length === 0)).length;
+  const cAll = $('count-all');
+  const cIssues = $('count-issues');
+  const cClean = $('count-clean');
+  if (cAll) cAll.textContent = String(all);
+  if (cIssues) cIssues.textContent = String(issues);
+  if (cClean) cClean.textContent = String(clean);
+}
+
+export function setFilter(filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.rail-filter-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  document.querySelectorAll('.thought').forEach((card) => {
+    const worst = card.dataset.worst;
+    if (filter === 'all') {
+      card.hidden = false;
+    } else if (filter === 'issues') {
+      card.hidden = (worst === 'clean');
+    } else if (filter === 'clean') {
+      card.hidden = (worst !== 'clean');
+    }
+  });
+}
 
 export function begin(total) {
   expected = total;
   landed = 0;
+  allFindings = [];
+  currentFilter = 'all';
+  updateFilterCounts();
+
+  const filterBox = $('rail-filters');
+  if (filterBox && !filterBox.dataset.bound) {
+    filterBox.dataset.bound = 'true';
+    filterBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rail-filter-btn');
+      if (btn && btn.dataset.filter) {
+        setFilter(btn.dataset.filter);
+      }
+    });
+  }
+
   const rail = $('thoughts');
   rail.replaceChildren();
   for (let i = 0; i < Math.min(total, 3); i += 1) {
@@ -37,6 +83,8 @@ export function begin(total) {
 export function clear() {
   expected = 0;
   landed = 0;
+  allFindings = [];
+  updateFilterCounts();
   $('thoughts').replaceChildren();
 }
 
@@ -64,13 +112,15 @@ export function add(finding) {
   const pending = rail.querySelector('.thought-pending');
   if (pending) pending.remove();
 
-  rail.querySelectorAll('.thought').forEach((n) => n.classList.add('settled'));
+  allFindings.push(finding);
+  updateFilterCounts();
 
   const issues = [...(finding.issues || [])].sort(
     (a, b) => (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0));
 
   const card = el('details', 'thought');
-  card.dataset.worst = worstOf(finding);
+  const worst = worstOf(finding);
+  card.dataset.worst = worst;
   if (finding.error) card.dataset.error = 'true';
 
   const summary = el('summary', 'thought-summary');
@@ -78,14 +128,35 @@ export function add(finding) {
   thumb.src = urlFor(finding.photo_id);
   thumb.alt = '';
   thumb.loading = 'lazy';
+  thumb.title = 'Click to focus on inspection stage';
 
   const heading = el('span', 'thought-heading');
+  const titleRow = el('span', 'thought-title-row');
   const view = el('strong', 'thought-view', viewName(finding.view));
   if (finding.cropped) {
-    view.append(el('span', 'thought-cropped', 'cropped to the truck'));
+    view.append(el('span', 'thought-cropped', 'cropped to truck'));
   }
-  heading.append(view);
+
+  const takeaway = el('span', `takeaway-pill ${worst}`);
+  if (finding.error) {
+    takeaway.textContent = 'Error';
+  } else if (finding.odometer_km) {
+    takeaway.textContent = `${Math.round(finding.odometer_km).toLocaleString('en-US')} km`;
+  } else if (worst === 'clean') {
+    takeaway.textContent = 'Sound';
+  } else {
+    takeaway.textContent = worst.toUpperCase();
+  }
+
+  titleRow.append(view, takeaway);
+  heading.append(titleRow);
   heading.append(el('span', 'thought-status', statusLine(finding, issues)));
+
+  // Executive preview line directly in the summary
+  const previewText = finding.shows || (issues.length
+    ? issues[0].observation
+    : 'Visual inspection confirms component is in sound working order.');
+  heading.append(el('p', 'thought-preview', previewText));
 
   const tags = el('span', 'thought-parts');
   uniqueParts(issues).forEach((part) => {
@@ -115,14 +186,31 @@ export function add(finding) {
     else body.append(el('p', 'thought-quiet', 'nothing to flag on this frame'));
   }
 
+  const actions = el('div', 'thought-actions');
+  const focusBtn = el('button', 'thought-focus-btn', 'Inspect in viewer');
+  focusBtn.type = 'button';
+  focusBtn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const check = checkFor(finding.photo_id);
+    if (check) {
+      showFrame(check);
+      markCell(finding.photo_id);
+    }
+  });
+
   const source = el('button', 'thought-source', 'Open this photo');
   source.type = 'button';
   source.addEventListener('click', (ev) => {
     ev.preventDefault();
     citePhoto(finding.photo_id);
   });
-  body.append(source);
+  actions.append(focusBtn, source);
+  body.append(actions);
   card.append(body);
+
+  if (currentFilter === 'issues' && worst === 'clean') card.hidden = true;
+  if (currentFilter === 'clean' && worst !== 'clean') card.hidden = true;
 
   rail.prepend(card);
   if (!atTop) rail.scrollTop += rail.scrollHeight - previousHeight;
@@ -189,6 +277,7 @@ function worstOf(finding) {
 export function done(evidence) {
   $('thoughts').querySelectorAll('.thought-pending').forEach((n) => n.remove());
   $('thoughts').querySelectorAll('.thought').forEach((n) => n.classList.add('settled'));
+  updateFilterCounts();
   if (!evidence) {
     /* The stage headline beside this one already says the run stopped, so
        saying it twice in two headings wastes the only line the rail has left.

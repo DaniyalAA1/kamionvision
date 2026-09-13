@@ -344,6 +344,15 @@ $('lightbox').addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('lightbox').hidden = true;
+  if (!$('run').hidden && $('lightbox').hidden && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      frames.stepPhoto(-1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      frames.stepPhoto(1);
+    }
+  }
 });
 
 /* A frozen export embeds the appraisal and has no API behind it: render it
