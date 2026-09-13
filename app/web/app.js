@@ -134,6 +134,7 @@ function showRefusal(headline, detail) {
   $('result').hidden = false;
   $('price').textContent = '';
   $('price-sub').textContent = '';
+  $('price-usd').hidden = true;
   $('verdict-kicker').textContent = '';
   $('band-wrap').hidden = true;
   const box = $('refusal');
@@ -156,6 +157,7 @@ function render(a) {
   $('result').hidden = false;
   $('refusal').hidden = true;
   $('band-wrap').hidden = true;
+  $('price-usd').hidden = true;
 
   run.onResult(a);
   frames.renderGrid(a.gate, frames.openLightbox);
@@ -205,6 +207,7 @@ function render(a) {
     $('price-sub').textContent = subLine(a, ev, price);
     drawBand($('band'), price);
     $('band-note').textContent = bandNote(price);
+    writeUsdBand(price);
   } else if (price && !price.ok) {
     showRefusal(a.headline, price.reason);
   } else {
@@ -213,6 +216,31 @@ function render(a) {
 
   renderPanels(a, run.elevationRoot());
   $('result').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
+}
+
+/* The same band a second time, in US dollars. The price and the bar are in
+   Turkish lira - the market the model was fit on - but a used tractor is a
+   cross-border purchase and a buyer thinks in both. The dollar figures already
+   travel on the wire (price.*_usd, converted at the one stamped FX rate); this
+   only renders them, with the rate and its date shown so the conversion is
+   checkable rather than implied. A US-market appraisal is already in dollars,
+   so the line is suppressed there. */
+function writeUsdBand(price) {
+  const box = $('price-usd');
+  if (price.currency !== 'TRY' || !price.low_usd || !price.high_usd) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const fx = (price.model_card && price.model_card.fx) || null;
+  const parts = [
+    document.createTextNode('About '),
+    el('b', null, `${money(price.low_usd, 'USD')} – ${money(price.high_usd, 'USD')}`),
+  ];
+  if (fx) {
+    parts.push(el('span', 'usd-fx', ` at ₺${fx.usd_try} to the dollar, ${fx.as_of}`));
+  }
+  box.replaceChildren(...parts);
 }
 
 function subLine(a, ev, price) {

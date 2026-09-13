@@ -126,10 +126,10 @@ function strengths(a, ev) {
 function asksAndGaps(a, ev) {
   const asks = a.requests || [];
   $('block-asks').hidden = !asks.length;
-  $('asks').replaceChildren(...asks.map((t) => el('li', null, el('span', null, t))));
+  $('asks').replaceChildren(...asks.map(bullet));
   const gaps = ev ? ev.coverage_gaps : [];
   $('block-gaps').hidden = !gaps.length;
-  $('gaps').replaceChildren(...gaps.map((t) => el('li', null, el('span', null, t))));
+  $('gaps').replaceChildren(...gaps.map(bullet));
 }
 
 /* ---------- what it is ---------- */
@@ -188,9 +188,15 @@ function table(head, rows) {
   return t;
 }
 
+function bullet(text) {
+  const li = el('li');
+  li.append(el('span', null, text));
+  return li;
+}
+
 function list(items) {
   const ul = el('ul', 'work-list');
-  items.forEach((t) => ul.append(el('li', null, el('span', null, t))));
+  items.forEach((t) => ul.append(bullet(t)));
   return ul;
 }
 

@@ -39,6 +39,17 @@
   max-width: 46ch;
 }
 
+/* The same band a second time, in dollars. Quieter than the lira figure it
+   restates, because it is a convenience rather than the answer. */
+.price-usd {
+  margin-top: .35rem;
+  font-size: var(--t-md);
+  color: var(--steel);
+  font-variant-numeric: tabular-nums;
+}
+.price-usd b { font-weight: 600; color: var(--ink); }
+.price-usd .usd-fx { font-size: var(--t-sm); color: var(--steel-dim); }
+
 .band-wrap { margin: var(--s-6) 0 0; max-width: 880px; }
 .band { width: 100%; height: auto; display: block; overflow: visible; }
 .band-note {
