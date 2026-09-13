@@ -575,3 +575,13 @@ highlights, mud and bad framing are the point.
 .venv/bin/python scripts/build_contact_sheets.py <out_dir>   # tile for review
 .venv/bin/python scripts/apply_manual_review.py              # apply the verdicts
 ```
+
+## License plates and vehicle history
+
+With `KAMION_HISTORY_ENABLED=1` (off by default to preserve demo behavior),
+the app reads plates from individual detected vehicle crops and can match them
+against an authorized records snapshot configured with `KAMION_HISTORY_DB`.
+The result includes source-attributed history and explicit price reasoning.
+Only VIN-confirmed history of the selected truck affects its valuation; background
+vehicles are isolated. Missing history never means accident-free. Live Turkish
+SBM/TRAMER access is **not connected**; see [setup and limits](docs/vehicle-history.md).

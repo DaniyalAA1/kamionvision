@@ -38,6 +38,7 @@ export function renderPanels(a, runElev) {
   strengths(a, ev);
   asksAndGaps(a, ev);
   identity(ev);
+  vehicleHistory(a);
   systems(ev);
   working(a, ev, price);
 }
@@ -291,7 +292,7 @@ function working(a, ev, price) {
         + `${card.n_listings} listings collapsing to ${card.n_groups} distinct specs.`));
       accuracy.push(p);
       accuracy.push(el('p', 'work-note', 'That figure belongs to the pale bar only. '
-        + 'The red bar is that range moved by what the photos found, and no one '
+        + 'The red bar includes condition and any confirmed history adjustment, and no one '
         + 'has measured how often that one is right.'));
     }
     // The cap and the weights are not the same kind of number. This panel used
@@ -394,4 +395,31 @@ function working(a, ev, price) {
       el('p', 'work-note', `Total ${fixed(a.elapsed_s, 2)}s`
         + (a.version ? ` · build ${a.version}` : ''))));
   }
+}
+
+/* Database strings are rendered as text, never HTML. */
+function vehicleHistory(a) {
+  const block = $('block-history'), h = a.history;
+  block.hidden = !h;
+  if (!h) return;
+  $('history-summary').textContent = (h.notes || []).join(' ') ||
+    'Records are matched by plate and country. Only VIN-confirmed history of the appraised truck can change its price.';
+  $('history-observations').replaceChildren(...h.observations.map(o => {
+    const row = el('li');
+    row.append(el('strong', null, `${o.country || ''} ${o.plate || 'Plate unreadable'} · ${o.is_subject ? 'Appraised truck' : 'Other vehicle'} · ${titleise(o.status)}`));
+    row.append(el('p', null, o.reason));
+    const photo = el('button', null, `View photo ${photoOrdinal(o.photo_id)}`);
+    photo.type = 'button';
+    photo.addEventListener('click', () => citePhoto(o.photo_id));
+    row.append(photo);
+    if (o.record && o.record.source) {
+      row.append(el('p', null, `${o.record.source} · Record ${o.record.record_id} · As of ${o.record.as_of}`));
+      for (const e of o.record.events || []) {
+        row.append(el('p', null, `${e.date} · ${e.type} · ${e.description} [${e.id}]`));
+      }
+      if (!o.record.events.length) row.append(el('p', null, 'No events in this source; this does not prove the vehicle is accident-free.'));
+    }
+    return row;
+  }));
+  $('history-reasoning').replaceChildren(...(h.reasoning || []).map(line => el('li', null, line)));
 }

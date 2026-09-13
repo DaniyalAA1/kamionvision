@@ -40,3 +40,6 @@ data/metadata/embeddings.npz
 # re-included past the blanket `runs/` rule above.
 eval/cache/
 !eval/runs/
+
+# Local vehicle-history records (do not commit real records).
+/vehicle-history.json
