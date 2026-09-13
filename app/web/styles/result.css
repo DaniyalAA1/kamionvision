@@ -26,8 +26,8 @@
   margin-bottom: .5rem;
 }
 .price {
-  font: 600 var(--t-price)/1 var(--sans);
-  letter-spacing: -.035em;
+  font: 600 var(--t-price)/.98 var(--cond);
+  letter-spacing: -.03em;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -95,7 +95,7 @@
 .result-body { margin-top: var(--s-8); display: grid; gap: var(--s-7); }
 .block { max-width: 78ch; }
 .block h2 {
-  font-size: var(--t-lg);
+  font-size: 1.7rem;
   letter-spacing: -.02em;
   padding-bottom: var(--s-3);
   border-bottom: 1px solid var(--edge);

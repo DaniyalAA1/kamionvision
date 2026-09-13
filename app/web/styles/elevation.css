@@ -11,15 +11,17 @@
 .elev { width: 100%; height: auto; display: block; overflow: visible; }
 .elev * { vector-effect: non-scaling-stroke; }
 
-.elev-chrome .ground  { stroke: var(--stage-rule); stroke-width: 1.25; }
+.elev-chrome .ground  { stroke: var(--stage-haze); stroke-width: 1.25; opacity: .5; }
 .elev-chrome .hatch line { stroke: var(--stage-rule); stroke-width: 1; opacity: .6; }
 .elev-chrome .centre  { stroke: none; }
 
 .zone {
   stroke: var(--stage-haze);
-  stroke-width: 1;
+  stroke-width: 1.1;
   stroke-dasharray: 4 4;
-  opacity: .22;
+  /* The stage went from navy to a deeper green with the brand, and a .22
+     phantom line disappeared into it. */
+  opacity: .38;
   transition: opacity .55s var(--ease-draw), stroke .55s var(--ease-draw),
               stroke-width .55s var(--ease-draw);
 }
@@ -51,7 +53,7 @@
 /* the moment a zone is established */
 .zone.lit { animation: ignite .7s var(--ease-draw); }
 @keyframes ignite {
-  0%   { opacity: .22; stroke-width: 1; }
+  0%   { opacity: .38; stroke-width: 1.1; }
   35%  { opacity: 1;   stroke-width: 2.6; }
   100% { }
 }

@@ -28,9 +28,31 @@ let t = timers();
 let gate = null;
 let evidenceIds = [];
 let read = 0;
+let following = true;
+let latest = null;
+function setStep(step) {
+  const steps = ['gate', 'evidence', 'price'];
+  document.querySelectorAll('[data-step]').forEach(node => {
+    const index = steps.indexOf(node.dataset.step);
+    node.dataset.state = step === 'done' || index < steps.indexOf(step) ? 'done' : node.dataset.step === step ? 'active' : 'waiting';
+    if (node.dataset.state === 'active') node.setAttribute('aria-current', 'step');
+    else node.removeAttribute('aria-current');
+  });
+}
+function follow(value) {
+  following = value;
+  const button = $('follow-live');
+  button.setAttribute('aria-pressed', String(value));
+  button.textContent = value ? 'Following live' : 'Resume live view';
+}
+function selectFrame(c) { follow(false); frames.showFrame(c); frames.markCell(c.photo_id); }
 
 export async function mount() {
   runElev = await elevation.mount($('run-elev'));
+  $('follow-live').addEventListener('click', () => {
+    follow(!following);
+    if (following && latest) { frames.showFrame(latest); frames.markCell(latest.photo_id); }
+  });
   return runElev;
 }
 export const elevationRoot = () => runElev;
@@ -47,6 +69,10 @@ export function begin() {
   gate = null;
   evidenceIds = [];
   read = 0;
+  latest = null;
+  follow(true);
+  setStep('gate');
+  $('follow-live').hidden = false;
   $('run').hidden = false;
   $('result').hidden = true;
   $('strip').replaceChildren();
@@ -79,7 +105,7 @@ export function onGate(msg) {
   frames.setSource(msg.photo_urls, gate.photos, gate.decision);
 
   elevation.setCoverage(runElev, gate.views_present);
-  frames.buildStrip(gate.photos, (c) => { frames.showFrame(c); frames.markCell(c.photo_id); });
+  frames.buildStrip(gate.photos, selectFrame);
 
   /* Lead with the frame the verdict turns on: on a not-a-truck refusal that is
      whatever the gate identified instead, which is the whole explanation. */
@@ -101,6 +127,7 @@ export function onGate(msg) {
 /* ---------- act 2: the photos are read, one call each ---------- */
 
 export function onStage(msg) {
+  setStep(msg.step);
   if (msg.step === 'evidence') {
     reasoning.begin(evidenceIds.length);
     evidenceIds.forEach((id) => {
@@ -126,8 +153,10 @@ export function onPhoto(msg) {
 
   const check = frames.checkFor(finding.photo_id);
   if (check) {
-    frames.showFrame(check);
-    frames.markCell(finding.photo_id, 'read');
+    latest = check;
+    const cell = $(`cell-${finding.photo_id}`);
+    if (cell) { cell.classList.add('read'); cell.classList.remove('reading'); }
+    if (following) { frames.showFrame(check); frames.markCell(finding.photo_id, 'read'); }
   }
   elevation.setFindings(runElev, finding.issues || []);
 
@@ -140,10 +169,16 @@ export function onPhoto(msg) {
 export function onResult(a) {
   stop();
   progress('done', 1);
+  setStep('done');
+  $('follow-live').hidden = true;
   const ev = a.evidence;
   if (ev) {
     elevation.setSummarised(runElev, ev.condition_summary);
     elevation.setFindings(runElev, ev.issues);
+  } else {
+    reasoning.note(a.gate && a.gate.headline
+      ? a.gate.headline
+      : 'The checks in front of the vision model stopped this first.');
   }
   reasoning.done(ev);
 }
@@ -162,7 +197,7 @@ export function showFrozen(a) {
   elevation.setCoverage(runElev, gate.views_present, { stagger: 0 });
   const lead = (gate.decision === 'refuse_not_a_truck' && frames.smokingGun())
     || (gate.photos || []).find((c) => c.usable) || gate.photos[0];
-  frames.buildStrip(gate.photos, (c) => { frames.showFrame(c); frames.markCell(c.photo_id); });
+  frames.buildStrip(gate.photos, selectFrame);
   if (lead) { frames.showFrame(lead); frames.markCell(lead.photo_id); }
   /* The rail is rebuilt from the findings the export carries, so a frozen file
      shows the same per-photo reasoning the live run showed. */
@@ -177,7 +212,9 @@ export function showFrozen(a) {
 
 export function onError(message) {
   stop();
-  progress(message, 1);
+  reasoning.note(message);
+  $('follow-live').hidden = true;
+  progress(message, 0);
   $('rail-title').textContent = 'Something broke';
   $('rail-sub').textContent = message;
 }

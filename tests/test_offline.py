@@ -771,15 +771,21 @@ class FrozenExport(unittest.TestCase):
         self.assertNotIn("fonts.googleapis.com", html)
 
     def test_every_module_and_stylesheet_is_inlined(self):
+        """A module the export forgets is a screen that half-renders offline.
+
+        `landing.js` lives under js/ but drives the landing page at `/` and is
+        not in the appraisal screen's module graph, so it is excluded by name
+        rather than by hoping nobody notices it in the bundle.
+        """
         from app import export
         from app.config import WEB
+        from app.export import NON_MODULE_SCRIPTS
         html = export.build_html(self._appraisal())
-        for mod in sorted((WEB / "js").glob("*.js")):
+        for mod in (WEB / "js").glob("*.js"):
+            if mod.stem in NON_MODULE_SCRIPTS:
+                self.assertNotIn(f'"kamion:{mod.stem}"', html, mod.name)
+                continue
             self.assertIn(f'"kamion:{mod.stem}"', html, mod.name)
-        # the import map has to cover what the entry point actually imports
-        entry = (WEB / "app.js").read_text(encoding="utf-8")
-        for name in re.findall(r"from '\./js/([a-z]+)\.js'", entry):
-            self.assertIn(f'"kamion:{name}"', html, name)
 
     def test_inlined_modules_have_no_unresolvable_relative_imports(self):
         # A data: URL has no base, so a surviving './x.js' would fail to load.
@@ -1144,3 +1150,75 @@ class NearDuplicateMerge(unittest.TestCase):
         flat = [self.issue(0, "mirrors_visor", "the mirror is there and visible"),
                 self.issue(1, "mirrors_visor", "there is a crack across the glass")]
         self.assertEqual(len(evidence.merge_duplicates(flat, [])), 2)
+
+
+class BrandPalette(unittest.TestCase):
+    """The landing page and the appraisal screen are one product.
+
+    `styles/landing.css` is a standalone page that loads nothing else, so it
+    carries its own `:root`. `styles/tokens.css` mirrors its brand colours
+    rather than importing them. Two copies drift, so this asserts they agree:
+    change a brand colour in one place and this fails until it changes in both.
+    """
+
+    #  tokens.css name  ->  landing.css name
+    SHARED = {"--lot": "--paper", "--ink": "--ink",
+              "--signal": "--orange", "--edge": "--line"}
+
+    @classmethod
+    def setUpClass(cls):
+        from app.config import WEB
+
+        def palette(path):
+            text = (WEB / "styles" / path).read_text()
+            return dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,8})", text))
+        cls.app = palette("tokens.css")
+        cls.landing = palette("landing.css")
+
+    def test_the_brand_colours_agree(self):
+        for ours, theirs in self.SHARED.items():
+            self.assertIn(theirs, self.landing, theirs)
+            self.assertEqual(self.app.get(ours), self.landing[theirs],
+                             f"{ours} must equal landing's {theirs}")
+
+    def test_the_landing_still_defines_what_we_mirror(self):
+        # Renaming a token on the landing side would make the check above pass
+        # vacuously if it were written with .get on both sides.
+        for theirs in self.SHARED.values():
+            self.assertRegex(self.landing[theirs], r"^#[0-9a-fA-F]{6}$")
+
+
+class PagesAreConnected(unittest.TestCase):
+    """`/` is the landing page and `/app` is the appraisal screen. A visitor
+    has to be able to get from either to the other, and the two have to look
+    like the same product when they do."""
+
+    @classmethod
+    def setUpClass(cls):
+        from app.config import WEB
+        cls.web = WEB
+        cls.landing = (WEB / "landing.html").read_text()
+        cls.app = (WEB / "index.html").read_text()
+
+    def test_the_landing_offers_the_app(self):
+        self.assertGreaterEqual(self.landing.count('href="/app"'), 4)
+
+    def test_the_app_offers_the_way_back(self):
+        self.assertIn('href="/"', self.app)
+
+    def test_both_routes_are_served(self):
+        from fastapi.testclient import TestClient
+        from app.server import app as server
+        client = TestClient(server)
+        self.assertIn("Zero guesswork", client.get("/").text)
+        self.assertIn('id="dropzone"', client.get("/app").text)
+
+    def test_one_wordmark_across_the_click(self):
+        # Two different logos either side of one link is two products.
+        for markup in ('class="brand"', 'class="brand-light"'):
+            self.assertIn(markup, self.landing, markup)
+            self.assertIn(markup, self.app, markup)
+
+    def test_the_landing_assets_the_app_page_borrows_exist(self):
+        for name in ("assets/kip.svg", "assets/demo-truck.jpg"):
+            self.assertTrue((self.web / name).is_file(), name)

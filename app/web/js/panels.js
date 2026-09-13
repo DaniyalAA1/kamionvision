@@ -11,6 +11,7 @@
    it. */
 
 import { $, el, money, titleise, fixed, kkm, animate, reduced } from './dom.js';
+import { partIcon } from './icons.js';
 import * as elevation from './elevation.js';
 import { citePhoto, checkFor, photoOrdinal } from './frames.js';
 
@@ -66,7 +67,7 @@ function findings(a, ev, runElev) {
     const part = el('span', 'finding-part', titleise(i.component));
     part.append(el('span', 'finding-weight',
                    `${SEV_WORD[i.severity] || i.severity} — ${IMPACT_WORD[i.price_impact] || ''}`));
-    b.append(part, el('span', 'finding-text', i.observation));
+    b.append(partIcon(i.component), part, el('span', 'finding-text', i.observation));
 
     /* An uploaded set is renamed 000.jpg upwards on the way in, so a filename
        is not something a seller can resolve. The position in their own set is,
@@ -162,7 +163,16 @@ function systems(ev) {
   const dl = $('systems');
   dl.replaceChildren();
   for (const [k, v] of Object.entries(ev.condition_summary)) {
-    dl.append(el('dt', null, titleise(k)), el('dd', null, v));
+    const card = el('div', 'system-card');
+    const term = el('dt');
+    term.append(partIcon(k), el('span', null, titleise(k)));
+    const definition = el('dd');
+    const detail = el('details', 'system-detail');
+    const summary = el('summary', null, 'Read assessment');
+    detail.append(summary, el('p', null, v));
+    definition.append(detail);
+    card.append(term, definition);
+    dl.append(card);
   }
   block.hidden = false;
 }

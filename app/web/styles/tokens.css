@@ -1,11 +1,13 @@
-/* Every value the screen is drawn from.
+/* Every value the appraisal screen is drawn from.
 
-   The light is the light of a truck lot on an overcast morning, not the cream
-   of an editorial page: cold, slightly green, the colour of wet concrete. The
-   photographs are the interface, so the ground stays quiet and nothing but a
-   photograph is allowed to be white.
+   The palette is the landing page's, not a second one. `styles/landing.css`
+   ships its own `:root` because it is a standalone page that loads nothing
+   else, so these values are deliberately a mirror of it - cream paper, dark
+   green ink, the orange accent - and `tests/test_offline.py::BrandPalette`
+   asserts the two agree so they cannot drift into two products. Change a brand
+   colour in both, or the test fails.
 
-   Colour is load-bearing, not decorative. Three semantics, and nothing else
+   Colour is load-bearing, not decorative. Four semantics, and nothing else
    gets a hue:
 
      signal      the price, and the band it sits in
@@ -13,65 +15,64 @@
      caution     something that could not be seen, and needs another photo
      stop        a refusal, and `major` severity only
 
-   `--ghost` is the fourth state and has no hue on purpose: not photographed
-   is an absence, and drawing it in a colour would make it a finding. */
+   Not-photographed has no hue on purpose: an absence drawn in a colour would
+   read as a finding. */
 
 :root {
-  /* the ground */
-  --lot:       #e7eae6;
-  --lot-deep:  #dde1dc;
-  --card:      #ffffff;
-  --edge:      #cdd3ce;
-  --edge-soft: #dfe4e0;
+  /* --- the brand, shared with the landing page --- */
+  --lot:       #f7f5ee;   /* landing --paper */
+  --ink:       #243b32;   /* landing --ink   */
+  --signal:    #e86d3c;   /* landing --orange */
+  --edge:      #d6d9cc;   /* landing --line  */
 
-  /* text */
-  --ink:     #16202b;
-  --steel:   #5a6b79;
-  --steel-dim: #8b98a2;
+  /* --- derived ground --- */
+  --lot-deep:  #eeeee5;
+  --card:      #fffefa;
+  --edge-soft: #e4e6db;
+  /* The landing's --muted (#758176) is a 3.9:1 on cream, which is fine for a
+     9px eyebrow and not for a paragraph. This screen has paragraphs. */
+  --steel:     #677365;
+  --steel-dim: #7d8374;
 
-  /* the dark stage the run happens on */
-  --stage:       #131c26;
-  --stage-lift:  #1b2733;
-  --stage-rule:  #2b3a48;
-  --stage-text:  #e6ecf1;
-  --stage-haze:  #93a5b3;
+  /* The accent at text sizes. #e86d3c on cream is a 2.9:1 contrast, which is
+     fine for a 26px bar and not fine for a 15px link. */
+  --signal-ink:  #b8521d;
 
-  /* semantics */
-  --signal:      #c8102e;
-  --signal-soft: rgba(200, 16, 46, .1);
-  --verified:      #16624a;
-  --verified-soft: rgba(22, 98, 74, .12);
-  --caution:      #b4690e;
-  --caution-soft: rgba(180, 105, 14, .13);
-  --stop:      #b3261e;
-  --ghost:     var(--steel-dim);
+  /* --- the dark stage the run happens on: the same green, deepened --- */
+  --stage:       #1c2f27;
+  --stage-lift:  #263d33;
+  --stage-rule:  #3a5449;
+  --stage-text:  #eef1e7;
+  --stage-haze:  #9aab9a;
 
-  /* on the dark stage the same semantics have to lift off a navy ground */
-  --signal-lit:   #ff5a6e;
-  --verified-lit: #4ecfa4;
-  --caution-lit:  #f0b355;
-  --stop-lit:     #ff6f61;
+  /* --- the other semantics --- */
+  --verified:      #4f6545;
+  --caution:       #a8701e;
+  --stop:          #a93226;
+
+  /* on the dark stage the same semantics have to lift off deep green */
+  --verified-lit: #8fc47a;
+  --caution-lit:  #e8b45c;
+  --stop-lit:     #f2705c;
 
   --sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --cond: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
   --mono: "Azeret Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* 1.25 modular scale off a 17px body - one notch up from the old sheet,
-     because this is read at arm's length rather than studied */
+  /* 1.25 modular scale off a 17px body */
   --t-xs:   .8125rem;
   --t-sm:   .9375rem;
   --t-base: 1.0625rem;
   --t-md:   1.1875rem;
   --t-lg:   1.375rem;
   --t-xl:   1.75rem;
-  --t-2xl:  2.25rem;
-  --t-price: clamp(2.75rem, 6.5vw, 5rem);
+  --t-price: clamp(3rem, 7vw, 5.5rem);
 
-  --s-1: .25rem; --s-2: .5rem;  --s-3: .75rem; --s-4: 1rem;
+  --s-2: .5rem;  --s-3: .75rem; --s-4: 1rem;
   --s-5: 1.5rem; --s-6: 2rem;   --s-7: 3rem;   --s-8: 4.5rem;
 
   --gut: clamp(1.15rem, 4vw, 2.75rem);
-  --wide: 1240px;
+  --wide: 1328px;          /* the landing's .wrap, so the two pages line up */
   --radius: 10px;
   --radius-sm: 6px;
 
@@ -79,5 +80,5 @@
   --ease-draw: cubic-bezier(.2, .7, .3, 1);
   --ease-out:  cubic-bezier(.16, 1, .3, 1);
 
-  --lift: 0 1px 2px rgba(22, 32, 43, .05), 0 8px 24px -12px rgba(22, 32, 43, .18);
+  --lift: 0 1px 2px rgba(36, 59, 50, .05), 0 8px 24px -12px rgba(36, 59, 50, .2);
 }

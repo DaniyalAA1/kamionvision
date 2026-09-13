@@ -26,6 +26,10 @@ from .vlm.base import encode_jpeg
 # report lands around 1-2 MB and the thumbnails and lightbox still read.
 EXPORT_LONG_EDGE = 640
 
+# Scripts that live under app/web/js/ but are not part of the appraisal
+# screen's ES module graph.
+NON_MODULE_SCRIPTS = {"landing"}
+
 
 def _data_uri(path: Path) -> str:
     raw, _ = encode_jpeg(path, long_edge=EXPORT_LONG_EDGE)
@@ -95,8 +99,12 @@ def build_html(appraisal: Appraisal, *, title: str | None = None) -> str:
                         f"<script>\n{motion}\n</script>", 1)
 
     # --- the module graph, plus the payload and the drawing ---
+    # The landing page's script is a classic IIFE that drives a pixel mascot on
+    # `/`; it is not part of the appraisal screen's module graph and nothing
+    # imports it. Inlining it added a dead data: URL to every frozen report.
     imports = {f"kamion:{m.stem}": _module_url(m.read_text(encoding="utf-8"))
-               for m in sorted((WEB / "js").glob("*.js"))}
+               for m in sorted((WEB / "js").glob("*.js"))
+               if m.stem not in NON_MODULE_SCRIPTS}
     entry = re.sub(r"from '\./js/([a-z]+)\.js'", r"from 'kamion:\1'",
                    (WEB / "app.js").read_text(encoding="utf-8"))
     elevation = (WEB / "assets" / "tractor-elevation.svg").read_text(encoding="utf-8")

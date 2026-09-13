@@ -24,7 +24,15 @@ body {
 
 .app { max-width: var(--wide); margin: 0 auto; padding: 0 var(--gut) var(--s-8); }
 
-h1, h2, h3 { font-weight: 600; letter-spacing: -.015em; margin: 0; line-height: 1.15; }
+/* The landing sets its headings in Barlow Condensed. So does this. */
+h1, h2 {
+  font-family: var(--cond);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  margin: 0;
+  line-height: 1.03;
+}
+h3 { font-weight: 600; letter-spacing: -.015em; margin: 0; line-height: 1.15; }
 p { margin: 0; }
 ul, dl { margin: 0; padding: 0; list-style: none; }
 
@@ -41,21 +49,67 @@ a { color: inherit; }
 .topbar {
   display: flex;
   align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-5) 0 var(--s-4);
+  gap: var(--s-6);
+  min-height: 104px;
+  border-bottom: 1px solid var(--edge);
 }
-.mark {
-  display: inline-flex;
+
+/* Mirrors .brand in styles/landing.css. The two pages are one click apart and
+   a different wordmark on each side of that click is two products. */
+.brand {
+  display: flex;
   align-items: center;
-  gap: .6rem;
-  font: 600 var(--t-md)/1 var(--sans);
-  letter-spacing: -.02em;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -1px;
   text-decoration: none;
   color: var(--ink);
 }
-.mark svg { color: var(--signal); flex: none; }
+.brand-light { font-weight: 400; }
+.brand-icon {
+  background: var(--ink);
+  color: var(--lot);
+  width: 30px;
+  height: 30px;
+  margin-right: 9px;
+  font-size: 25px;
+  line-height: 28px;
+  text-align: center;
+  letter-spacing: -5px;
+  padding-right: 4px;
+}
+.brand-icon span { font-size: 18px; color: var(--signal); letter-spacing: normal; }
+.beta {
+  font: 8px var(--mono);
+  border: 1px solid var(--edge);
+  padding: 4px;
+  margin-left: 10px;
+  letter-spacing: .4px;
+}
+
+.topbar-nav { display: flex; gap: var(--s-6); font-size: var(--t-sm); }
+.topbar-nav a { text-decoration: none; color: var(--ink); }
+.topbar-nav a:hover { color: var(--signal-ink); }
 .topbar-state { margin-left: auto; font-size: var(--t-sm); color: var(--steel); }
 .topbar-state.broken { color: var(--stop); }
+@media (max-width: 700px) { .topbar-nav { display: none; } }
+
+/* ---------- foot ---------- */
+
+.appfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  margin-top: var(--s-8);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--edge);
+}
+.appfoot .brand { font-size: 20px; }
+.appfoot > span { font: 8px var(--mono); letter-spacing: .7px; color: var(--steel-dim); }
+.appfoot-back { font-size: var(--t-sm); text-decoration: none; color: var(--ink); }
+.appfoot-back:hover { color: var(--signal-ink); }
 
 /* ---------- the one button style ---------- */
 
@@ -95,11 +149,11 @@ a { color: inherit; }
 }
 @media (max-width: 820px) { .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s-5); } }
 
-.intake-head { max-width: 24rem; }
+.intake-head { max-width: 26rem; }
 .intake-head h1 {
-  font-size: clamp(2.25rem, 5.5vw, 3.4rem);
-  letter-spacing: -.03em;
-  margin-bottom: var(--s-3);
+  font-size: clamp(3rem, 6.5vw, 4.6rem);
+  letter-spacing: -.035em;
+  margin-bottom: var(--s-4);
 }
 .intake-head p { color: var(--steel); font-size: var(--t-md); max-width: 38ch; }
 

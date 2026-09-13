@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KamionVision — what's this truck worth?</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316202b'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23c8102e' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23243b32'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23e86d3c' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/styles/fonts.css">
 <link rel="stylesheet" href="/static/styles/tokens.css">
 <link rel="stylesheet" href="/static/styles/base.css">
@@ -13,20 +13,23 @@
 <link rel="stylesheet" href="/static/styles/run.css">
 <link rel="stylesheet" href="/static/styles/reasoning.css">
 <link rel="stylesheet" href="/static/styles/result.css">
+<link rel="stylesheet" href="/static/styles/refinement.css">
 </head>
 <body>
 
 <div class="app">
 
+<!-- The same wordmark the landing page uses, linking back to it. Two
+     different logos across one click is two products. -->
 <header class="topbar">
-  <a class="mark" href="/">
-    <svg viewBox="0 0 32 22" aria-hidden="true" width="30" height="21">
-      <path d="M2 16h2.2a3 3 0 0 0 5.8 0h8.2a3 3 0 0 0 5.8 0H30v-5l-4-1-2.2-5H17v11"
-            fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linejoin="round"/>
-    </svg>
-    KamionVision
+  <a class="brand" href="/" aria-label="KamionVision home">
+    <span class="brand-icon">k<span>↗</span></span>kamion<span
+      class="brand-light">vision</span><span class="beta">BETA</span>
   </a>
+  <nav class="topbar-nav" aria-label="Main navigation">
+    <a href="/#how">How it works</a>
+    <a href="/#playground">Take a test drive</a>
+  </nav>
   <p class="topbar-state" id="topbar-state"></p>
 </header>
 
@@ -79,6 +82,7 @@
 
 <!-- =============================== run ================================ -->
 <section class="run" id="run" hidden>
+  <div class="inspection-header"><div><span class="inspection-kicker">KAMIONVISION / INSPECTION STUDIO</span><h2>A closer look, in motion.</h2></div><ol class="inspection-steps" aria-label="Appraisal stages"><li data-step="gate">01 <span>Photo check</span></li><li data-step="evidence">02 <span>Inspection</span></li><li data-step="price">03 <span>Valuation</span></li></ol></div>
   <div class="stage">
 
     <div class="stage-main">
@@ -100,6 +104,7 @@
           <span class="progress-rule"><i id="progress-fill"></i></span>
         </div>
         <div class="stage-actions">
+          <button class="ghost-btn" id="follow-live" type="button" aria-pressed="true">Following live</button>
           <button class="ghost-btn" id="show-all" type="button" aria-pressed="false"
                   hidden>Show everything it detected</button>
           <button class="ghost-btn" id="reset" type="button">Start over</button>
@@ -190,6 +195,13 @@
     </div>
   </div>
 </section>
+
+<footer class="appfoot">
+  <a class="brand" href="/" aria-label="KamionVision home">kamion<span
+    class="brand-light">vision</span></a>
+  <span>YOUR PHOTOS. REAL COMPARABLES. NO CRYSTAL BALL.</span>
+  <a class="appfoot-back" href="/">Back to the start ↑</a>
+</footer>
 
 </main>
 </div><!-- /app -->

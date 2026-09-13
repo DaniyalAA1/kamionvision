@@ -97,6 +97,10 @@
 
 .thought-quiet { font-size: var(--t-xs); color: var(--stage-haze); margin-top: .4rem; }
 
+/* A message standing in for the cards, when there were never going to be any. */
+.thought-note { display: block; border-left-color: var(--stop-lit); }
+.thought-note .thought-shows { font-size: var(--t-sm); color: var(--stage-text); }
+
 /* The card that stands in for a call still in flight. Its pulse is the only
    thing on the page that moves without something having happened, and it stops
    the moment a real card replaces it. */

@@ -11,6 +11,7 @@
    person did. */
 
 import { $, el, reduced } from './dom.js';
+import { partIcon } from './icons.js';
 
 const KM_BANDS = [
   { id: 'low',  label: 'Under 300k', test: (km) => km != null && km < 300000 },
@@ -43,10 +44,15 @@ let cards = [];
 let onPick = () => {};
 const picked = { make: new Set(), year: new Set(), km: new Set(), capture: new Set() };
 let dealt = false;
+let query = '', scope = 'all', sort = 'default', limit = 24;
+const nodes = new Map();
 
 const kkm = (km) => (km == null ? null : `${Math.round(km / 1000)}k km`);
 
 function matches(card) {
+  if (scope === 'demo' && !card.demo) return false;
+  if (scope === 'listings' && card.demo) return false;
+  if (query && !`${card.make} ${card.model} ${card.title || ''} ${card.year || ''}`.toLowerCase().includes(query)) return false;
   if (card.demo) return true;   // the rehearsed cases always stay reachable
   if (picked.make.size && !picked.make.has(card.make)) return false;
   if (picked.year.size &&
@@ -75,7 +81,7 @@ function group(label, items, bucket) {
       picked[bucket].has(id) ? picked[bucket].delete(id) : picked[bucket].add(id);
       b.setAttribute('aria-pressed', String(picked[bucket].has(id)));
       $('filter-clear').hidden = !anyPicked();
-      paint();
+      limit = 24; paint();
     }));
   });
   return wrap;
@@ -94,11 +100,11 @@ function buildFilters(facets) {
   const clear = el('button', 'filter-clear', 'Clear filters');
   clear.type = 'button';
   clear.id = 'filter-clear';
-  clear.hidden = true;
+  clear.hidden = !anyPicked();
   clear.addEventListener('click', () => {
     Object.values(picked).forEach((s) => s.clear());
     buildFilters(facets);
-    paint();
+    limit = 24; paint();
   });
   row.append(clear);
 }
@@ -120,6 +126,7 @@ function build(card) {
   img.decoding = 'async';
   img.alt = '';
   img.src = card.cover;
+  img.addEventListener('error', () => { img.remove(); b.classList.add('photo-unavailable'); b.prepend(el('span', 'photo-fallback', 'Photo unavailable')); }, { once: true });
   img.addEventListener('load', () => img.classList.add('in'), { once: true });
   b.append(img);
 
@@ -136,7 +143,10 @@ function build(card) {
                             : `${card.make} ${card.model}`.trim() || card.make));
   const spec = [card.year, kkm(card.km), `${card.n_photos} photos`]
     .filter(Boolean).join('   ');
-  scrim.append(el('span', 'truck-spec', spec));
+  const specs = el('span', 'truck-spec');
+  [[ 'gauge', card.year ], ['wheel', kkm(card.km)], ['camera', `${card.n_photos} photos`]].forEach(([kind,text])=>{ if(text){const item=el('span');item.append(partIcon(kind),document.createTextNode(String(text)));specs.append(item);} });
+  scrim.append(specs);
+  scrim.append(el('span', 'truck-open', 'Inspect this truck ↗'));
   b.append(scrim);
 
   b.title = card.demo ? card.blurb : `${card.n_photos} photos of this vehicle`;
@@ -147,13 +157,16 @@ function build(card) {
 function paint() {
   const grid = $('gallery');
   const shown = cards.filter(matches);
-  grid.replaceChildren(...shown.map(build));
+  if (sort !== 'default') shown.sort((a,b) => sort === 'year' ? (b.year || 0) - (a.year || 0) : (a.km ?? Infinity) - (b.km ?? Infinity));
+  grid.replaceChildren(...shown.slice(0, limit).map(card=>{if(!nodes.has(card.id)) nodes.set(card.id,build(card));return nodes.get(card.id);}));
+  const more = $('gallery-more');
+  more.hidden = shown.length <= limit;
+  more.textContent = `Show ${Math.min(24, shown.length-limit)} more trucks`;
+  $('gallery-visible').textContent = `${Math.min(limit,shown.length)} of ${shown.length} shown`;
   $('gallery-empty').hidden = shown.length > 0;
 
   const real = shown.filter((c) => !c.demo).length;
-  $('gallery-count').textContent = anyPicked()
-    ? `${real} of ${cards.filter((c) => !c.demo).length} trucks`
-    : `${real} real listings, and ${shown.length - real} worth watching it get wrong`;
+  $('gallery-count').textContent = `${real} listings · ${shown.length-real} guided cases`;
 
   /* One deal-in, on the first paint only. Re-running it on every filter click
      would turn a fast, quiet interaction into a light show. */
@@ -169,6 +182,7 @@ function paint() {
 export function render(data, pick) {
   cards = data.cards || [];
   onPick = pick;
+  buildTools();
   buildFilters(data.facets || { makes: [] });
   paint();
 }
@@ -176,4 +190,17 @@ export function render(data, pick) {
 export function fail(message) {
   $('gallery-count').textContent = message;
   $('gallery').replaceChildren();
+}
+
+function buildTools() {
+ if ($('gallery-tools')) return;
+ const tools=el('div','gallery-tools'); tools.id='gallery-tools';
+ const search=el('label','gallery-search'); search.append(partIcon('search'));
+ const input=el('input');input.type='search';input.placeholder='Find your next truck…';input.setAttribute('aria-label','Search trucks by make, model or year');
+ input.addEventListener('input',()=>{query=input.value.trim().toLowerCase();limit=24;paint();});search.append(input);
+ const tabs=el('div','gallery-tabs');tabs.setAttribute('role','group');tabs.setAttribute('aria-label','Truck collection');
+ [['all','All trucks'],['listings','Listings'],['demo','Guided cases']].forEach(([id,label])=>{const b=el('button',null,label);b.type='button';b.setAttribute('aria-pressed',String(scope===id));b.addEventListener('click',()=>{scope=id;limit=24;tabs.querySelectorAll('button').forEach(n=>n.setAttribute('aria-pressed',String(n===b)));paint();});tabs.append(b);});
+ const sorting=el('select');sorting.setAttribute('aria-label','Sort trucks');[['default','Recommended'],['year','Newest first'],['km','Lowest mileage']].forEach(([value,label])=>{const opt=el('option',null,label);opt.value=value;sorting.append(opt);});sorting.addEventListener('change',()=>{sort=sorting.value;limit=24;paint();});
+ tools.append(search,tabs,sorting);$('filters').before(tools);
+ const foot=el('div','gallery-foot');const count=el('span');count.id='gallery-visible';const more=el('button','ghost-btn');more.id='gallery-more';more.type='button';more.addEventListener('click',()=>{limit+=24;paint();});foot.append(count,more);$('gallery').after(foot);
 }

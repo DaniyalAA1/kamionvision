@@ -16,7 +16,7 @@
   gap: var(--s-4);
   margin: var(--s-7) 0 var(--s-4);
 }
-.gallery-head h2 { font-size: var(--t-xl); letter-spacing: -.025em; }
+.gallery-head h2 { font-size: 2.4rem; }
 .gallery-count { color: var(--steel); font-size: var(--t-sm); margin-left: auto; }
 
 /* ---------- filters ---------- */
@@ -63,7 +63,7 @@
 .filter-clear {
   margin-left: auto;
   font: 400 var(--t-sm)/1 var(--sans);
-  color: var(--signal);
+  color: var(--signal-ink);
   background: none;
   border: 0;
   cursor: pointer;

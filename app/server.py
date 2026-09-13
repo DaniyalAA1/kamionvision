@@ -57,7 +57,11 @@ def static(name: str) -> FileResponse:
     path = (WEB / name).resolve()
     if not path.is_relative_to(WEB.resolve()) or not path.is_file():
         raise HTTPException(404)
-    return FileResponse(path)
+    # No caching. The browser's module map holds an ES module until the tab is
+    # closed, so an edited js/ file kept serving the old one all through a
+    # working session and every "that fix did not land" was a stale bundle.
+    # These files are local and tiny; there is nothing to gain by caching them.
+    return FileResponse(path, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/health")
