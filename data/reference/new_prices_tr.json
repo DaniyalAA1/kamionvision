@@ -47,6 +47,38 @@
       "source_note": "WEAKER PROVENANCE, and deliberately kept as such. Mercedes-Benz Turk's own price page (mercedesbenzturk.com.tr/fiyatlistesi/kamyon/satis/fiyat-listesi) currently publishes no figures - it reads 'Fiyatlarimiz guncellenmektedir'. Page date 05.02.2026 is used for as_of even though the title says Eylul 2026, because the older of two stated dates is the safe one. Actros is the second tractor brand in Turkiye and the likeliest unseen make at judging, so an approximate anchor beats none - but anchor.py widens on source_type."
     },
     {
+      "brand": "VOLVO", "model": "FH",
+      "variant": null,
+      "list_price": null, "currency": "TRY", "as_of": "2026-09-13",
+      "source": "Volvo Trucks Turkiye official FH product page", "source_type": "oem_official",
+      "source_url": "https://www.volvotrucks.com.tr/tr-tr/trucks/models/volvo-fh.html",
+      "source_note": "DELIBERATE NULL. Searched Volvo Trucks Turkiye's FH and FH Aero product and specification pages, its Turkish site, and Turkish trade-press results for a dated typed recommended retail price. The OEM publishes specifications and directs buyers to a Volvo Trucks dealer, but no public Turkish list-price figure was found. Dealer and foreign-market listing prices are not substitutes for a Turkish recommended price."
+    },
+    {
+      "brand": "DAF", "model": "XF",
+      "variant": null,
+      "list_price": null, "currency": "TRY", "as_of": "2026-09-13",
+      "source": "DAF Trucks Turkey official New Generation DAF page", "source_type": "oem_official",
+      "source_url": "https://www.daftrucks.com.tr/tr-tr/trucks/new-generation-daf",
+      "source_note": "DELIBERATE NULL. Searched DAF Trucks Turkey's XF/XG/XG+ product pages, its country-specific typed PDF specification index, and Turkish trade-press results for a dated recommended retail price. DAF publishes tractor specifications and asks buyers to contact the Turkish sales organisation or a dealer; no public Turkish list-price figure was found."
+    },
+    {
+      "brand": "IVECO", "model": "S-WAY", "default": true,
+      "variant": "AS440S50T/FP LT, 3800 mm wheelbase",
+      "list_price": 8602178, "currency": "TRY", "as_of": "2026-08-01",
+      "source": "IVECO Turkiye official August 2026 price list", "source_type": "oem_official",
+      "source_url": "https://www.iveco.com/turkiye/-/media/IVECOdotcom/Turkey/Pricelist/Fiyat-Listesi---Agustos-26.pdf?rev=-1",
+      "source_note": "Typed official PDF lists the S-WAY AS440S50T/FP LT at TRY 8,602,178. It states that prices are effective 1 August 2026, include KDV and OTV, and exclude MTV and registration costs."
+    },
+    {
+      "brand": "RENAULT", "model": "T",
+      "variant": null,
+      "list_price": null, "currency": "TRY", "as_of": "2026-09-13",
+      "source": "Renault Trucks Turkiye official T product page", "source_type": "oem_official",
+      "source_url": "https://www.renault-trucks.com.tr/product/renault-trucks-t",
+      "source_note": "DELIBERATE NULL. Searched Renault Trucks Turkiye's T and T High product pages, its Turkish site, and Turkish trade-press results for a dated typed recommended retail price. The OEM offers personalised quotations through its dealer network but publishes no public Turkish list-price figure; foreign-market listings were rejected."
+    },
+    {
       "brand": "SCANIA", "model": "R-SERIES",
       "variant": null,
       "list_price": null, "currency": "TRY", "as_of": "2026-02-11",
