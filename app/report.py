@@ -194,8 +194,25 @@ def render_text(appraisal: Appraisal, *, width: int = 78) -> str:
                  + (f" — {', '.join(bits)}" if bits else ""))
         if v.odometer_km:
             L.append(f"  Odometer read from the dash: {v.odometer_km:,} km")
+        if v.generation:
+            L.append(f"  Generation read from the bodywork: {v.generation}"
+                     + (f" — {v.year_evidence}" if v.year_evidence else ""))
         if v.badges_seen:
             L.append(f"  Badges visible: {', '.join(v.badges_seen)}")
+        if v.badge_text:
+            L.append(f"  Read off a close crop of the badge: {', '.join(v.badge_text)}")
+        if v.wmi_brand:
+            L.append(f"  Chassis-plate VIN decodes to: {v.wmi_brand} (WMI {v.wmi})")
+        # Who agreed, and what the disagreement cost. In the open rather than in
+        # the disclosure, for the same reason the backend fallback note is:
+        # changing your mind about what the truck IS is allowed, doing it
+        # quietly is not.
+        ident_v = getattr(ev, "identity", None)
+        if ident_v is not None and ident_v.status != "confirmed":
+            L.append(f"  Identity: {ident_v.status} — {ident_v.reason}")
+        elif ident_v is not None and ident_v.agreed:
+            L.append(f"  Identity confirmed by {len(ident_v.agreed)} independent reads: "
+                     f"{', '.join(ident_v.agreed)}")
         L.append("")
 
     price = appraisal.price
