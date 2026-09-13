@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KamionVision — what's this truck worth?</title>
+<title>KamionVision — appraise a tractor unit</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23243b32'/%3E%3Cpath d='M4 20h3a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h3v-5l-4-1-2-5h-7v11' fill='none' stroke='%23e86d3c' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/styles/fonts.css">
 <link rel="stylesheet" href="/static/styles/tokens.css">
@@ -41,9 +41,9 @@
 
   <div class="intake-head">
     <div class="intake-say">
-      <h1>What's this truck worth?</h1>
-      <p>Send photos of a tractor unit and you'll get a price range, a read on its
-         condition, and a straight answer about what the photos can't tell you.</p>
+      <h1>Appraise a tractor unit</h1>
+      <p>Send photographs. You get a condition read from what is visible, an
+         asking-price range from Turkish listings, and a list of what the photographs leave unseen.</p>
     </div>
     <button class="own-toggle" id="own-toggle" type="button"
             aria-expanded="false" aria-controls="own-panel">
@@ -105,8 +105,8 @@
     <div class="facet-bar" id="facet-bar"></div>
     <div class="facet-pills" id="facet-pills" hidden></div>
     <div class="gallery" id="gallery"></div>
-    <p class="gallery-empty" id="gallery-empty" hidden>No trucks match those
-       filters. Clear one to widen the search.</p>
+    <p class="gallery-empty" id="gallery-empty" hidden>Those filters leave the
+       gallery empty. Clear one to widen the search.</p>
     <div class="gallery-foot">
       <span id="gallery-range"></span>
       <nav class="pager" id="gallery-pager" aria-label="Gallery pages" hidden></nav>
@@ -117,12 +117,21 @@
 <!-- =============================== run ================================ -->
 <section class="run" id="run" hidden>
   <div class="run-head">
-    <p class="run-now" id="run-now">Looking at the photographs</p>
+    <div class="progress" id="progress">
+      <span class="progress-label" id="progress-label">Checking photos</span>
+      <span class="progress-rule"><i id="progress-fill"></i></span>
+    </div>
     <ol class="run-steps" aria-label="Appraisal stages">
       <li data-step="gate"><span>Photos</span></li>
       <li data-step="evidence"><span>Inspection</span></li>
       <li data-step="price"><span>Price</span></li>
     </ol>
+    <div class="stage-actions">
+      <button class="ghost-btn" id="follow-live" type="button" aria-pressed="true">Following</button>
+      <button class="ghost-btn" id="show-all" type="button" aria-pressed="false"
+              hidden>Show everything it detected</button>
+      <button class="ghost-btn" id="reset" type="button">Start over</button>
+    </div>
   </div>
   <div class="stage">
 
@@ -137,40 +146,10 @@
         </div>
         <figcaption class="frame-meta" id="frame-meta"></figcaption>
       </figure>
-
-      <div class="frame-intel" id="frame-intel" aria-live="polite"
-           role="region" aria-label="Selected photo findings" tabindex="0"></div>
-
       <div class="strip" id="strip"></div>
-
-      <div class="stage-foot">
-        <div class="progress" id="progress">
-          <span class="progress-label" id="progress-label">checking the photos</span>
-          <span class="progress-rule"><i id="progress-fill"></i></span>
-        </div>
-        <div class="stage-actions">
-          <a class="ghost-btn" id="view-result" href="#result" hidden>View result ↓</a>
-          <button class="ghost-btn" id="follow-live" type="button" aria-pressed="true">Following live</button>
-          <button class="ghost-btn" id="show-all" type="button" aria-pressed="false"
-                  hidden>Show everything it detected</button>
-          <button class="ghost-btn" id="reset" type="button">Start over</button>
-        </div>
-      </div>
     </div>
 
     <aside class="rail">
-      <div class="rail-head">
-        <div class="rail-title-row">
-          <h2 id="rail-title">Looking at the photos</h2>
-          <span class="rail-live-badge" id="rail-live-badge">REAL-TIME STREAM</span>
-        </div>
-        <p class="rail-sub" id="rail-sub">one at a time</p>
-        <div class="rail-filters" id="rail-filters" role="group" aria-label="Filter reasoning cards">
-          <button class="rail-filter-btn active" data-filter="all" type="button">All (<span id="count-all">0</span>)</button>
-          <button class="rail-filter-btn" data-filter="issues" type="button">Findings (<span id="count-issues">0</span>)</button>
-          <button class="rail-filter-btn" data-filter="clean" type="button">Passed (<span id="count-clean">0</span>)</button>
-        </div>
-      </div>
       <div class="elev-slot" id="run-elev" role="img"
            aria-label="Condition map of the tractor unit"></div>
       <div class="thoughts" id="thoughts" aria-live="polite"></div>
@@ -190,7 +169,7 @@
     <p class="price-usd" id="price-usd" hidden></p>
 
     <div class="band-wrap" id="band-wrap">
-      <h2 class="band-title">Understanding the estimate</h2>
+      <h2 class="band-title">The two price bands</h2>
       <div class="band" id="band"></div>
       <p class="band-note" id="band-note"></p>
     </div>
@@ -203,18 +182,18 @@
   <div class="result-body">
 
     <section class="block" id="block-findings" hidden>
-      <h2>What I found</h2>
+      <h2>Findings</h2>
       <p class="block-sub" id="findings-sub"></p>
       <ul class="findings" id="findings"></ul>
     </section>
 
     <section class="block" id="block-strengths" hidden>
-      <h2>What looks right</h2>
+      <h2>In order</h2>
       <ul class="strengths" id="strengths"></ul>
     </section>
 
     <section class="block" id="block-asks" hidden>
-      <h2>Photos I still need</h2>
+      <h2>Photos still needed</h2>
       <ul class="asks" id="asks"></ul>
     </section>
 
@@ -236,7 +215,7 @@
     </section>
 
     <section class="block" id="block-gaps" hidden>
-      <h2>What I couldn't tell from these</h2>
+      <h2>Unseen from these photos</h2>
       <ul class="gaps" id="gaps"></ul>
     </section>
 
@@ -249,7 +228,7 @@
          honesty rules say this has to be visible, not that it has to be the
          first thing a seller reads. -->
     <details class="working">
-      <summary>How I worked this out</summary>
+      <summary>How this number was reached</summary>
       <div class="working-body" id="working-body"></div>
     </details>
 
@@ -262,7 +241,7 @@
 <footer class="appfoot">
   <a class="brand" href="/" aria-label="KamionVision home">kamion<span
     class="brand-light">vision</span></a>
-  <span>YOUR PHOTOS. REAL COMPARABLES. NO CRYSTAL BALL.</span>
+  <span>YOUR PHOTOS. TURKISH COMPARABLES. ASKING PRICES.</span>
   <a class="appfoot-back" href="/">Back to the start ↑</a>
 </footer>
 

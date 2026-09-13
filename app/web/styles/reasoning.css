@@ -1,12 +1,8 @@
 /* The reasoning rail.
 
-   Each card is one finished vision call. The close-ups run concurrently, so
-   they land out of order and the newest goes on top - this is real returned
-   work arriving, not a scripted sequence pretending to be one.
-
-   A new card fades in on top. Older cards stay fully sharp; they only lose
-   a little contrast so the one that just landed is still the first thing
-   read. */
+   Each card is one finished vision call, drawn like a result finding: white
+   surface, a severity edge, one observation. Cards land out of order and the
+   newest goes on top. */
 
 .thoughts {
   display: grid;
@@ -15,115 +11,92 @@
   overflow-y: auto;
   overflow-anchor: none;
   scrollbar-width: thin;
-  scrollbar-color: var(--stage-rule) transparent;
+  scrollbar-color: var(--edge) transparent;
   padding-right: .2rem;
-  /* The rail fades out at its foot rather than stopping at a hard edge. The
-     fade is on the box, not on the content, so with a single short card - the
-     refusal note - it was fading out that card's own last line. The matching
-     bottom padding keeps text out of the faded band until there is enough of
-     it to scroll. */
-  padding-bottom: 28px;
-  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 28px), transparent 100%);
+  padding-bottom: 8px;
+  align-content: start;
 }
 
-/* Same reason as the contact strip: a scrollbar drawn for a light page reads
-   as a pale rail down the side of the dark stage. */
 .thoughts::-webkit-scrollbar { width: 6px; }
 .thoughts::-webkit-scrollbar-track { background: transparent; }
 .thoughts::-webkit-scrollbar-thumb {
-  background: var(--stage-rule);
+  background: var(--edge);
   border-radius: var(--radius);
 }
-.thoughts:hover::-webkit-scrollbar-thumb { background: #42608b; }
+.thoughts:hover::-webkit-scrollbar-thumb { background: var(--steel-dim); }
 
 .thought {
   display: block;
   padding: 0;
-  background: var(--stage-lift);
+  background: var(--card);
   border-radius: var(--radius);
-  border-left: 2px solid var(--stage-rule);
+  border: 0;
+  border-left: 3px solid var(--edge);
   transition: opacity .4s var(--ease-out);
 }
-.thought.resolve { animation: resolve .4s var(--ease-out) backwards; }
+.thought.resolve { animation: resolve .48s cubic-bezier(.22,1,.36,1) backwards; }
 @keyframes resolve {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
-.thought.settled { opacity: .78; }
+.thought.settled { opacity: .92; }
 .thought.settled:hover,
 .thought.settled:focus-within,
 .thought[open] { opacity: 1; }
 
-.thought[data-worst="major"]    { border-left-color: var(--stop-lit); }
-.thought[data-worst="moderate"] { border-left-color: var(--caution-lit); }
-.thought[data-worst="clean"]    { border-left-color: var(--verified-lit); }
-.thought[data-error="true"]     { border-left-color: var(--stop-lit); opacity: .7; }
+.thought[data-worst="major"]    { border-left-color: var(--stop); }
+.thought[data-worst="moderate"] { border-left-color: var(--caution); }
+.thought[data-worst="clean"]    { border-left-color: var(--edge); }
+.thought[data-error="true"]     { border-left-color: var(--stop); opacity: .7; }
 
 .thought-summary {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: .7rem;
-  padding: .7rem .8rem;
+  padding: .7rem .85rem;
   cursor: pointer;
   list-style: none;
   position: relative;
 }
 .thought-summary::-webkit-details-marker { display: none; }
-.thought-summary::after {
-  content: "+";
-  position: absolute;
-  top: .65rem;
-  right: .7rem;
-  color: var(--stage-haze);
-  font-size: 1.05rem;
-  line-height: 1;
-}
-.thought[open] .thought-summary::after { content: "–"; }
+.thought[open] .thought-summary { padding-bottom: .45rem; }
 
 .thought-thumb {
   width: 46px;
   height: 46px;
   object-fit: cover;
   border-radius: var(--radius);
-  background: var(--stage);
+  background: var(--lot-deep);
   align-self: start;
 }
-.thought-heading { min-width: 0; padding-right: 1.1rem; }
+.thought-heading { min-width: 0; }
 .thought-view {
   font: 600 var(--t-sm)/1.25 var(--sans);
-  color: var(--stage-text);
+  color: var(--ink);
   letter-spacing: -.01em;
   display: block;
 }
 .thought-cropped {
   font: 400 var(--t-xs)/1 var(--sans);
-  color: var(--verified-lit);
+  color: var(--verified);
   margin-left: .4rem;
   font-weight: 500;
 }
-.thought-status {
-  display: block;
-  margin-top: .2rem;
-  font-size: var(--t-xs);
-  color: var(--stage-haze);
-}
-.thought[data-worst="major"] .thought-status { color: var(--stop-lit); }
-.thought[data-worst="moderate"] .thought-status { color: var(--caution-lit); }
 
 .thought-parts {
   display: flex;
   flex-wrap: wrap;
   gap: .3rem;
-  margin-top: .45rem;
+  margin-top: .4rem;
 }
 .part-tag {
   display: inline-flex;
   align-items: center;
   gap: .28rem;
-  border: 1px solid var(--stage-rule);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   padding: .12rem .35rem;
-  color: var(--stage-haze);
+  color: var(--steel);
   font-size: .68rem;
   letter-spacing: .01em;
 }
@@ -131,14 +104,8 @@
 
 .thought-body {
   min-width: 0;
-  padding: 0 .8rem .75rem;
-  border-top: 1px solid var(--stage-rule);
-}
-.thought-shows {
-  font-size: var(--t-xs);
-  line-height: 1.45;
-  color: var(--stage-haze);
-  margin-top: .55rem;
+  padding: 0 .85rem .75rem;
+  border-top: 1px solid var(--edge-soft);
 }
 
 .thought-list { margin-top: .45rem; display: grid; gap: .15rem; }
@@ -149,137 +116,58 @@
   align-items: start;
   font-size: var(--t-xs);
   line-height: 1.45;
-  color: var(--stage-text);
+  color: var(--ink);
   padding: .4rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, .05);
+  border-bottom: 1px solid var(--edge-soft);
 }
 .thought-list li:last-child { border-bottom: 0; }
-.thought-list li .part-icon { width: 1.2rem; height: 1.2rem; color: var(--stage-haze); margin-top: .1rem; }
-.thought-list li[data-sev="major"] .part-icon    { color: var(--stop-lit); }
-.thought-list li[data-sev="moderate"] .part-icon { color: var(--caution-lit); }
-.thought-list li[data-sev="ok"] .part-icon       { color: var(--verified-lit); }
-.thought-list li[data-sev="ok"] { color: var(--stage-haze); }
+.thought-list li .part-icon { width: 1.2rem; height: 1.2rem; color: var(--steel); margin-top: .1rem; }
+.thought-list li[data-sev="major"] .part-icon    { color: var(--stop); }
+.thought-list li[data-sev="moderate"] .part-icon { color: var(--caution); }
+.thought-list li[data-sev="ok"] .part-icon       { color: var(--verified); }
+.thought-list li[data-sev="ok"] { color: var(--steel); }
 .thought-list li strong { font-weight: 600; font-size: var(--t-xs); }
 .thought-list li p { margin: .15rem 0 0; }
 .thought-cite { cursor: pointer; border-radius: var(--radius); margin-inline: -.25rem; padding-inline: .25rem; }
 .thought-cite:hover,
-.thought-cite:focus { background: rgba(255, 212, 0, .08); outline: none; }
+.thought-cite:focus { background: var(--lot-deep); outline: none; }
 
 .thought-source {
   margin-top: .55rem;
   background: transparent;
-  border: 1px solid var(--stage-rule);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
-  color: var(--stage-text);
+  color: var(--ink);
   padding: .4rem .65rem;
   font: 500 var(--t-xs)/1 var(--sans);
   cursor: pointer;
 }
 
-.thought-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .4rem;
-}
-.takeaway-pill {
-  font: 600 .68rem/1 var(--cond);
-  letter-spacing: .04em;
-  padding: .15rem .45rem;
-  border-radius: var(--radius);
-  text-transform: uppercase;
-}
-.takeaway-pill.clean {
-  background: rgba(138, 200, 255, .18);
-  color: var(--verified-lit);
-  border: 1px solid rgba(138, 200, 255, .3);
-}
-.takeaway-pill.minor {
-  background: rgba(138, 200, 255, .2);
-  color: var(--verified-lit);
-}
-.takeaway-pill.moderate {
-  background: rgba(232, 180, 92, .2);
-  color: var(--caution-lit);
-}
-.takeaway-pill.major {
-  background: rgba(242, 112, 92, .2);
-  color: var(--stop-lit);
-}
-.takeaway-pill.error {
-  background: var(--stop);
-  color: #fff;
-}
 .thought-preview {
-  font: 400 var(--t-xs)/1.35 var(--sans);
-  color: var(--stage-text);
+  font: 400 var(--t-sm)/1.45 var(--sans);
+  color: var(--ink);
   margin: .3rem 0 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.thought-actions {
-  display: flex;
-  gap: .5rem;
-  align-items: center;
-  margin-top: .4rem;
-}
-.thought-focus-btn {
-  background: transparent;
-  border: 1px solid var(--stage-rule);
-  color: var(--verified-lit);
-  font: 500 var(--t-xs)/1 var(--sans);
-  padding: .4rem .65rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all .2s var(--ease-out);
-}
-.thought-focus-btn:hover {
-  background: rgba(138, 200, 255, .12);
-  border-color: var(--verified-lit);
-}
-.cite-title-row {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-}
-.sev-pill {
-  font-size: .65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  padding: .05rem .25rem;
-  border-radius: var(--radius);
-}
-.sev-pill.minor { background: rgba(138, 200, 255, .2); color: var(--verified-lit); }
-.sev-pill.moderate { background: rgba(232, 180, 92, .2); color: var(--caution-lit); }
-.sev-pill.major { background: rgba(242, 112, 92, .2); color: var(--stop-lit); }
-.cite-impact {
-  display: block;
-  font-size: .7rem;
-  color: var(--stage-haze);
-  margin-top: .15rem;
-}
 
-.thought-quiet { font-size: var(--t-xs); color: var(--stage-haze); margin-top: .4rem; }
+.thought-quiet { font-size: var(--t-xs); color: var(--steel); margin-top: .4rem; }
 
-/* A message standing in for the cards, when there were never going to be any. */
-.thought-note { display: block; border-left-color: var(--stop-lit); padding: .7rem .8rem; }
-.thought-note .thought-shows { font-size: var(--t-sm); color: var(--stage-text); margin-top: 0; }
+.thought-note { display: block; border-left-color: var(--stop); padding: .7rem .85rem; }
+.thought-note .thought-preview { margin-top: 0; -webkit-line-clamp: unset; }
 
-/* The card that stands in for a call still in flight. Its pulse is the only
-   thing on the page that moves without something having happened, and it stops
-   the moment a real card replaces it. */
 .thought-pending {
   display: flex;
   align-items: center;
   gap: .55rem;
-  padding: .7rem .8rem;
+  padding: .7rem .85rem;
   font-size: var(--t-xs);
-  color: var(--stage-haze);
-  background: var(--stage-lift);
+  color: var(--steel);
+  background: var(--card);
   border-radius: var(--radius);
-  border-left: 2px solid var(--stage-rule);
+  border-left: 3px solid var(--edge);
 }
 .thought-pending .part-icon {
   width: 1.05rem;
@@ -293,14 +181,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .thought.resolve { animation: none; }
+  .thought { transition: none; }
   .thought.settled { opacity: .88; }
   .thought-pending .part-icon { animation: none; }
-}
-
-.thought.resolve { animation: resolve .48s cubic-bezier(.22,1,.36,1) backwards; }
-.thought.settled { opacity: .92; }
-.thoughts { align-content: start; }
-@media (prefers-reduced-motion: reduce) {
-  .thought.resolve { animation: none; }
-  .thought { transition: none; }
 }

@@ -1,7 +1,7 @@
 (() => {
   const world = document.querySelector('.world');
   const speech = document.getElementById('kip-speech');
-  const lines = ['Beep beep. Due diligence coming through.', 'I like big trucks and I cannot lie.', 'My superpower? Asking for another photo.', '8 bits. Zero hidden agendas.', 'Keep your eyes on the evidence.'];
+  const lines = ['Beep beep.', 'Ask for another photo.', 'I look at photographs.', 'Parked.'];
   let hello = 0;
   let hopTimer;
   document.getElementById('kip').addEventListener('click', () => {
@@ -16,12 +16,12 @@
     const driving = world.classList.toggle('cruising');
     event.currentTarget.setAttribute('aria-pressed', String(driving));
     event.currentTarget.textContent = driving ? 'PULL OVER ∥' : 'GO FOR A SPIN →';
-    speech.textContent = driving ? 'Next stop: a better-informed decision.' : 'Parked. Ready for a closer look?';
+    speech.textContent = driving ? 'Driving.' : 'Parked.';
   });
   const findings = [
-    { title: 'The backstory<br>starts at the cab.', body: "The rear cab panel is visible. This angle helps locate exterior wear, but it can't establish accident history.", next: 'Ask for front and side views to complete the exterior picture.' },
-    { title: 'The connection<br>is in the details.', body: 'The fifth wheel is visible behind the cab. A photo can show its surface, but not verify the locking mechanism or mechanical condition.', next: 'Get a close-up of the coupling and have its operation checked in person.' },
-    { title: 'Tread carefully.<br>Literally.', body: "The rear tires are visible, but this wide view isn't enough to measure tread depth or assess every sidewall.", next: 'Ask for close-ups of the tread and sidewalls on each tire.' }
+    { title: 'Rear cab panel', body: 'The rear cab panel is visible. Accident history stays unproven from this angle.', next: 'Ask for front and side views to finish the exterior set.' },
+    { title: 'Fifth wheel', body: 'The fifth wheel is visible behind the cab. The locking mechanism and mechanical condition stay unproven from this surface view.', next: 'Get a close-up of the coupling and have its operation checked in person.' },
+    { title: 'Drive tires', body: 'The rear tires are visible. Tread depth and every sidewall stay unmeasured from this wide view.', next: 'Ask for close-ups of the tread and sidewalls on each tire.' }
   ];
   const explored = new Set([0]);
   const buttons = document.querySelectorAll('[data-inspect]');

@@ -48,6 +48,6 @@ export function drawBand(root, price) {
   if (valid(asking)) {
     legend.append(el('span', 'seller-key', `Diamond: seller asks ${amount(asking)}${asking < min ? ' · below chart scale' : asking > max ? ' · above chart scale' : ''}`));
   }
-  root.append(legend, el('p', 'range-disclaimer', 'Both rows use the same price scale. These are estimated asking prices, not confirmed sale prices. The adjusted range has no measured coverage guarantee.'));
+  root.append(legend, el('p', 'range-disclaimer', 'Both rows use the same price scale. These figures are estimated asking prices, not confirmed sale prices of a sold truck. Coverage on the adjusted range is unmeasured.'));
   return bar;
 }

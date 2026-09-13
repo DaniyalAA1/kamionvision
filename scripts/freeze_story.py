@@ -469,7 +469,7 @@ def render(story: dict) -> str:
         f'<p class="eyebrow"><span class="status-dot"></span> 01 / WHAT HAPPENS TO YOUR PHOTOS</p>'
         f'<h2>{g["photos_total"]} photos.<br><span class="muted">One truck.</span><br>'
         f'Here is every step<br>between them and a number.</h2>'
-        f'<p class="story-lede">Not a mock-up. This is one real run on a real Turkish listing, '
+        f'<p class="story-lede">This is one real run on a real Turkish listing, '
         f'frozen on {esc(story["frozen_at"])} so it can be shown without a network. '
         f'Your own photos run live.</p>'
         '</div>')
@@ -483,7 +483,7 @@ def render(story: dict) -> str:
     # act 1 — the gate
     lot = g.get("lot")
     out.append('<article class="act act-gate" data-act="gate">')
-    out.append('<h3>Which of these is being sold?</h3>')
+    out.append('<h3>The vehicle being sold</h3>')
     if lot:
         others = (f' and {lot["n_other"]} other object'
                   f'{"s" if lot["n_other"] != 1 else ""}' if lot["n_other"] else "")
@@ -563,8 +563,6 @@ def render(story: dict) -> str:
                     f'<b>{esc(i["component"].replace("_", " "))}</b>'
                     f'<span class="issue-text">{esc(i["observation"])}</span>{also}</li>')
             out.append('</ul>')
-        else:
-            out.append('<p class="beat-clean">Nothing wrong found in this frame.</p>')
         if ph["odometer_km"] is not None:
             out.append(f'<p class="beat-odo">Odometer read here: '
                        f'<b>{km(ph["odometer_km"])} km</b></p>')
@@ -579,10 +577,7 @@ def render(story: dict) -> str:
 
     # act 3 — the merge
     out.append('<article class="act act-merge" data-act="merge">')
-    seen = len(merge["example"]["also_seen_in"]) + 1 if merge["example"] else 0
-    out.append(f'<h3>One defect seen {"twice" if seen == 2 else f"{seen} times"} '
-               f'is one defect.</h3>' if seen > 1
-               else '<h3>One defect seen twice is one defect.</h3>')
+    out.append(f'<h3>{merge["raw"]} observations folded into {merge["merged"]} findings.</h3>')
     out.append(
         '<p class="merge-count">'
         f'<b>{num(merge["raw"])}</b> raw observations '
@@ -601,15 +596,14 @@ def render(story: dict) -> str:
             f'{"s" if merge["clamped"] != 1 else ""} had a raised severity clamped '
             f'because only one sample of that photo reported it, and {merge["disagreed"]} '
             f'had samples that disagreed with each other. Both are shown with the '
-            f'change recorded, never deleted &mdash; changing your mind is allowed, '
-            f'doing it quietly is not.</p>')
+            f'change recorded. A hidden change would be the error.</p>')
     out.append('</div>')
     out.append('</article>')
 
     # act 4 — the cross-checks
     odo, routes = checks["odometer"], checks["price_routes"]
     out.append('<article class="act act-check" data-act="check">')
-    out.append('<h3>Then it checks itself.</h3>')
+    out.append('<h3>Odometer and price, each read twice</h3>')
     if odo["ocr"].get("available"):
         out.append(
             '<div class="check"><h4>The odometer, read twice</h4><ul class="readings">'
@@ -618,11 +612,11 @@ def render(story: dict) -> str:
             f'<li><span>Offline OCR read</span><b>{num(km(odo["ocr"]["km"]))} km</b>'
             f'<em>confidence {odo["ocr"]["confidence"]:.2f}</em></li>'
             '</ul>'
-            + (f'<p class="check-verdict agree">All three agree, so the band does not '
-               f'widen. Had they disagreed past {ODOMETER_TOLERANCE_FRAC:.0%}, both '
-               f'figures would be shown and the range would widen '
-               f'{ODOMETER_CONFLICT_WIDENING:g}&times; rather than the number quietly '
-               f'moving.</p>'
+            + (f'<p class="check-verdict agree">All three agree, so the asking-price '
+               f'band stays at its measured width. Had they disagreed past '
+               f'{ODOMETER_TOLERANCE_FRAC:.0%}, both figures would be shown and the '
+               f'range would widen {ODOMETER_CONFLICT_WIDENING:g}&times; rather than '
+               f'the number quietly moving.</p>'
                if odo["agree"] else
                '<p class="check-verdict differ">The readings differ, so both are shown '
                'and the band widens.</p>')
@@ -646,14 +640,14 @@ def render(story: dict) -> str:
     # act 5 — the number
     ask = p.get("asking") or {}
     out.append('<article class="act act-price" data-act="price">')
-    out.append('<h3>And only then, a number.</h3>')
+    out.append('<h3>The asking-price range</h3>')
     out.append(
         '<div class="story-band" data-band>'
         f'<div class="band-row" data-band-row="adjusted"><span class="band-label">'
         f'Photo-adjusted estimate</span><span class="band-values">'
         f'{num(money(p["low"], cur))} &ndash; {num(money(p["high"], cur))}</span>'
         f'<span class="band-sub">The comparable estimate moved by what the photos show. '
-        f'No measured coverage guarantee.</span></div>'
+        f'Coverage on this row is unmeasured.</span></div>'
         f'<div class="band-row" data-band-row="baseline"><span class="band-label">'
         f'Comparable-market baseline</span><span class="band-values">'
         f'{num(money(p["baseline_low"], cur))} &ndash; '
@@ -677,12 +671,12 @@ def render(story: dict) -> str:
     out.append('<p class="act-note">The vision model never sees a price and never emits '
                'one. The price model never sees the photographs. The only thing that '
                'crosses between them is a condition multiplier, and these are estimated '
-               'asking prices, not confirmed sale prices.</p>')
+               'asking prices rather than confirmed sale prices.</p>')
     out.append('</article>')
 
     # act 6 — the limits
     out.append('<article class="act act-limits" data-act="limits">')
-    out.append('<h3>And what it will not say.</h3>')
+    out.append('<h3>What these photographs left unseen</h3>')
     out.append('<ul class="limits">')
     out.extend(f'<li>{esc(c)}</li>' for c in cond["cannot_tell"])
     out.append('</ul>')

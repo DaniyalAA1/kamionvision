@@ -43,16 +43,20 @@ function showActivePhoto() {
   if (!following || hasPendingReview() || !activePhotos.size) return;
   const ids = [...activePhotos];
   const index = ids.indexOf(frames.currentPhotoId());
-  const id = ids[(index+1) % ids.length];
+  const id = ids[(index + 1) % ids.length];
   const check = frames.checkFor(id);
   if (check) {
     frames.showFrame(check); frames.markCell(id);
     $('scan').classList.add('on');
-    $('scan-status').textContent = `Analyzing photo ${frames.photoOrdinal(id)} · ${viewName(check.view)} · ${ids.length} active`;
+    $('scan-status').textContent = `${viewName(check.view)} · ${ids.length} active`;
   }
 }
 
 export function onActivity(msg) {
+  if (msg.phase === 'views') {
+    frames.applyViews(msg.photos);
+    return;
+  }
   if (msg.phase === 'photo') {
     activePhotos.add(msg.photo_id);
     if (activePhotos.size === 1) showActivePhoto();
@@ -76,20 +80,21 @@ function presentNext() {
   reviewed += 1;
   frames.showFrame(check);
   frames.markCell(check.photo_id, 'read');
-  $('scan-status').textContent = `Review ${reviewed} · photo ${frames.photoOrdinal(check.photo_id)} · ${viewName(check.view)}`;
+  $('scan-status').textContent = `${viewName(check.view)} · photo ${frames.photoOrdinal(check.photo_id)}`;
   $('scan').classList.remove('on');
-  const parts = (finding.component_regions || []).length + (finding.issues || []).filter(i => i.box).length;
+  const parts = (finding.issues || []).filter((i) => Array.isArray(i.box) && i.box.length === 4).length;
   // A presentation queue, NOT fabricated inference progress. Results can land
   // concurrently; each gets enough screen time to read and inspect its parts.
   reviewTimer = setTimeout(() => {
     reviewTimer = null;
     if (reviewQueue.length) presentNext();
     else {
-      $('scan-status').textContent = finished ? 'Review complete · result ready below'
-        : activityDetail || `${read} of ${evidenceIds.length} analyzed · waiting for more findings`;
+      $('scan-status').textContent = finished
+        ? 'Done'
+        : activityDetail || `${read} of ${evidenceIds.length}`;
       showActivePhoto();
     }
-  }, Math.max(3200, Math.min(8000, (parts+1)*1600)));
+  }, Math.max(3200, Math.min(8000, (parts + 1) * 1600)));
 }
 
 
@@ -106,21 +111,12 @@ function setStep(step) {
     if (state === 'active') node.setAttribute('aria-current', 'step');
     else node.removeAttribute('aria-current');
   });
-  const now = $('run-now');
-  if (now) {
-    now.textContent = {
-      gate: 'Checking the photographs',
-      evidence: 'Looking at each photo',
-      price: 'Matching it against listings',
-    }[step] || now.textContent;
-  }
 }
 
 /* Which stops actually happened, read off the appraisal rather than assumed.
    A refusal stops after the gate, so closing the trail by marking all three
-   finished told a viewer the photographs had been read on the one screen whose
-   whole point is that they were not - and the refusal saying "no photo was
-   sent to a vision model" sat two inches below it. */
+   finished told a viewer the photographs had been sent on the one screen whose
+   whole point is that they were not. */
 function closeSteps(a) {
   const ran = {
     gate: true,
@@ -131,12 +127,6 @@ function closeSteps(a) {
     node.dataset.state = ran[node.dataset.step] ? 'done' : 'skipped';
     node.removeAttribute('aria-current');
   });
-  const now = $('run-now');
-  if (now) {
-    now.textContent = a.evidence
-      ? 'The photographs are read'
-      : 'Stopped before the photographs were read';
-  }
 }
 
 function follow(value) {
@@ -144,8 +134,15 @@ function follow(value) {
   const button = liveBtn();
   if (!button) return;
   button.setAttribute('aria-pressed', String(value));
-  button.textContent = value ? 'Pause walkthrough' : 'Resume walkthrough';
-  if (!value) { clearTimeout(reviewTimer); reviewTimer = null; }
+  button.textContent = value ? 'Following' : 'Paused';
+  /* The overlay names the photo being presented. Clicking a thumb pauses
+     that, so a leftover "dashboard · photo 5" on a side exterior would be
+     describing the wrong frame. */
+  $('scan-status').hidden = !value;
+  if (!value) {
+    clearTimeout(reviewTimer); reviewTimer = null;
+    $('scan').classList.remove('on');
+  }
 }
 function selectFrame(c) { follow(false); frames.showFrame(c); frames.markCell(c.photo_id); }
 
@@ -186,11 +183,11 @@ export function begin() {
   setStep('gate');
   if (liveBtn()) liveBtn().hidden = false;
   $('run').hidden = false;
+  $('run').classList.remove('is-done');
   $('progress').hidden = false;
-  $('scan-status').textContent = 'Checking photo quality';
+  $('scan-status').textContent = 'Checking photos';
   $('scan-status').hidden = false;
   $('result').hidden = true;
-  $('view-result').hidden = true;
   $('strip').replaceChildren();
   $('frame-boxes').replaceChildren();
   $('frame-chips').replaceChildren();
@@ -203,9 +200,7 @@ export function begin() {
   frames.setShowAll(false);
   elevation.reset(runElev);
   reasoning.clear();
-  $('rail-title').textContent = 'Checking the photos';
-  $('rail-sub').textContent = 'before anything is sent anywhere';
-  progress('checking the photos', 0.04);
+  progress('Checking photos', 0.04);
   $('run').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
 }
 
@@ -237,15 +232,10 @@ export function onGate(msg) {
 
   const usable = (gate.usable_photo_ids || []).length;
   const total = (gate.photos || []).length;
-  $('rail-title').textContent = usable === total
-    ? `${total} photos, all usable`
-    : `${usable} of ${total} photos are usable`;
-  $('rail-sub').textContent = gate.truck_evidence || '';
-  progress(usable === total ? `${total} photos checked`
-                            : `${usable} of ${total} photos are usable`, 0.1);
+  progress(usable === total ? `${total} photos` : `${usable} of ${total} usable`, 0.1);
 }
 
-/* ---------- act 2: the photos are read, one call each ---------- */
+/* ---------- act 2: each photo's own call ---------- */
 
 export function onStage(msg) {
   setStep(msg.step);
@@ -256,15 +246,13 @@ export function onStage(msg) {
       if (c) c.classList.add('reading');
     });
     $('scan').classList.add('on');
-    $('scan-status').textContent = 'Preparing visual inspection · waiting for model activity';
-    progress(`reading ${evidenceIds.length} photos`, 0.12);
+    $('scan-status').textContent = 'Waiting for the first frame';
+    progress(`0 of ${evidenceIds.length}`, 0.12);
   }
   if (msg.step === 'price') {
-    if (!hasPendingReview()) $('scan-status').textContent = 'Photos analyzed · comparing market prices';
+    if (!hasPendingReview()) $('scan-status').textContent = 'Pricing';
     $('scan').classList.remove('on');
-    $('rail-title').textContent = 'Matching it against real listings';
-    $('rail-sub').textContent = 'the photos are read';
-    progress('pricing it against comparable trucks', 0.96);
+    progress(`${read} of ${evidenceIds.length || read}`, 0.96);
   }
 }
 
@@ -277,7 +265,9 @@ export function onPhoto(msg) {
   frames.setFinding(finding);
   reasoning.add(finding);
   read += 1;
-  if (!hasPendingReview()) $('scan-status').textContent = `${read} of ${evidenceIds.length || read} photos analyzed`;
+  if (!hasPendingReview()) {
+    $('scan-status').textContent = `${read} of ${evidenceIds.length || read}`;
+  }
 
   const check = frames.checkFor(finding.photo_id);
   if (check) {
@@ -290,11 +280,7 @@ export function onPhoto(msg) {
   elevation.setFindings(runElev, finding.issues || []);
 
   const total = evidenceIds.length || read;
-  if (read >= total) {
-    progress('putting the findings together', 0.92);
-  } else {
-    progress(`${read} of ${total} photos read`, 0.12 + 0.8 * (read / Math.max(1, total)));
-  }
+  progress(`${read} of ${total}`, 0.12 + 0.8 * (read / Math.max(1, total)));
 }
 
 /* ---------- act 3: it answered ---------- */
@@ -304,9 +290,9 @@ export function onResult(a) {
   clearInterval(activityTimer); activityTimer = null; activePhotos.clear();
   t.clear();
   $('scan').classList.remove('on');
-  $('view-result').hidden = false;
-  if (!hasPendingReview()) $('scan-status').textContent = a.evidence ? 'Inspection complete' : 'Photo checks complete';
-  progress(read ? `${read} photos read` : 'the checks finished', 1);
+  $('scan-status').textContent = a.evidence ? 'Done' : 'Stopped';
+  $('run').classList.add('is-done');
+  progress(read ? `${read} photos` : 'Stopped', 1);
   closeSteps(a);
   if (liveBtn()) liveBtn().hidden = !a.evidence;
   const ev = a.evidence;
@@ -356,6 +342,4 @@ export function onError(message) {
   reasoning.note(message);
   if (liveBtn()) liveBtn().hidden = true;
   progress(message, 0);
-  $('rail-title').textContent = 'Something broke';
-  $('rail-sub').textContent = message;
 }

@@ -203,10 +203,15 @@ class TheMeasuredNumberStaysWithItsBand(StoryFixture):
     def test_the_adjusted_row_disclaims_a_guarantee(self):
         adjusted = re.search(r'data-band-row="adjusted"(.*?)</div>', self.region, re.S)
         self.assertIsNotNone(adjusted)
-        self.assertIn("No measured coverage guarantee", adjusted.group(1))
+        self.assertIn("Coverage on this row is unmeasured", adjusted.group(1))
 
     def test_asking_prices_are_named_as_asking_prices(self):
-        self.assertIn("asking prices, not confirmed sale prices", self.region)
+        self.assertIn("asking prices rather than confirmed sale prices", self.region)
+
+    def test_a_clean_frame_has_no_empty_subtitle(self):
+        self.assertNotIn("beat-clean", self.region)
+        self.assertNotIn("Nothing wrong found", self.region)
+        self.assertNotIn("Nothing flagged", self.region)
 
 
 class TheFrozenRunHasNotGoneStale(StoryFixture):

@@ -123,30 +123,29 @@ def pricing_blocker(ev, gate=None, min_clusters=_LOAD,
         if (min_rigid_conf
                 and gate.body_tag == "rigid"
                 and gate.body_tag_conf >= min_rigid_conf):
-            return (f"This looks like a rigid. I can describe its condition, but I have "
-                    f"no comparable rigids to price it against.",
-                    "the photos show a rigid, not a tractor unit. Every comparable this "
-                    "model was fit on is a tractor unit, so it has nothing honest to price "
-                    "a rigid against. The condition notes below still stand.")
+            return _unpriceable_body("rigid")
 
     if ev is None:
         return None
 
     if not ev.same_vehicle:
         detail = (ev.vehicle_mismatch or "").strip()
-        return (("These photos are not all of the same truck. " + detail).strip(),
-                ("these photos are not all the same vehicle, so there is nothing "
+        return (("These photographs are not all of the same truck being sold. " + detail).strip(),
+                ("these photographs are not all of the same truck being sold, so there is nothing "
                  "coherent to price. " + detail).strip())
 
     body = (ev.vehicle.body_type or "").strip().lower().replace(" ", "_")
     if body and body not in PRICEABLE_BODY_TYPES and ev.vehicle.confidence >= BODY_TYPE_CONFIDENCE:
-        pretty = body.replace("_", " ")
-        return (f"This looks like a {pretty}. I can describe its condition, but I have "
-                f"no comparable {pretty}s to price it against.",
-                f"the photos show a {pretty}, not a tractor unit. Every comparable this "
-                f"model was fit on is a tractor unit, so it has nothing honest to price "
-                f"a {pretty} against. The condition notes below still stand.")
+        return _unpriceable_body(body.replace("_", " "))
     return None
+
+
+def _unpriceable_body(pretty: str) -> tuple[str, str]:
+    """One sentence, named once. The screen used to print the headline and
+    the reason, which said the same body three times across two paragraphs."""
+    line = (f"This is a {pretty}. Every comparable the model was fit on is a "
+            f"tractor unit, so there is nothing honest to price it against.")
+    return (line, line)
 
 def _head_classes() -> list[str]:
     """The brands the identity head was actually trained on, or [].
@@ -262,6 +261,9 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
             f"detail, reads {perception.brand or 'unknown'} "
             f"({perception.brand_conf:.0%})",
             perception.elapsed_s))
+        view_updates = reconcile_stage.refine_closeup_views(gate, perception)
+        if view_updates and on_activity:
+            on_activity({"phase": "views", "photos": view_updates})
 
     # --- 2. evidence ------------------------------------------------------
     # `evidence.run` reads a view-diverse subset capped at MAX_EVIDENCE_PHOTOS,

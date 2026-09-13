@@ -136,16 +136,9 @@ a { color: inherit; }
 .ghost-btn[aria-pressed="true"] {
   color: var(--ink); border-color: var(--ink); background: rgba(22, 32, 43, .05);
 }
-/* On the dark stage the same control has to lift off navy instead of concrete. */
-.run .ghost-btn { color: var(--stage-haze); border-color: var(--stage-rule); }
-.run .ghost-btn:hover { color: var(--stage-text); border-color: var(--stage-haze); }
-.run .ghost-btn[aria-pressed="true"] {
-  color: var(--stage-text); border-color: var(--stage-haze);
-  background: rgba(230, 236, 241, .08);
-}
 .run #follow-live[aria-pressed="true"] {
-  color: var(--verified-lit);
-  border-color: #8ac8ff55;
+  color: var(--verified);
+  border-color: var(--verified);
 }
 
 /* ---------- intake ---------- */

@@ -567,6 +567,50 @@ def _identity_classes() -> list[str]:
         return []
 
 
+def refine_closeup_views(gate, perception) -> list[dict]:
+    """Retag a confident part-frame before the close-up call reads it.
+
+    CLIP calls a slice of genuine close-ups an exterior view. That frame is
+    then handed the exterior checklist, and the overlay boxes whatever that
+    call invented - a fuel tank on a tire tread. The framing head exists
+    because that error was measured. It refines the tag; it does not refuse
+    the photo.
+    """
+    from .subject import CLOSE_UP_VIEWS, WHOLE_VEHICLE_VIEWS
+
+    if not gate or not gate.photos or not perception:
+        return []
+    by_id = {p.photo_id: p for p in (perception.photos or [])}
+    updates = []
+    for check in gate.photos:
+        head = by_id.get(check.photo_id)
+        if (head is None or head.framing != "part"
+                or head.framing_conf < FRAMING_CONFIDENCE):
+            continue
+        new_view = head.view if head.view in CLOSE_UP_VIEWS else "damage_detail"
+        if (check.view == new_view and not check.subject_box
+                and not any(getattr(d, "is_subject", False)
+                            for d in (check.detections or []))):
+            continue
+        check.view = new_view
+        check.subject_box = None
+        for det in check.detections or []:
+            det.is_subject = False
+        if (check.view not in (gate.views_present or [])
+                and gate.views_present is not None):
+            gate.views_present.append(check.view)
+        updates.append({
+            "photo_id": check.photo_id,
+            "view": check.view,
+            "subject_box": None,
+        })
+    if gate.views_present:
+        still = {c.view for c in gate.photos if c.usable}
+        gate.views_present = [v for v in gate.views_present
+                              if v not in WHOLE_VEHICLE_VIEWS or v in still]
+    return updates
+
+
 def _correct_whole_vehicle(gate, perception, report) -> None:
     """Stop a confident part frame from satisfying whole-vehicle coverage."""
     from .subject import WHOLE_VEHICLE_VIEWS

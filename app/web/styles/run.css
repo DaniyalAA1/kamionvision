@@ -1,18 +1,11 @@
-/* The run, on a dark stage.
-
-   This is the one place the page goes dark. The lights drop while the model
-   looks at the photographs and come back up with the answer, which is a single
-   orchestrated moment rather than an effect sprinkled over every section. It
-   also happens to be the right ground: a photograph under inspection reads
-   better against navy than against concrete, and the detector's box has to sit
-   on top of a photograph without competing with it. */
+/* The run is the first half of the same document as the result: paper, navy
+   ink, a hairline. The photograph keeps a navy well so detector boxes can sit
+   on a photo without competing with the page. Everything else stays on cream. */
 
 .run {
-  margin: var(--s-5) calc(var(--gut) * -1) 0;
-  padding: 0 var(--gut) var(--s-6);
-  background: var(--stage);
-  color: var(--stage-text);
-  border-radius: var(--radius);
+  margin: var(--s-5) 0 0;
+  padding: 0 0 var(--s-6);
+  color: var(--ink);
   animation: lights-down .5s var(--ease-out);
 }
 @keyframes lights-down {
@@ -25,37 +18,28 @@
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, .95fr);
   gap: var(--s-6);
   align-items: start;
+  padding-top: var(--s-5);
 }
 @media (max-width: 940px) { .stage { grid-template-columns: minmax(0, 1fr); } }
 
 /* Pinned, because the run takes minutes and "which of the three stages am I
-   in" is the question a viewer asks for the whole of it. It also fixes the
-   height budget below it: `.stage-main` is sticky under this, so the two
-   offsets have to agree or the column runs off the bottom of the screen. */
+   in" is the question a viewer asks for the whole of it. */
 .run-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--s-4);
+  gap: var(--s-3) var(--s-4);
   flex-wrap: wrap;
   position: sticky;
   top: 0;
   z-index: 6;
-  background: var(--stage);
-  padding-top: var(--s-3);
-  padding-bottom: var(--s-5);
-  margin-bottom: 0;
-  border-bottom: 1px solid var(--stage-rule);
+  background: var(--lot);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--edge);
 }
+.run .ghost-btn { padding: .4rem .7rem; }
 @media (max-width: 940px) { .run-head { position: static; } }
-.run-now {
-  font: 500 1.55rem/1 var(--cond);
-  letter-spacing: -.02em;
-  color: var(--stage-text);
-}
-/* Three stops on one road, connected, rather than three bordered pills that
-   looked like tabs you could press. A finished stop fills in; the one running
-   is the brightest thing in the row. */
+
 .run-steps {
   list-style: none;
   display: flex;
@@ -68,14 +52,14 @@
   align-items: center;
   gap: .55rem;
   font-size: var(--t-sm);
-  color: var(--stage-haze);
+  color: var(--steel);
   transition: color .35s var(--ease-out);
 }
 .run-steps li + li::before {
   content: "";
   width: 1.5rem;
   height: 1px;
-  background: var(--stage-rule);
+  background: var(--edge);
 }
 .run-steps li span {
   display: inline-flex;
@@ -87,42 +71,25 @@
   width: .5rem;
   height: .5rem;
   border-radius: 50%;
-  border: 1px solid var(--stage-rule);
+  border: 1px solid var(--edge);
   transition: background .35s var(--ease-out), border-color .35s var(--ease-out),
               box-shadow .35s var(--ease-out);
 }
-.run-steps li[data-state="done"] { color: var(--verified-lit); }
+.run-steps li[data-state="done"] { color: var(--verified); }
 .run-steps li[data-state="done"] span::before {
-  background: var(--verified-lit);
-  border-color: var(--verified-lit);
+  background: var(--verified);
+  border-color: var(--verified);
 }
-/* A refusal stops after the gate. Marking the two stops it never reached as
-   finished said the photographs had been read on the one screen whose whole
-   point is that they were not. */
 .run-steps li[data-state="skipped"] { opacity: .4; }
-.run-steps li[data-state="active"] { color: var(--stage-text); font-weight: 600; }
+.run-steps li[data-state="active"] { color: var(--ink); font-weight: 600; }
 .run-steps li[data-state="active"] span::before {
-  background: var(--stage-text);
-  border-color: var(--stage-text);
-  box-shadow: 0 0 0 4px rgba(238, 245, 255, .14);
+  background: var(--ink);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(9, 34, 86, .08);
 }
-/* The column holds the photographs, and it is sticky. A sticky column taller
-   than the viewport stops sticking, so anything below the fold inside it
-   stays below the fold - which is how a briefing card that grew to 3,637px
-   took the featured frame, the contact strip and the progress bar off screen
-   while the photographs themselves were all fetched and decoded.
 
-   So the column is capped at the viewport and laid out as a flex column: the
-   frame and the briefing may shrink, the strip and the footer may not. What
-   the model has to say about a frame can change how much of the briefing is
-   scrolled; it can no longer change whether the photographs are visible.
-
-   `--run-head-room` is the pinned head above, plus the gap under it. It is a
-   fixed allowance rather than a measured height because the head is a single
-   row at every width where any of this is sticky - below 940px the stage is
-   one column and both offsets are switched off. */
 .stage-main {
-  --run-head-room: 6rem;
+  --run-head-room: 5.5rem;
   position: sticky;
   top: var(--run-head-room);
   max-height: calc(100vh - var(--run-head-room) - 1.25rem);
@@ -141,20 +108,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Shrinks last and least: the photograph is the subject of the screen, and
-     the briefing below it is the thing that can afford to scroll instead. */
-  flex: 0 .35 auto;
+  flex: 1 1 auto;
 }
 .frame-stage {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   min-height: 11rem;
-  background: var(--stage-lift);
+  background: var(--stage);
   border-radius: var(--radius);
   overflow: hidden;
 }
-.strip, .stage-foot { flex: 0 0 auto; }
+.strip { flex: 0 0 auto; }
 .frame-stage img {
   width: 100%;
   height: 100%;
@@ -178,9 +143,6 @@
   vector-effect: non-scaling-stroke;
   opacity: .45;
 }
-/* The subject: the one vehicle being sold. Everything else in a lot shot is
-   scenery, and the whole complaint about the old overlay was that it drew
-   them all with equal weight. */
 .frame-boxes .box[data-subject="true"] rect {
   stroke: var(--verified-lit);
   stroke-width: 2.5;
@@ -227,8 +189,6 @@
   color: var(--stop-lit);
 }
 
-/* Dimming everything but the subject is what makes one box readable. Drawn as
-   an even-odd mask over the frame so the subject stays at full brightness. */
 .frame-boxes .dim { fill: rgba(19, 28, 38, .55); }
 
 .frame-chips { position: absolute; inset: 0; pointer-events: none; }
@@ -246,8 +206,10 @@
 .box-chip.above { transform: translateY(-100%) translateY(-4px); }
 .box-chip[data-subject="true"] { background: var(--verified); color: #fff; }
 .box-chip[data-disqualifying="true"] { background: var(--stop); color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .box-chip:not(.scan-part-label) { opacity: 1; }
+}
 
-/* One quiet optical sweep, decorative rather than fabricated progress. */
 .scan { position: absolute; inset: 0; pointer-events: none; opacity: 0;
   transition: opacity .5s; overflow: hidden; }
 .scan.on { opacity: 1; }
@@ -265,10 +227,12 @@
 .scan-status::before { content: ""; display: inline-block; width: 6px; height: 6px;
   background: var(--verified-lit); border-radius: 50%; margin-right: .5rem; }
 .frame-stage img { position: absolute; inset: 0; }
-.frame-stage .frame-outgoing { z-index: 1; animation: photo-away .48s ease-out forwards; }
+#frame-img { z-index: 1; }
+.frame-stage .frame-outgoing { z-index: 0; animation: photo-away .48s ease-out forwards; }
 @keyframes photo-away { to { opacity: 0; } }
 .frame-boxes, .frame-chips, .scan { z-index: 2; }
 .scan-status { z-index: 3; }
+.run.is-done .scan-status { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .scan.on { opacity: 0; }
   .scan.on::before { animation: none; }
@@ -280,13 +244,13 @@
   gap: var(--s-3);
   padding: var(--s-3) 0 0;
   font-size: var(--t-sm);
-  color: var(--stage-haze);
+  color: var(--steel);
 }
-.fm-view { color: var(--stage-text); font-weight: 500; }
+.fm-view { color: var(--ink); font-weight: 500; }
 .fm-capture { margin-left: auto; }
-.fm-capture[data-bucket="good"] { color: var(--verified-lit); }
-.fm-capture[data-bucket="fair"] { color: var(--stage-haze); }
-.fm-capture[data-bucket="poor"] { color: var(--caution-lit); }
+.fm-capture[data-bucket="good"] { color: var(--verified); }
+.fm-capture[data-bucket="fair"] { color: var(--steel); }
+.fm-capture[data-bucket="poor"] { color: var(--caution); }
 
 /* ---------- contact strip ---------- */
 
@@ -294,21 +258,17 @@
   display: flex;
   gap: .35rem;
   overflow-x: auto;
-  padding: var(--s-4) 0 var(--s-2);
+  padding: var(--s-4) 0 0;
   scrollbar-width: thin;
-  scrollbar-color: var(--stage-rule) transparent;
+  scrollbar-color: var(--edge) transparent;
 }
-/* A default scrollbar is drawn for a light page, so on the dark stage it came
-   out as a pale bar the full width of the strip - brighter than the thumbnails
-   above it. Chromium needs the -webkit- pseudo-elements; `scrollbar-color`
-   above covers Firefox. */
 .strip::-webkit-scrollbar { height: 6px; }
 .strip::-webkit-scrollbar-track { background: transparent; }
 .strip::-webkit-scrollbar-thumb {
-  background: var(--stage-rule);
+  background: var(--edge);
   border-radius: var(--radius);
 }
-.strip:hover::-webkit-scrollbar-thumb { background: #42608b; }
+.strip:hover::-webkit-scrollbar-thumb { background: var(--steel-dim); }
 .strip-cell {
   flex: 0 0 auto;
   width: 62px;
@@ -317,7 +277,7 @@
   border: 0;
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--stage-lift);
+  background: var(--lot-deep);
   cursor: pointer;
   opacity: 0;
   position: relative;
@@ -326,28 +286,28 @@
 .strip-cell.in { opacity: .55; }
 .strip-cell:hover { opacity: 1; transform: translateY(-2px); }
 .strip-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.strip-cell[data-usable="false"] img { filter: grayscale(1) brightness(.5); }
+.strip-cell[data-usable="false"] img { filter: grayscale(1) brightness(.7); }
 .strip-cell[data-usable="false"]::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid var(--stop-lit);
+  border: 1px solid var(--stop);
   border-radius: var(--radius);
   opacity: .5;
 }
-.strip-cell.current { opacity: 1; outline: 2px solid var(--verified-lit); outline-offset: -2px; }
+.strip-cell.current { opacity: 1; outline: 2px solid var(--verified); outline-offset: -2px; }
 .strip-cell.read::before {
   content: "";
   position: absolute;
   inset: auto 0 0 0;
   height: 2px;
-  background: var(--verified-lit);
+  background: var(--verified);
 }
 .strip-cell.reading:not(.read)::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, rgba(238, 245, 255, .95) 1.05px, transparent 1.2px);
+  background-image: radial-gradient(circle, rgba(9, 34, 86, .55) 1.05px, transparent 1.2px);
   background-size: 7px 7px;
   -webkit-mask-image: linear-gradient(90deg, transparent 8%, #000 42%, #000 58%, transparent 92%);
   mask-image: linear-gradient(90deg, transparent 8%, #000 42%, #000 58%, transparent 92%);
@@ -370,13 +330,11 @@
   right: 4px;
   width: 7px;
   height: 7px;
-  background: var(--verified-lit);
+  background: var(--verified);
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0, 0, 0, .8);
+  box-shadow: 0 0 4px rgba(9, 34, 86, .35);
   z-index: 2;
 }
-/* `cosmetic` is the fourth word in SEVERITY_RUBRIC, so a set whose worst
-   finding is cosmetic is a real state the strip has to have a dot for. */
 .strip-cell[data-state="cosmetic"]::before,
 .strip-cell[data-state="minor"]::before,
 .strip-cell[data-state="moderate"]::before {
@@ -386,9 +344,9 @@
   right: 4px;
   width: 7px;
   height: 7px;
-  background: var(--caution-lit);
+  background: var(--caution);
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0, 0, 0, .8);
+  box-shadow: 0 0 4px rgba(9, 34, 86, .35);
   z-index: 2;
 }
 .strip-cell[data-state="major"]::before {
@@ -398,29 +356,25 @@
   right: 4px;
   width: 7px;
   height: 7px;
-  background: var(--stop-lit);
+  background: var(--stop);
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0, 0, 0, .8);
+  box-shadow: 0 0 4px rgba(9, 34, 86, .35);
   z-index: 2;
 }
 
-/* ---------- foot ---------- */
+/* ---------- progress, in the head ---------- */
 
-.stage-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--s-4);
-  flex-wrap: wrap;
-  padding-top: var(--s-4);
-  border-top: 1px solid var(--stage-rule);
-  margin-top: var(--s-2);
+.progress { display: grid; gap: .4rem; flex: 1 1 160px; min-width: 8rem; }
+.progress-label {
+  font: 500 1.15rem/1 var(--cond);
+  letter-spacing: -.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
-.progress { display: grid; gap: .45rem; flex: 1 1 220px; }
-.progress-label { font-size: var(--t-sm); color: var(--stage-haze); }
 .progress-rule {
   display: block;
   height: 2px;
-  background: var(--stage-rule);
+  background: var(--edge);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -428,370 +382,62 @@
   display: block;
   height: 100%;
   width: 0;
-  background: var(--verified-lit);
+  background: var(--verified);
   transition: width .5s var(--ease-out);
 }
-.stage-actions { display: flex; gap: var(--s-2); margin-left: auto; }
+.stage-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.run.is-done .progress-rule { opacity: .35; }
 
-/* ---------- the rail's head and the drawing on it ---------- */
+/* ---------- the rail: drawing + one card per photo ---------- */
 
 .rail { display: grid; gap: var(--s-4); align-content: start; }
-.rail-head h2 { font-size: var(--t-lg); letter-spacing: -.02em; }
-.rail-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .5rem;
-}
-.rail-live-badge {
-  font: 600 .65rem/1 var(--cond);
-  letter-spacing: .06em;
-  padding: .2rem .45rem;
-  border-radius: var(--radius);
-  background: rgba(138, 200, 255, .18);
-  color: var(--verified-lit);
-  border: 1px solid rgba(138, 200, 255, .3);
-}
-.rail-filters {
-  display: flex;
-  gap: .35rem;
-  margin-top: .4rem;
-}
-.rail-filter-btn {
-  background: rgba(0, 0, 0, .2);
-  border: 1px solid var(--stage-rule);
-  color: var(--stage-haze);
-  padding: .2rem .5rem;
-  border-radius: var(--radius);
-  font: 500 var(--t-xs)/1.2 var(--sans);
-  cursor: pointer;
-  transition: all .2s var(--ease-out);
-}
-.rail-filter-btn:hover {
-  color: var(--stage-text);
-  border-color: var(--stage-haze);
-}
-.rail-filter-btn.active {
-  background: var(--stage-rule);
-  color: var(--stage-text);
-  border-color: var(--stage-haze);
-}
-.rail-sub { color: var(--stage-haze); font-size: var(--t-sm); margin-top: .15rem; }
-.elev-slot { width: 100%; }
-
-/* ---------- the briefing under the frame ---------- */
-
-/* Every selector below is `intel-`-prefixed and every variant is a `data-`
-   attribute. These stylesheets are one cascade: the column that listed the
-   model's blind spots was classed `gaps`, `result.css` owns `.gaps li`, and
-   the briefing grew to 3,637px inside a 768px viewport. See the note in
-   js/frames.js and `tests.test_offline.LiveBriefing`. */
-
-.frame-intel {
-  margin-top: var(--s-3);
+.elev-slot {
   width: 100%;
-  /* The cap is the whole point. `.stage-main` is sticky, and a sticky column
-     taller than the viewport stops sticking - it took the featured frame, the
-     contact strip and the progress bar below the fold with it, on the one
-     screen whose subject is the photographs. The briefing scrolls itself
-     instead, so how much the model has to say can never decide whether the
-     photographs are visible. */
-  flex: 0 1 auto;
-  min-height: 6.5rem;
-  max-height: clamp(8rem, 30vh, 19rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--stage-rule) transparent;
-}
-.frame-intel::-webkit-scrollbar { width: 6px; }
-.frame-intel::-webkit-scrollbar-track { background: transparent; }
-.frame-intel::-webkit-scrollbar-thumb {
-  background: var(--stage-rule);
+  background: var(--lot-deep);
   border-radius: var(--radius);
+  padding: var(--s-3);
 }
 
-.intel-card {
-  background: var(--stage-lift);
-  border: 1px solid var(--stage-rule);
-  border-radius: var(--radius);
-  padding: var(--s-3) var(--s-4);
-  display: grid;
-  gap: var(--s-3);
-  align-content: start;
-  animation: intel-fade .3s var(--ease-out);
-}
-@keyframes intel-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .intel-card { animation: none; }
-}
+/* The drawing ships for a navy ground. On paper the same strokes have to
+   read as ink, not as haze that disappears into cream. */
+.run .elev-chrome .ground { stroke: var(--steel); opacity: .4; }
+.run .elev-chrome .hatch line { stroke: var(--edge); opacity: .85; }
+.run .zone { stroke: var(--steel-dim); opacity: .42; }
+.run .zone[data-state="covered"] { stroke: var(--verified); opacity: .85; }
+.run .zone[data-state="read"] { stroke: var(--ink); opacity: .92; }
+.run .zone[data-sev="cosmetic"],
+.run .zone[data-sev="minor"] { stroke: var(--caution); opacity: .7; filter: none; }
+.run .zone[data-sev="moderate"] { stroke: var(--caution); opacity: 1; filter: none; }
+.run .zone[data-sev="major"] { stroke: var(--stop); opacity: 1; filter: none; }
+.run .elev .zone[data-focus] { stroke: var(--ink); filter: none; }
+.run .rev-mark path { stroke: var(--caution); fill: var(--card); }
+.run .rev-mark text { fill: var(--caution); }
+.run .rev-mark[data-sev="major"] path { stroke: var(--stop); }
+.run .rev-mark[data-sev="major"] text { fill: var(--stop); }
 
-/* ---- status line ---- */
-
-.intel-top {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: .4rem;
-}
-.intel-badge {
-  font: 600 var(--t-xs)/1 var(--sans);
-  padding: .3rem .6rem;
-  border-radius: var(--radius);
-  display: inline-flex;
-  align-items: center;
-  text-transform: uppercase;
-  letter-spacing: .03em;
-  border: 1px solid transparent;
-}
-.intel-badge[data-level="scanning"] {
-  background: rgba(143, 196, 122, .15);
-  color: var(--verified-lit);
-  border-color: rgba(143, 196, 122, .3);
-}
-.intel-badge[data-level="clean"] { background: var(--verified); color: #fff; }
-.intel-badge[data-level="cosmetic"],
-.intel-badge[data-level="minor"] {
-  background: rgba(143, 196, 122, .2);
-  color: var(--verified-lit);
-  border-color: var(--verified-lit);
-}
-.intel-badge[data-level="moderate"] {
-  background: rgba(232, 180, 92, .2);
-  color: var(--caution-lit);
-  border-color: var(--caution-lit);
-}
-.intel-badge[data-level="major"] {
-  background: rgba(242, 112, 92, .2);
-  color: var(--stop-lit);
-  border-color: var(--stop-lit);
-}
-.intel-badge[data-level="error"] { background: var(--stop); color: #fff; }
-.intel-badge[data-level="dropped"] {
-  background: transparent;
-  color: var(--stage-haze);
-  border-color: var(--stage-rule);
-}
-.intel-pulse {
-  display: inline-block;
-  width: .45rem;
-  height: .45rem;
-  border-radius: 50%;
-  background: var(--verified-lit);
-  box-shadow: 0 0 0 0 rgba(143, 196, 122, .7);
-  animation: intel-pulse-ring 1.8s infinite;
-  margin-right: .35rem;
-}
-@keyframes intel-pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(143, 196, 122, .7); }
-  70% { box-shadow: 0 0 0 6px rgba(143, 196, 122, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(143, 196, 122, 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .intel-pulse { animation: none; }
-}
-.intel-pill {
-  font-size: var(--t-xs);
-  color: var(--stage-haze);
-  padding: .2rem .5rem;
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, .2);
-  border: 1px solid rgba(255, 255, 255, .07);
-  white-space: nowrap;
-}
-.intel-pill[data-kind="odo"] {
-  color: var(--caution-lit);
-  border-color: rgba(232, 180, 92, .35);
-}
-.intel-pill[data-kind="crop"],
-.intel-pill[data-kind="backend"] { color: var(--stage-text); }
-
-/* ---- the one-line read ---- */
-
-.intel-headline {
-  margin: 0;
-  font-size: var(--t-sm);
-  line-height: 1.45;
-  color: var(--stage-text);
-}
-.intel-headline[data-state="pending"] {
-  color: var(--stage-haze);
-  font-style: italic;
-}
-
-/* ---- the lists ---- */
-
-/* Findings lead and get the wider track; what the frame vouches for and what
-   it cannot see stack beside them. Three equal columns at this width put
-   prose in a 170px gutter, which is how the collapsed-to-one-word layout went
-   unnoticed in the first place. */
-.intel-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  gap: var(--s-4);
-  padding-top: var(--s-2);
-  border-top: 1px solid rgba(255, 255, 255, .06);
-}
-.intel-aside {
-  display: grid;
-  gap: var(--s-3);
-  align-content: start;
-  min-width: 0;
-}
-@media (max-width: 1180px) {
-  .intel-grid { grid-template-columns: minmax(0, 1fr); }
-}
-.intel-col {
-  display: grid;
-  gap: .4rem;
-  align-content: start;
-  min-width: 0;
-}
-.intel-col-title {
-  font: 600 var(--t-xs)/1 var(--sans);
-  color: var(--stage-haze);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-  margin: 0;
-}
-.intel-col-title svg { width: .9rem; height: .9rem; }
-.intel-col-count {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  color: var(--stage-text);
-}
-.intel-col[data-kind="sound"] .intel-col-title { color: var(--verified-lit); }
-.intel-col[data-kind="issues"] .intel-col-title { color: var(--caution-lit); }
-
-.intel-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: .35rem;
-  min-width: 0;
-}
-.intel-list li {
-  font-size: var(--t-xs);
-  line-height: 1.35;
-  color: var(--stage-text);
-  position: relative;
-  min-width: 0;
-}
-/* The marker belongs to the two prose columns, not to every list item. It
-   used to be a blanket `.intel-list li::before` that the findings column had
-   to switch back off with `!important` - and a findings item is a titled
-   card, so the bullet was reappearing next to its component glyph whenever
-   the override lost on specificity. */
-.intel-col[data-kind="sound"] .intel-list li,
-.intel-col[data-kind="gaps"] .intel-list li { padding-left: .85rem; }
-.intel-col[data-kind="gaps"] .intel-list li::before {
-  content: "•";
-  position: absolute;
-  left: 0;
-  color: var(--stage-haze);
-}
-.intel-col[data-kind="sound"] .intel-list li::before {
-  content: "✓";
-  position: absolute;
-  left: 0;
-  color: var(--verified-lit);
-  font-size: .75rem;
-}
-
-.intel-issue {
-  background: rgba(0, 0, 0, .2);
-  border-radius: var(--radius);
-  padding: .35rem .5rem;
-  border-left: 2px solid var(--caution-lit);
-}
-.intel-issue[data-sev="major"] { border-left-color: var(--stop-lit); }
-.intel-issue[data-sev="cosmetic"],
-.intel-issue[data-sev="minor"] { border-left-color: var(--verified-lit); }
-.intel-issue-head {
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-  flex-wrap: wrap;
-}
-.intel-issue-head svg { width: .95rem; height: .95rem; color: var(--stage-haze); }
-.intel-issue-comp {
-  font-size: var(--t-xs);
-  font-weight: 600;
-  color: var(--stage-text);
-}
-.sev-tag {
-  font-size: .65rem;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  padding: .1rem .35rem;
-  border-radius: var(--radius);
-  margin-left: auto;
-}
-.sev-tag[data-sev="cosmetic"],
-.sev-tag[data-sev="minor"] { background: rgba(143, 196, 122, .2); color: var(--verified-lit); }
-.sev-tag[data-sev="moderate"] { background: rgba(232, 180, 92, .2); color: var(--caution-lit); }
-.sev-tag[data-sev="major"] { background: rgba(242, 112, 92, .2); color: var(--stop-lit); }
-.intel-issue-obs {
-  margin: .2rem 0 0;
-  color: var(--stage-text);
-  font-size: var(--t-xs);
-  line-height: 1.35;
-}
-.intel-mag {
-  display: block;
-  font-size: .7rem;
-  color: var(--stage-haze);
-  margin-top: .15rem;
-}
-.intel-quiet {
-  font-size: var(--t-xs);
-  color: var(--stage-haze);
-  margin: 0;
-  font-style: italic;
-}
-
-/* Inspection choreography: a subject outline, then one evidenced part at a time. */
+/* Inspection choreography: a subject outline, then one finding at a time.
+   Inactive inner boxes stay undrawn - stacking them was the clutter. */
+.scan-part:not([data-active="true"]) { visibility: hidden; }
 .scan-part rect {
-  fill: rgba(145, 208, 197, .035);
-  stroke: #9ed9cf;
-  stroke-width: 1;
+  fill: rgba(232, 180, 92, .12);
+  stroke: var(--caution-lit);
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
-  opacity: .25;
-  transition: fill .35s, opacity .35s;
 }
 .scan-part[data-active="true"] rect {
-  opacity: 1;
-  fill: rgba(145, 208, 197, .14);
-  stroke-width: 2.5;
-  stroke-dasharray: 1;
   animation: part-trace .7s var(--ease-out) both;
+  stroke-dasharray: 1;
 }
-.scan-part[data-kind="finding"] rect { stroke: var(--caution-lit); }
 @keyframes part-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .box-chip.scan-part-label {
   opacity: 0;
   max-width: 100%;
-  white-space: normal;
+  white-space: nowrap;
   line-height: 1.25;
-  border: 1px solid #9ed9cf;
-  background: #172d27;
-  color: #d6f6ef;
+  border: 1px solid var(--caution-lit);
+  background: rgba(8, 27, 67, .9);
+  color: var(--caution-lit);
   transition: opacity .25s;
 }
 .box-chip.scan-part-label[data-active="true"] { opacity: 1; }
-.intel-parts { display: flex; flex-wrap: wrap; gap: .35rem; }
-.intel-part {
-  color: var(--stage-haze); background: transparent; border: 1px solid var(--stage-rule);
-  border-radius: var(--radius); padding: .35rem .5rem; font: inherit; font-size: var(--t-xs);
-  cursor: pointer;
-}
-.intel-part[data-active="true"] { background: #27493f; color: #d6f6ef; border-color: #9ed9cf; }
-.intel-part:focus-visible { outline: 2px solid #9ed9cf; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .scan-part[data-active="true"] rect { animation: none; } }

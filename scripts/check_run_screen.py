@@ -66,38 +66,24 @@ with sync_playwright() as p:
     not_read = next(c for c in photos if c['photo_id'] not in {f['photo_id'] for f in findings})
     page.evaluate('c => qaFrames.showFrame(c)', not_read)
     displayed(not_read['photo_id'])
-    assert 'Not selected' in page.locator('#frame-intel').inner_text()
+    assert 'not sent' in page.locator('#frame-meta').inner_text().lower()
 
-    # Adversarially long content uses the same schema, explicitly QA-only.
-    long_finding = dict(findings[-1])
-    long_finding['cannot_tell'] = ['QA stress content: ' + 'Cannot assess from this photograph. ' * 8] * 24
-    page.evaluate('f => qaRun.onPhoto({finding:f})', long_finding)
-    displayed(long_finding['photo_id'])
     for width, height in [(1366, 768), (1024, 600), (1440, 900), (390, 844)]:
         page.set_viewport_size({'width': width, 'height': height})
         page.evaluate("window.scrollTo(0, document.querySelector('#run').offsetTop)")
         metrics = page.evaluate('''() => {
           const box = s => document.querySelector(s).getBoundingClientRect().toJSON();
-          const intel = document.querySelector('#frame-intel');
-          return {frame:box('#frame-stage'), foot:box('.stage-foot'),
-            intel:box('#frame-intel'), overflow:intel.scrollHeight > intel.clientHeight,
+          return {frame:box('#frame-stage'), rail:box('#thoughts'),
             pageOverflow:document.documentElement.scrollWidth > innerWidth};
         }''')
         assert not metrics['pageOverflow'], (width, metrics)
-        assert metrics['overflow'], (width, metrics)
         assert metrics['frame']['height'] >= 176, metrics
         if width > 940:
-            assert metrics['foot']['bottom'] <= height + 1, (width, metrics)
+            assert metrics['frame']['bottom'] <= height + 1, (width, metrics)
         before = page.evaluate('scrollY')
         page.evaluate('qaFrames.markCell(0)')
         assert page.evaluate('scrollY') == before, 'Contact strip dragged the page vertically'
         page.screenshot(path=str(OUT / f'review-{width}.png'))
-
-    # New frame starts at its heading, not the previous photo's scrolled prose.
-    page.locator('#frame-intel').evaluate('e => e.scrollTop = 200')
-    page.evaluate('c => qaFrames.showFrame(c)', photos[0])
-    displayed(photos[0]['photo_id'])
-    assert page.locator('#frame-intel').evaluate('e => e.scrollTop') == 0
 
     # Missing image clears old evidence; switching back recovers.
     page.evaluate('''() => {
@@ -105,9 +91,8 @@ with sync_playwright() as p:
       qaFrames.setSource({...a.photo_urls, 0:'/qa-missing.jpg'}, a.gate.photos, a.gate.decision);
       qaFrames.showFrame(a.gate.photos[0]);
     }''')
-    page.wait_for_function("document.querySelector('#frame-img').alt === 'Photo could not be loaded'")
+    page.wait_for_function("document.querySelector('#frame-img').alt === 'This photo failed to load'")
     assert page.locator('#frame-boxes').inner_html() == ''
-    assert page.locator('#frame-intel').inner_html() == ''
     page.evaluate('''() => {
       const a=qaAppraisal;
       qaFrames.setSource(a.photo_urls,a.gate.photos,a.gate.decision);
@@ -122,7 +107,7 @@ with sync_playwright() as p:
     page.evaluate('qaFrames.showFrame(qaAppraisal.gate.photos[0]); qaRun.begin()')
     page.wait_for_timeout(100)
     assert page.locator('#frame-img').get_attribute('src') is None
-    assert page.locator('#frame-intel').inner_html() == ''
+    assert page.locator('#thoughts').inner_html() == ''
 
     # Exercise actual animation mode too, including outgoing image cleanup.
     page.emulate_media(reduced_motion='no-preference')
@@ -136,4 +121,4 @@ with sync_playwright() as p:
     page.wait_for_function("document.querySelectorAll('.frame-outgoing').length === 0")
     assert not errors, errors
     browser.close()
-print(f'PASS: photo loading, follow/resume, four viewports, long content, failure/recovery, restart, motion. Screenshots: {OUT}')
+print(f'PASS: photo loading, follow/resume, four viewports, failure/recovery, restart, motion. Screenshots: {OUT}')

@@ -612,6 +612,19 @@ class PricingBlockers(unittest.TestCase):
         self.assertIsNotNone(blocked)
         self.assertIn("rigid", blocked[0])
 
+    def test_unpriceable_body_is_one_sentence(self):
+        """Headline and reason used to say 'rigid' three times across two
+        paragraphs. The screen prints both, so they have to be the same line
+        and that line may name the body once."""
+        from app.pipeline import pricing_blocker
+        blocked = pricing_blocker(self.make(body_type="rigid"))
+        headline, reason = blocked
+        self.assertEqual(headline, reason)
+        self.assertEqual(headline.lower().count("rigid"), 1)
+        self.assertNotIn("looks like", headline.lower())
+        self.assertNotIn("condition notes below", headline.lower())
+        self.assertIn("tractor", headline.lower())
+
     def test_low_confidence_body_read_does_not_block(self):
         """'I don't know what this is' is different from 'I know it's a rigid'."""
         from app.pipeline import pricing_blocker
@@ -1202,88 +1215,72 @@ class ScreenChrome(unittest.TestCase):
             self.assertNotRegex(css, r"border-radius:\s*\d+px", name)
 
 
-class LiveBriefing(unittest.TestCase):
-    """The card under the featured frame while the photos are being read.
+class RunDocument(unittest.TestCase):
+    """The run is the first half of the same appraisal document as the result.
 
-    Every stylesheet the appraisal screen loads is in one global cascade, so a
-    bare class name is a name shared with every other screen. The briefing
-    shipped a column classed `gaps`, and `result.css` styles `.gaps li` as a
-    two-column icon row whose first track is 1.35rem - so each line of prose
-    collapsed to its longest word, one `<li>` became 440px tall, the card
-    became 3,637px, and `.stage-main` became 4,255px against a 768px viewport.
-    The photographs were all fetched and all decoded; they were pushed below
-    the fold, along with the contact strip and the progress bar. Hence the two
-    pins here: namespace the class, and cap the height so no future content
-    can push the frame off screen either.
+    It used to be an inset navy window with five status lines, a briefing
+    under the frame that restated the rail, and a 'View result' jump onto a
+    second page. Those are the things that made it look like a different
+    product from the cream result beneath it.
     """
 
     WEB = Path("app/web")
-    STYLES = WEB / "styles"
-    # The two namespaces run.css defines for the briefing. A class outside them
-    # is a name some other screen is free to own.
-    NAMESPACES = ("intel-", "sev-")
 
     @staticmethod
     def _function_body(source: str, name: str) -> str:
         start = source.index(f"function {name}(")
         return source[start:source.index("\n}\n", start)]
 
-    @staticmethod
-    def _classes(js: str) -> set[str]:
-        """Class tokens this code puts on an element, `${...}` holes removed."""
-        found: set[str] = set()
-        literals = [m.group(1) or m.group(2) for m in re.finditer(
-            r"\bel\(\s*'[a-zA-Z0-9]+'\s*,\s*(?:'([^']*)'|`([^`]*)`)", js)]
-        literals += [m.group(1) or m.group(2) for m in re.finditer(
-            r"className\s*=\s*(?:'([^']*)'|`([^`]*)`)", js)]
-        for raw in literals:
-            found |= set(re.sub(r"\$\{[^}]*\}", " ", raw or "").split())
-        return found
+    def test_the_run_sits_on_paper_not_in_a_dark_window(self):
+        css = (self.WEB / "styles/run.css").read_text(encoding="utf-8")
+        run = re.search(r"^\.run\s*\{([^}]*)\}", css, re.M)
+        self.assertIsNotNone(run, ".run rule missing")
+        body = run.group(1)
+        self.assertNotIn("var(--stage)", body)
+        self.assertNotIn("calc(var(--gut) * -1)", body)
+        self.assertNotIn("border-radius", body)
+        stage = re.search(r"\.frame-stage\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(stage, ".frame-stage rule missing")
+        self.assertIn("var(--stage)", stage.group(1))
 
-    @staticmethod
-    def _hinges_on(css: str, cls: str) -> list[str]:
-        """Selectors in `css` whose leading compound is exactly `.cls`.
+    def test_the_run_markup_is_one_status_line_and_no_second_page(self):
+        html = (self.WEB / "index.html").read_text(encoding="utf-8")
+        for gone in ("frame-intel", "view-result", "rail-title", "rail-sub",
+                     "rail-live-badge", "rail-filters", "run-now"):
+            self.assertNotIn(f'id="{gone}"', html, gone)
+        self.assertNotIn("REAL-TIME STREAM", html)
+        self.assertNotIn("View result", html)
+        self.assertNotIn("The photographs are read", html)
+        self.assertIn('id="progress-label"', html)
+        self.assertIn('id="scan-status" role="status"', html)
+        self.assertIn('id="thoughts"', html)
 
-        That is the shape that leaks: `.gaps`, `.gaps li` and `.gaps li span`
-        all attach to an element for carrying one class and nothing else.
-        `.takeaway-pill.clean` does not - it needs its own element first.
-        """
-        body = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
-        selectors: list[str] = []
-        for group in re.findall(r"([^{}]+)\{", body):
-            selectors += [s.strip() for s in group.split(",")]
-        return [s for s in selectors
-                if re.match(rf"\.{re.escape(cls)}(?![\w-])(?![.#:\[])", s)]
+    def test_status_copy_does_not_restate_that_the_photos_are_read(self):
+        run = (self.WEB / "js/run.js").read_text(encoding="utf-8")
+        for phrase in ("The photographs are read", "Looking at the photographs",
+                       "Looking at the photos", "Matching it against real listings",
+                       "the photos are read", "View result"):
+            self.assertNotIn(phrase, run, phrase)
+        self.assertIn("is-done", run)
 
-    def test_the_briefing_never_borrows_another_screens_class(self):
-        js = (self.WEB / "js/frames.js").read_text(encoding="utf-8")
-        used = set().union(*(self._classes(self._function_body(js, name))
-                             for name in ("renderIntel", "column", "issueItem", "pill")))
-        self.assertIn("intel-card", used, "renderIntel body not found")
-        others = {name: (self.STYLES / name).read_text(encoding="utf-8")
-                  for name in ("result.css", "gallery.css", "reasoning.css",
-                               "base.css", "story.css")}
-        for cls in sorted(used):
-            if cls.startswith(self.NAMESPACES):
-                continue
-            for name, css in others.items():
-                self.assertEqual(
-                    [], self._hinges_on(css, cls),
-                    f"the briefing's .{cls} is also styled by {name}; "
-                    f"namespace it with one of {self.NAMESPACES}")
+    def test_a_rail_card_prints_shows_once(self):
+        js = (self.WEB / "js/reasoning.js").read_text(encoding="utf-8")
+        start = js.index("export function add(")
+        body = js[start:js.index("\nexport function", start + 1)]
+        self.assertEqual(body.count("finding.shows"), 1)
+        self.assertNotIn("thought-shows", body)
+        self.assertNotIn("takeaway-pill", body)
+        self.assertNotIn("rail-filters", js)
+        for phrase in ("Nothing to flag", "Nothing flagged", "Nothing wrong",
+                       "Nothing was flagged"):
+            self.assertNotIn(phrase, js, phrase)
 
-    def test_the_briefing_cannot_push_the_photographs_off_screen(self):
-        css = (self.STYLES / "run.css").read_text(encoding="utf-8")
-        intel = re.search(r"\.frame-intel\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(intel, ".frame-intel rule missing")
-        self.assertRegex(intel.group(1), r"overflow-y:\s*auto")
-        self.assertRegex(intel.group(1), r"max-height:")
-        # The frame and the strip are the two things a viewer is watching, and
-        # `.stage-main` is sticky: taller than the viewport and it stops
-        # sticking, taking both of them below the fold with it.
+    def test_the_column_cannot_grow_past_the_viewport(self):
+        css = (self.WEB / "styles/run.css").read_text(encoding="utf-8")
         main = re.search(r"\.stage-main\s*\{([^}]*)\}", css)
         self.assertIsNotNone(main, ".stage-main rule missing")
         self.assertRegex(main.group(1), r"max-height:\s*calc\(100vh")
+        self.assertNotIn(".frame-intel", css)
 
     def test_following_a_photo_only_scrolls_the_strip(self):
         js = (self.WEB / "js/frames.js").read_text(encoding="utf-8")
@@ -1291,19 +1288,13 @@ class LiveBriefing(unittest.TestCase):
         self.assertNotIn("scrollIntoView", mark)
         self.assertIn("strip.scrollTo", mark)
 
-    def test_the_briefing_is_keyboard_scrollable(self):
-        html = (self.WEB / "index.html").read_text(encoding="utf-8")
-        intel = re.search(r'<div[^>]+id="frame-intel"[^>]*>', html).group(0)
-        self.assertIn('tabindex="0"', intel)
-        self.assertIn('aria-label="Selected photo findings"', intel)
+    def test_the_briefing_under_the_frame_is_gone(self):
+        js = (self.WEB / "js/frames.js").read_text(encoding="utf-8")
+        self.assertNotIn("function renderIntel", js)
+        self.assertNotIn("intel-card", js)
+        self.assertNotIn("frame-intel", js)
 
     def test_the_screen_states_no_condition_it_was_not_told(self):
-        """A frame with an empty issue list means nothing was flagged.
-
-        It does not mean the component was confirmed sound, and the screen may
-        not say so on the model's behalf. Same rule the scroll story is held
-        to, on the surface where a judge reads it live.
-        """
         invented = ("in sound working order",
                     "expected operational condition",
                     "integrity acceptable",
@@ -1315,6 +1306,26 @@ class LiveBriefing(unittest.TestCase):
             found = [p for p in invented if p in js]
             self.assertEqual([], found, f"{name} asserts a condition the "
                                         f"vision call never made")
+
+    def test_findings_do_not_narrate_themselves(self):
+        src = (self.WEB / "js/panels.js").read_text(encoding="utf-8")
+        self.assertNotIn("worth knowing about", src)
+        self.assertNotIn("of them serious", src)
+
+    def test_the_screens_drop_empty_frame_platitudes(self):
+        """A clean frame is silent. It does not earn a subtitle."""
+        forbidden = (
+            "Nothing wrong found",
+            "Nothing flagged",
+            "Nothing to flag",
+            "Nothing was flagged",
+            "nothing to flag on this frame",
+        )
+        for name in ("js/frames.js", "js/reasoning.js", "js/run.js",
+                     "js/panels.js", "index.html"):
+            src = (self.WEB / name).read_text(encoding="utf-8")
+            found = [p for p in forbidden if p in src]
+            self.assertEqual([], found, name)
 
 
 if __name__ == "__main__":
@@ -1858,7 +1869,7 @@ class PagesAreConnected(unittest.TestCase):
         from fastapi.testclient import TestClient
         from app.server import app as server
         client = TestClient(server)
-        self.assertIn("Zero guesswork", client.get("/").text)
+        self.assertIn("Priced from", client.get("/").text)
         self.assertIn('id="dropzone"', client.get("/app").text)
 
     def test_one_wordmark_across_the_click(self):
@@ -2307,9 +2318,9 @@ class ViewPromptEnsemble(unittest.TestCase):
         self.assertEqual(list(vision.VIEW_PROMPTS), vision.VIEW_LABELS)
 
     def test_the_eleven_view_ids_are_unchanged(self):
-        """VIEW_QUESTIONS, VIEW_ZONES in elevation.js and the perception head's
-        classes are all keyed on these. Adding a template is free; renaming a
-        class is not."""
+        """VIEW_QUESTIONS, VIEW_ZONES in elevation.js, VIEW_ANGLE on the
+        subject chip, and the perception head's classes are all keyed on
+        these. Adding a template is free; renaming a class is not."""
         self.assertEqual(vision.VIEW_LABELS, [
             "exterior_front", "exterior_front_34", "exterior_side", "exterior_rear",
             "interior_cab", "dashboard_odometer", "tire_wheel", "engine_bay",
@@ -2339,6 +2350,63 @@ class ViewPromptEnsemble(unittest.TestCase):
             self.assertNotIn("for k, _ in VIEW_PROMPTS", src, str(rel))
             self.assertNotRegex(src, r"VIEW_PROMPTS\[[^\]]+\]\[0\]", str(rel))
         self.assertGreater(checked, 0, "the scan found nothing; it has stopped working")
+
+
+class InspectionOverlay(unittest.TestCase):
+    """The featured-frame boxes: one subject named by angle, findings only inside."""
+
+    JS = Path("app/web/js")
+
+    def test_the_subject_chip_names_the_view_angle(self):
+        src = (self.JS / "frames.js").read_text(encoding="utf-8")
+        self.assertNotIn("the truck being appraised", src)
+        self.assertIn("viewAngle(check.view)", src)
+
+    def test_inner_boxes_are_findings_not_every_visible_region(self):
+        src = (self.JS / "frames.js").read_text(encoding="utf-8")
+        start = src.index("function locatedParts(")
+        body = src[start:src.index("\n}\n", start)]
+        self.assertNotIn("component_regions", body)
+        self.assertIn("finding.issues", body)
+
+    def test_view_angle_covers_the_whole_view_vocabulary(self):
+        src = (self.JS / "dom.js").read_text(encoding="utf-8")
+        block = src[src.index("export const VIEW_ANGLE = {"):]
+        block = block[:block.index("\n};")]
+        mapped = re.findall(r"^\s{2}([a-z_0-9]+):", block, re.M)
+        self.assertEqual(sorted(mapped), sorted(vision.VIEW_LABELS))
+
+    def test_a_closeup_without_a_truck_still_gets_an_angle_box(self):
+        """11 of 21 frames in the frozen run have no YOLO subject. The chip
+        is the view, so those photos must still get a box or the overlay
+        goes blank on every tire, cab and fifth-wheel shot."""
+        src = (self.JS / "frames.js").read_text(encoding="utf-8")
+        start = src.index("function angleBox(")
+        body = src[start:src.index("\n}\n", start)]
+        self.assertIn("check.subject_box", body)
+        self.assertIn("check.width", body)
+        self.assertIn("check.height", body)
+        draw = src[src.index("function drawBoxes("):]
+        draw = draw[:draw.index("\nfunction writeMeta(")]
+        self.assertIn("angleBox(", draw)
+        self.assertIn("viewAngle(check.view)", draw)
+
+    def test_boxes_are_not_drawn_on_a_different_photograph(self):
+        """The outgoing clone sat above the incoming photo, so a tire stayed
+        on screen while the rear photo's 'Rear' / 'Fuel tank' boxes painted
+        over it. Overlay and pixels have to be the same photo_id."""
+        src = (self.JS / "frames.js").read_text(encoding="utf-8")
+        draw = src[src.index("function drawBoxes("):]
+        draw = draw[:draw.index("\nfunction writeMeta(")]
+        self.assertIn("urlFor(check.photo_id)", draw)
+        self.assertIn("getAttribute('src')", draw)
+        css = (Path("app/web/styles/run.css")).read_text(encoding="utf-8")
+        img = re.search(r"#frame-img\s*\{([^}]*)\}", css)
+        outgoing = re.search(r"\.frame-outgoing\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(img)
+        self.assertIsNotNone(outgoing)
+        self.assertRegex(img.group(1), r"z-index:\s*[1-9]")
+        self.assertRegex(outgoing.group(1), r"z-index:\s*0")
 
 
 class SubjectAreaFloor(unittest.TestCase):
