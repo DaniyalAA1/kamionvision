@@ -165,30 +165,59 @@ class ClipTagger:
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(
             "ViT-B-32-quickgelu", pretrained="openai", device=self.device)
         self.model.eval()
-        tokenizer = open_clip.get_tokenizer("ViT-B-32-quickgelu")
+        self.tokenizer = open_clip.get_tokenizer("ViT-B-32-quickgelu")
 
         def bank(prompts):
-            toks = tokenizer([p for _, p in prompts]).to(self.device)
+            toks = self.tokenizer([p for _, p in prompts]).to(self.device)
             with torch.no_grad():
                 feats = self.model.encode_text(toks)
             return feats / feats.norm(dim=-1, keepdim=True)
 
-        def grouped_bank(banks: dict):
-            """One row block per class, and the index that says where each ends."""
-            flat, owner = [], []
-            for i, (label, prompts) in enumerate(banks.items()):
-                flat.extend(prompts)
-                owner.extend([i] * len(prompts))
-            toks = tokenizer(flat).to(self.device)
-            with torch.no_grad():
-                feats = self.model.encode_text(toks)
-            return (feats / feats.norm(dim=-1, keepdim=True),
-                    torch.tensor(owner, device=self.device))
-
-        self.view_bank, self.view_owner = grouped_bank(VIEW_PROMPTS)
-        self.body_bank, self.body_owner = grouped_bank(BODY_PROMPTS)
+        self.view_bank, self.view_owner = self.grouped_bank(VIEW_PROMPTS)
+        self.body_bank, self.body_owner = self.grouped_bank(BODY_PROMPTS)
         self.content_bank = bank(CONTENT_PROMPTS)
         self.logit_scale = self.model.logit_scale.exp().item()
+
+    def grouped_bank(self, banks: dict):
+        """One row block per class, and the index that says where each ends."""
+        flat, owner = [], []
+        for i, prompts in enumerate(banks.values()):
+            flat.extend(prompts)
+            owner.extend([i] * len(prompts))
+        toks = self.tokenizer(flat).to(self.device)
+        with torch.no_grad():
+            feats = self.model.encode_text(toks)
+        return (feats / feats.norm(dim=-1, keepdim=True),
+                torch.tensor(owner, device=self.device))
+
+    def pooled_softmax(self, feats, text_bank, owner, n_classes: int):
+        """Max over each class's templates, THEN softmax over the classes.
+
+        The one scoring path. `tag` calls it for the view and body banks, and
+        a measurement that wants to try a *candidate* taxonomy calls it with a
+        bank from `grouped_bank` rather than re-deriving the arithmetic - the
+        logit_scale multiply and the max-not-mean pooling are the two things a
+        second implementation would get subtly wrong.
+        """
+        sims = feats @ text_bank.T                       # (n, templates)
+        per_class = torch.full((sims.shape[0], n_classes), float("-inf"),
+                               device=sims.device)
+        per_class = per_class.index_reduce(1, owner, sims, "amax",
+                                           include_self=False)
+        return (self.logit_scale * per_class).softmax(dim=-1)
+
+    def score_bank(self, feats, banks: dict) -> np.ndarray:
+        """Probabilities over an arbitrary prompt-bank dict, same path as `tag`.
+
+        `feats` is already-L2-normalised image features - a torch tensor, or
+        the numpy rows out of `embed` / the corpus embedding cache.
+        """
+        if not isinstance(feats, torch.Tensor):
+            feats = torch.as_tensor(np.asarray(feats), device=self.device)
+        text_bank, owner = self.grouped_bank(banks)
+        with torch.no_grad():
+            return self.pooled_softmax(feats, text_bank, owner,
+                                       len(banks)).cpu().numpy()
 
     def _features(self, pil_images: list):
         batch = torch.stack([self.preprocess(im.convert("RGB"))
@@ -213,21 +242,13 @@ class ClipTagger:
             return []
         feats = self._features(pil_images)
         with torch.no_grad():
-            # Max over each class's templates, THEN softmax over the 11
-            # classes. The logit_scale multiply stays where it was: raw
-            # cosines sit at 0.15-0.35 and soften to near-uniform without it.
-            sims = feats @ self.view_bank.T                  # (n, templates)
-            per_class = torch.full((sims.shape[0], len(VIEW_LABELS)),
-                                   float("-inf"), device=sims.device)
-            per_class = per_class.index_reduce(
-                1, self.view_owner, sims, "amax", include_self=False)
-            view = (self.logit_scale * per_class).softmax(dim=-1).cpu().numpy()
-            body_sims = feats @ self.body_bank.T
-            body_class = torch.full((body_sims.shape[0], len(BODY_LABELS)),
-                                    float("-inf"), device=body_sims.device)
-            body_class = body_class.index_reduce(
-                1, self.body_owner, body_sims, "amax", include_self=False)
-            body = (self.logit_scale * body_class).softmax(dim=-1).cpu().numpy()
+            # Max over each class's templates, THEN softmax over the classes.
+            # The logit_scale multiply stays where it was: raw cosines sit at
+            # 0.15-0.35 and soften to near-uniform without it.
+            view = self.pooled_softmax(feats, self.view_bank, self.view_owner,
+                                       len(VIEW_LABELS)).cpu().numpy()
+            body = self.pooled_softmax(feats, self.body_bank, self.body_owner,
+                                       len(BODY_LABELS)).cpu().numpy()
             content = (self.logit_scale * feats @ self.content_bank.T).softmax(dim=-1).cpu().numpy()
         emb = feats.cpu().numpy().astype(np.float32)
         out = []

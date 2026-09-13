@@ -195,6 +195,33 @@ app/
   best against worse ones dilutes it. Asking whole-vs-part directly as its own binary was tried
   and was worse (76.7%, dangerous error doubled). A margin on top scored better on dev and worse
   on held-out and was dropped; that is what the split was for.
+- **Splitting `dashboard_odometer` into a dashboard class and a `steering_wheel` class was
+  measured and rejected.** `data/reference/steering_wheel_card.md`,
+  `scripts/probe_steering_wheel_view.py`, 160 hand labels in
+  `data/reference/steering_wheel_labels.jsonl` (107 dev / 53 held out, grouped by listing). The
+  class is real in the schema - `evidence.COMPONENTS` has tracked `steering_wheel_controls` and
+  `dashboard_instruments` separately all along - but it is not readable off a phone photo as a
+  *view*. A truck cab puts the wheel directly in front of the cluster, so **2 of 48 randomly
+  sampled interior frames (4.2%) show the wheel alone and 19 of 48 (39.6%) show the wheel and the
+  cluster together**; a hard single-label class has to throw one of them away. Best of six
+  candidate prompt banks, chosen on dev: **40.7% precision on held-out** over the 27 frames it
+  claims, while genuine dashboard frames keeping `dashboard_odometer` fall from **69.2% to
+  48.7%**. Corpus-wide it claims 102 frames of which only 54 came from `dashboard_odometer` (36
+  came from `damage_detail`), and **3 of 200 vehicles lose `dashboard_odometer` entirely** - a
+  `coverage.required` view, against a measured gate false refusal of 1 in 200 today. The trade is
+  monotone across all six banks: recall the wheel well and you shred the dashboard class, leave
+  the other classes alone and you recall 23-41% of the wheels. Don't re-open it without beating
+  those numbers. Two things the probe found on the way, both still true and neither fixed by a
+  split: the shipped 11-way taxonomy sends **45% of genuine wheel and column-stalk frames to
+  `damage_detail`**, and `VIEW_ZONES` over-lighting is bounded because it only promotes a zone to
+  *established* and `interior_cab` already lists `steering_wheel_controls` too - so the lever for
+  that is the finding-level components, not a coarser upstream class.
+- **`ClipTagger.score_bank` is how a candidate taxonomy gets measured.** `grouped_bank` and
+  `pooled_softmax` are methods rather than closures inside `__init__` precisely so a probe can
+  score an arbitrary prompt-bank dict through the *same* max-pooled, logit-scaled path `tag`
+  uses - a second copy of that arithmetic is how a candidate gets measured as better than it is.
+  A test asserts `index_reduce` appears exactly once in `vision.py` and that `tag` still goes
+  through `pooled_softmax`.
 - **The per-view question bank is the depth.** `prompts.VIEW_QUESTIONS` asks a tire close-up about
   tread across the ribs, cupping, sidewall cracking, DOT dates and brand match across the axle.
   The single call it replaced said "at most 12 issues" and "a `per_photo` entry ONLY for photos
