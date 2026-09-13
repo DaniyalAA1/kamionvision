@@ -280,6 +280,126 @@ class JsonSchema(unittest.TestCase):
             self.assertGreaterEqual(len(evidence.questions_for(view)), 4)
 
 
+def _module_strings(module):
+    """Every string constant a module holds, however deeply nested."""
+    def walk(name, node):
+        if isinstance(node, str):
+            yield name, node
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                yield from walk(f"{name}[{key!r}]", value)
+        elif isinstance(node, (list, tuple)):
+            for i, value in enumerate(node):
+                yield from walk(f"{name}[{i}]", value)
+
+    for attr, value in vars(module).items():
+        if not attr.startswith("__"):
+            yield from walk(attr, value)
+
+
+class SeverityRubric(unittest.TestCase):
+    """What the four words in `SEVERITIES` are allowed to mean.
+
+    They feed a weight table that runs 147x from end to end, and until the
+    rubric landed nothing in the repo said what any of them was - so the same
+    worn tire could come back "minor" or "major" depending on the light. These
+    are the checks that keep the rubric honest, and the last one is the price
+    invariant: the levels are anchored on repair effort so that no currency
+    figure ever has to reach a model.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from app import vision
+        from app.evidence import prompts
+        cls.P = prompts
+        cls.views = set(vision.VIEW_LABELS)
+
+    def test_every_canonical_view_has_its_own_anchors(self):
+        # Same posture as the checklists: a view with no anchors is a view
+        # graded against nothing, and an anchor for a view that does not exist
+        # is a typo that would never be injected.
+        self.assertEqual(set(self.P.COMPONENT_ANCHORS), self.views)
+        for view, block in self.P.COMPONENT_ANCHORS.items():
+            for level in self.P.SEVERITIES:
+                self.assertIn(level, block, f"{view} anchors skip {level}")
+
+    def test_every_canonical_view_says_what_to_confirm(self):
+        self.assertEqual(set(self.P.VIEW_CONFIRMATIONS), self.views)
+        for view, items in self.P.VIEW_CONFIRMATIONS.items():
+            self.assertGreaterEqual(len(items), 3, view)
+
+    def test_every_canonical_view_has_an_expected_wear_row_per_band(self):
+        self.assertEqual(set(self.P.EXPECTED_WEAR), self.views)
+        for view, bands in self.P.EXPECTED_WEAR.items():
+            self.assertEqual(set(bands), set(self.P.WEAR_BAND_IDS), view)
+            for band, rows in bands.items():
+                self.assertTrue(rows and all(rows), f"{view}/{band}")
+
+    def test_the_wear_band_is_chosen_by_distance(self):
+        self.assertIsNone(self.P.wear_band(None))
+        self.assertIsNone(self.P.wear_band(0))
+        self.assertEqual(self.P.wear_band(80_000), "low")
+        self.assertEqual(self.P.wear_band(149_999), "low")
+        self.assertEqual(self.P.wear_band(150_000), "mid")
+        self.assertEqual(self.P.wear_band(799_999), "high")
+        self.assertEqual(self.P.wear_band(1_200_000), "very_high")
+
+    def test_every_component_named_in_an_anchor_exists(self):
+        # The only machine-readable ids in an anchor are component ids - schema
+        # field names are quoted, as they are everywhere else in prompts.py. A
+        # misspelt id would send the close-up call after an enum value that the
+        # parser then drops.
+        for view, block in self.P.COMPONENT_ANCHORS.items():
+            prose = re.sub(r'"[^"]*"', " ", block)
+            named = set(re.findall(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+", prose))
+            self.assertTrue(named, f"{view} anchors name no component")
+            self.assertLessEqual(named, set(self.P.COMPONENTS), view)
+
+    def test_the_anchors_cover_every_component(self):
+        # A component with no anchor can still be reported, and would then be
+        # graded against nothing at all. The families partition COMPONENTS.
+        covered = [c for ids in self.P.ANCHOR_COMPONENTS.values() for c in ids]
+        self.assertEqual(sorted(covered), sorted(self.P.COMPONENTS))
+
+    def test_the_rubric_defines_the_four_levels_and_no_others(self):
+        levels = re.findall(r"^([a-z_]+) {2,}", self.P.SEVERITY_RUBRIC, re.M)
+        self.assertEqual(set(levels), set(self.P.SEVERITIES))
+
+    def test_two_of_the_worked_examples_are_not_findings(self):
+        # The failure this rubric exists to fix is not an invented defect. It
+        # is a real observation promoted a level to make it worth writing down,
+        # so the examples have to show the model declining to do that.
+        verdicts = re.findall(r"->\s*(not an observation|cosmetic|minor|moderate|major)",
+                              self.P.WORKED_EXAMPLES)
+        self.assertEqual(len(verdicts), 6)
+        null = [v for v in verdicts if v in ("not an observation", "cosmetic")]
+        self.assertGreaterEqual(len(null), 2, verdicts)
+
+    def test_no_prompt_anywhere_carries_a_repair_price(self):
+        # `config.REPAIR_BANDS` is what the four levels cost in lira, and it is
+        # for the README and the panel card only. The rubric anchors severity
+        # on repair effort - a workshop morning, a component replacement - so
+        # that teaching the model what a severity means never puts a currency
+        # figure in front of it, and "the VLM never sees or emits a price"
+        # stays whole.
+        from app.config import REPAIR_BANDS
+        figures = {n for band in REPAIR_BANDS.values() for n in band if n}
+        priced = {f"{n:,}" for n in figures} | {str(n) for n in figures}
+        for name, text in _module_strings(self.P):
+            # Reported by name rather than by assertNotIn, which would dump a
+            # whole prompt into the failure.
+            for figure in sorted(priced):
+                if figure in text:
+                    self.fail(f"{name} quotes the repair band figure {figure}")
+            # Case-sensitive on the currency codes on purpose: \bTRY\b under
+            # re.I matches the verb "try", which a prompt is allowed to say.
+            money = (re.search(r"[₺$€£]|\bTRY\b|\bUSD\b|\bTL\b", text)
+                     or re.search(r"\blira\b", text, re.I))
+            if money:
+                self.fail(f"{name} carries a currency: {money.group(0)!r}")
+
+
 class Pricing(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

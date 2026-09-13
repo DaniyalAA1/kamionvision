@@ -11,10 +11,17 @@ Here each photo gets its own call and its own checklist, and the checklist is
 the difference between "tires look worn" and "outer shoulder of the near-side
 steer is down to the wear bars while the centre ribs still carry depth, which
 is an alignment fault rather than mileage".
+
+What is newer still is everything under `SEVERITY_RUBRIC`. The checklist made
+the model look properly; it did nothing to calibrate what it called what it
+saw. `SEVERITIES` was four bare words with no threshold, no anchor and not one
+worked example behind them, assigned by a model that sees one photograph and
+has never been told how far the truck has run.
 """
 from __future__ import annotations
 
 import json
+import textwrap
 
 # Closed vocabulary. The model is told to use these ids and nothing else, so
 # downstream severity weighting and the report's grouping are both stable.
@@ -55,6 +62,444 @@ mechanical condition from a clean exterior, never report a component that is not
 visible in the photo you were given, and you say so plainly when something is not \
 assessable. Your notes go to a buyer who is deciding whether to drive six hours \
 to see this truck."""
+
+
+# --- the severity rubric ---------------------------------------------------
+# `SEVERITIES` is four bare words, and until now nothing in this repo has told
+# the model what any of them means. The weights they feed run 147x from end to
+# end, so "moderate" against "major" on one worn tire moves the band further
+# than any other single call the vision pass makes.
+#
+# Two rules shape everything below. Every anchor is a visually checkable STATE
+# ("tread level with the wear bars"), never a measurement ("below 1.6 mm"): a
+# photograph cannot support a millimetre, and a state claim survives the JPEG
+# crush the degraded twins put it through in a way a measurement does not. And
+# no anchor is written in money. The levels are anchored on repair EFFORT - a
+# workshop morning, a component replacement - so that teaching the model what a
+# severity means never puts a currency figure in front of it, and "the VLM
+# never sees or emits a price" stays whole. `config.REPAIR_BANDS` is the lira
+# reading of the same four words, it is for the README and the panel card, and
+# a test here asserts it never reaches a prompt.
+#
+# None of this is injected into a prompt yet. The wiring lands with the
+# close-up rebuild, after the baseline run against the current prompts.
+
+SEVERITY_RUBRIC = """\
+Severity is not how bad a thing looks. It is what it costs the next owner.
+Work down this list and stop at the first level that fits.
+
+major     The truck cannot be worked, or cannot be worked legally, until money
+          is spent. Structural damage, anything that would fail a roadworthiness
+          inspection, a safety part that is cracked or distorted, a leak that
+          will not reach the next service. Replacing it is a component job, not
+          a consumable: a fifth wheel, a frame repair, a cab panel, an engine or
+          driveline part. A buyer walks away or re-prices the whole truck.
+
+moderate  A real job, but a booked one, not an emergency. The truck works today
+          and will keep working for weeks. A consumable at or past the end of
+          its life; a leak that is staining but not running; corrosion that has
+          lifted the paint and started to scale; a panel that needs replacing
+          rather than polishing. A buyer subtracts the job and still buys.
+
+minor     Worn, and worn ahead of the rest of this truck - but the buyer lives
+          with it or fixes it at the next scheduled service out of petty cash.
+          A consumable at half life on a truck that is otherwise newer. A small
+          dent. Surface rust that has not lifted. A buyer mentions it and moves
+          on.
+
+cosmetic  Appearance only. Nothing on this truck works differently because of
+          it. Scuffs, stone chips, kerbed rims, faded plastic, a torn mudflap,
+          dirt, a scratched step, a neatly resprayed panel that is otherwise
+          sound. A buyer does not raise it.
+
+Before you assign any level, ask the question the other way round: is this
+component worse than a truck of this age and distance would normally be? A
+consumable that has done its job and is halfway through its life is not a
+finding at any level. Name it in "strengths" as on schedule, or do not name it.
+Wear that is exactly what the distance predicts is the most common thing you
+will see, and it is not a defect.
+
+When you are between two levels, take the LOWER one and put what would have to
+be true for the higher one into the observation. Every level up multiplies what
+this finding takes off the seller's asking figure, and "major" tells a buyer
+this truck needs money spent before it earns. Reserve it for something you
+could point at and name out loud standing next to the truck. A "moderate" you
+are certain of is worth more to a buyer than a "major" you argued yourself
+into."""
+
+
+# --- the per-view severity anchors -----------------------------------------
+# Written once per component family and composed per view, so a close-up call
+# is shown the levels for the parts that are actually in its frame and nothing
+# else. The families partition `COMPONENTS` exactly - a test asserts it - so no
+# component can be reported without a rubric that covers it, and the ids in
+# each block's first line are the enum subset that view should be reaching for.
+
+_FAMILY_ANCHORS = {
+    "tires": (
+        "Tires and rims",
+        ("steer_tires", "drive_tires", "wheels_rims", "brakes_hubs"),
+        """\
+Judge tread against the wear bars - the raised bridges inside the grooves -
+because that is what a photograph can actually support.
+  cosmetic  kerbed rim, missing balance weight, dirt, a scuffed sidewall with no
+            crack in it. The tire itself is fine.
+  minor     tread clearly used but the grooves still stand well proud of the
+            wear bars across the full width; wear even; different brands across
+            an axle with both tires in the same state.
+  moderate  tread approaching the wear bars anywhere on the contact patch, OR a
+            shoulder visibly lower than the centre, OR cupping or feathering.
+            This is a booked replacement and it points at alignment or
+            suspension - say which you mean.
+  major     tread level with or below the wear bars, cord or belt showing, a
+            sidewall bulge, a cut through to the casing, a flat spot. Nobody
+            should drive on it.
+Do not infer remaining tread from how dirty a tire is. Do not call a tire worn
+because its tread pattern is aggressive. A retread on a drive axle is ordinary
+commercial practice, not a defect.""",
+    ),
+    "fifth_wheel": (
+        "The coupling",
+        ("fifth_wheel", "coupling_airlines"),
+        """\
+  cosmetic  surface dirt, old grease, paint worn off the ramps.
+  minor     the plate is dry where it should carry a grease film; light circular
+            scoring with no visible step.
+  moderate  deep circular grooving, a visible step at the jaw throat, a mounting
+            bolt obviously missing or backed out, fretting rust around the
+            mounting plate.
+  major     a cracked or distorted plate, elongated mounting holes, a jaw or
+            handle sitting where it cannot lock, impact damage through the
+            throat. This is the coupling. It is a safety part and it is the one
+            component where "probably fine" is not an answer.""",
+    ),
+    "chassis": (
+        "Chassis and undercarriage",
+        ("chassis_frame", "undercarriage", "air_suspension", "air_tanks_lines",
+         "corrosion", "mudflaps_guards"),
+        """\
+  cosmetic  surface bloom on a crossmember or bracket, chipped chassis paint,
+            rust on a mudflap bracket or a step.
+  minor     even surface rust along a frame rail with the paint intact around
+            it; rust staining running from a fastener.
+  moderate  scaling rust - layered, lifting, paint coming away - or visible
+            pitting, anywhere on the rails or crossmembers. A shock absorber wet
+            down its body. An air bag perished or chafing.
+  major     perforation, lost section, a crack, a weld or fish-plate repair, a
+            rail that is visibly deformed.
+A working Turkish tractor unit lives outdoors. Even surface rust under a
+six-year-old truck is the expected state, not a finding.""",
+    ),
+    "body": (
+        "Paint and panels",
+        ("cab_exterior_panels", "front_bumper_valance", "fairings_skirts",
+         "roof_deflector", "doors_handles", "cab_steps", "paint_finish"),
+        """\
+  cosmetic  stone chips, swirl marks, fade, a scuff, a scratch that has not gone
+            through to primer, a panel resprayed neatly in a slightly different
+            shade.
+  minor     a dent you could push out or live with, a scratch through to primer
+            or metal, a cracked fairing or skirt.
+  moderate  a panel that needs replacing rather than repairing, a missing
+            section of fairing, a cracked deflector, paint peeling in sheets, a
+            door no longer sitting in its gap.
+  major     accident damage - a folded panel, a door or A-pillar out of line, a
+            repair that has left the shut lines wrong.
+Paint and trim alone are never major. A truck is not unroadworthy because it is
+scratched.""",
+    ),
+    "glass_lights": (
+        "Glass, lamps and mirrors",
+        ("windscreen_glass", "grille_headlights", "mirrors_visor"),
+        """\
+  cosmetic  a hazed or yellowed lens, a stone chip outside the swept area, a
+            scuffed mirror back, wiper smear that wipes off.
+  minor     a chip inside the swept area, a lens cracked but dry behind it, a
+            mirror arm that has been bent back into line.
+  moderate  water standing inside a lamp, a lamp unit that is clearly not
+            lighting, a missing mirror glass, wiper arcs scored into the screen.
+  major     a crack running across the driver's half of the swept area, a
+            shattered or missing lamp unit, a screen that has gone.
+This is the one part of the bodywork that fails an inspection, so judge it on
+whether the truck can be driven at night and in rain, not on how it looks.""",
+    ),
+    "interior": (
+        "The cab",
+        ("cab_interior_seats", "steering_wheel_controls", "dashboard_instruments",
+         "bunk_sleeper", "cab_floor_trim", "warning_lights"),
+        """\
+  cosmetic  dirt, litter, a stained mat, faded trim, a worn steering wheel rim
+            on a truck that has earned it.
+  minor     a torn seat cover, a cracked trim panel, a missing knob, worn pedal
+            rubbers.
+  moderate  a collapsed driver's bolster or a seat that has dropped, damp or
+            mould staining, a cracked dash top, cut or taped wiring.
+  major     a lit engine, brake, ABS/EBS or emissions lamp on a live cluster;
+            standing water or active ingress; a dead cluster.
+A cab worked in for half a million kilometres looks worked in. Wear in
+proportion to the distance is "strengths", not a finding.""",
+    ),
+    "engine": (
+        "The engine bay and what leaks into it",
+        ("engine_bay", "fluid_leaks", "exhaust_dpf", "fuel_tank", "adblue_tank"),
+        """\
+  cosmetic  road film, dust, an old dry stain with no wet edge.
+  minor     light oil misting at a joint, a weep with no drip and nothing fresh,
+            a chafe mark that has not gone through.
+  moderate  a wet leak with a run or a drip forming, a perished or swollen hose,
+            a glazed or cracked belt, a corroded cooler core.
+  major     coolant, fuel or oil pooling or running onto the chassis or the
+            ground; a split charge pipe; a cut or spliced loom; oil standing in
+            the charge pipework.
+A steam-cleaned engine bay is not evidence of a leak. It is not evidence of no
+leak either - say that in "cannot_tell".""",
+    ),
+}
+
+# Which families each canonical view is shown. A view sees the parts that are
+# in its frame: a rear shot is the coupling and the chassis, a damage close-up
+# is a panel or rust and is judged as one.
+VIEW_FAMILIES = {
+    "exterior_front": ("body", "glass_lights"),
+    "exterior_front_34": ("body", "tires"),
+    "exterior_side": ("body", "chassis"),
+    "exterior_rear": ("fifth_wheel", "chassis"),
+    "interior_cab": ("interior",),
+    "dashboard_odometer": ("interior",),
+    "tire_wheel": ("tires",),
+    "engine_bay": ("engine",),
+    "chassis_undercarriage": ("chassis",),
+    "fifth_wheel": ("fifth_wheel",),
+    "damage_detail": ("body", "chassis"),
+}
+
+ANCHOR_COMPONENTS = {family: ids for family, (_, ids, _) in _FAMILY_ANCHORS.items()}
+
+
+def _anchor_block(family: str) -> str:
+    title, ids, levels = _FAMILY_ANCHORS[family]
+    head = textwrap.fill(f"{title} - report these as {', '.join(ids)}.", width=76)
+    return f"{head}\n{levels}"
+
+
+COMPONENT_ANCHORS = {
+    view: "\n\n".join(_anchor_block(f) for f in families)
+    for view, families in VIEW_FAMILIES.items()
+}
+
+
+# --- what this truck's distance already predicts ---------------------------
+# The close-up call has never been told how far the truck has run, so it has
+# been grading every consumable against a new one. These rows say what "on
+# schedule" looks like at a distance, per family, so that half-worn tread at
+# 600,000 km reads as maintenance rather than as a finding.
+#
+# STATED ASSUMPTIONS, domain-reasoned, not measured: the corpus carries no
+# maintenance records. `config.KM_PER_YEAR_TR` is the measured part and it is
+# measured on dealer stock offered for sale, which is not the population of
+# trucks in service. Label both that way wherever they surface.
+
+WEAR_BANDS = ((150_000, "low"), (400_000, "mid"), (800_000, "high"), (None, "very_high"))
+WEAR_BAND_IDS = tuple(band for _, band in WEAR_BANDS)
+
+_FAMILY_WEAR = {
+    "tires": {
+        "low": "still on its original tires, lightly and evenly worn, matched across "
+               "each axle",
+        "mid": "on its first or second set; a half-worn, evenly worn tread is on "
+               "schedule",
+        "high": "on its second or third set; different brands across axles are normal "
+                "at this distance and are not by themselves a finding",
+        "very_high": "on its third set or beyond; retreads on the drive axle are "
+                     "ordinary commercial practice here",
+    },
+    "fifth_wheel": {
+        "low": "a plate with an even grease film and no scoring you could catch a "
+               "fingernail on",
+        "mid": "an even grease film over light circular scoring; the jaws tight",
+        "high": "visible circular wear in the plate and a jaw that has been adjusted or "
+                "replaced once; this is maintenance, not damage",
+        "very_high": "a plate that has been replaced or built up at least once",
+    },
+    "chassis": {
+        "low": "paint holding on the rails, with at most a bloom of surface rust at the "
+               "fasteners",
+        "mid": "even surface rust along the rails and crossmembers with the paint still "
+               "on them; shocks dry, air bags sitting square",
+        "high": "surface rust over most of the underside and stone damage to the paint; "
+                "a shock or an air bag replaced once is maintenance",
+        "very_high": "rust over the whole underside and suspension parts that have been "
+                     "changed; only lifting scale, pitting or a repaired section is a "
+                     "finding",
+    },
+    "body": {
+        "low": "original paint, matched panel to panel, stone chips on the leading "
+               "edges",
+        "mid": "stone chipping across the front, a scuff or two down the sides, "
+               "fairings complete",
+        "high": "chips, scuffs and at least one panel or fairing repaired or resprayed, "
+                "with the shut lines still parallel",
+        "very_high": "a truck patched up more than once; a mismatched panel and a "
+                     "replaced fairing are expected, shut lines out of line are not",
+    },
+    "glass_lights": {
+        "low": "clear lenses, an unchipped screen, mirror arms and glass undamaged",
+        "mid": "stone chips in the screen outside the swept area and the first haze on "
+               "the lamp lenses",
+        "high": "hazed lenses, a repaired chip and wiper arcs in the screen",
+        "very_high": "a replaced screen and clouded lamps; only a crack in the swept "
+                     "area or water standing inside a lens is a finding",
+    },
+    "interior": {
+        "low": "seat foam and bolsters holding their shape, trim and switches unmarked",
+        "mid": "shine on the driver's bolster and the wheel rim, pedal rubbers starting "
+               "to go",
+        "high": "a polished wheel rim, worn pedal rubbers, a marked floor and a seat "
+                "that has softened",
+        "very_high": "a cab lived in for a decade; a seat cover, a re-trimmed wheel and "
+                     "worn switchgear are on schedule, a collapsed bolster or a wet "
+                     "floor is not",
+    },
+    "engine": {
+        "low": "a dry bay under the road film, original hoses and clamps",
+        "mid": "road film and dust, light misting at a joint or two, belts intact",
+        "high": "staining around the joints and at least one hose or belt already "
+                "replaced; a dry but stained bay is on schedule",
+        "very_high": "hoses, pipework and belts replaced, and staining everywhere the "
+                     "oil has ever been; only a wet leak with a run or a drip is a "
+                     "finding",
+    },
+}
+
+EXPECTED_WEAR = {
+    view: {band: tuple(_FAMILY_WEAR[f][band] for f in families)
+           for band in WEAR_BAND_IDS}
+    for view, families in VIEW_FAMILIES.items()
+}
+
+
+def wear_band(km: int | None) -> str | None:
+    """Which expected-wear row applies. None when the seller stated no distance."""
+    if not km or km < 0:
+        return None
+    for ceiling, band in WEAR_BANDS:
+        if ceiling is None or km < ceiling:
+            return band
+    return WEAR_BAND_IDS[-1]
+
+
+# --- worked examples -------------------------------------------------------
+# Six calls, and the pair that carries the block is 5 and 6: one component, one
+# kind of photograph, two states, two answers. Two of the six are deliberately
+# not findings at all, because the failure this rubric exists to fix is not a
+# hallucinated defect - it is a real observation promoted a level to make it
+# worth writing down.
+
+WORKED_EXAMPLES = """\
+Six calls, so that the levels mean the same thing twice:
+
+1. "Near-side steer tire: tread even across the ribs and still standing well
+   proud of the wear bars; brand matches the off-side."
+   -> not an observation at all. This belongs in "strengths".
+
+2. "Drive axle tires roughly half worn, evenly, on a truck showing 480,000 km."
+   -> not an observation. A consumable at half life at that distance is on
+   schedule. "strengths", named as on schedule.
+
+3. "Outer shoulder of the near-side steer is down to the wear bars while the
+   centre ribs still carry depth."
+   -> moderate. It is a replacement AND it points at alignment, so both belong
+   in the observation. It is not major: the truck is legal and drivable today.
+
+4. "Sidewall of the near-side steer carries a bulge the size of a fist, below
+   the shoulder."
+   -> major. That is cord failure. Nobody drives on it.
+
+5. "Surface rust, even and unlifted, along the visible length of the near-side
+   frame rail on a 2018 truck."
+   -> cosmetic, and "price_impact" none. That is what an eight-year-old working
+   chassis looks like outdoors in this market.
+
+6. "Rust on the near-side rail above the rear axle has lifted the paint and is
+   scaling, with flakes standing off the metal."
+   -> moderate. Same component, same kind of photograph, different state. The
+   difference between 5 and 6 is the whole point of this list."""
+
+
+# --- what to confirm sound -------------------------------------------------
+# `strengths` is in the schema, is rendered on three surfaces, and until now
+# was prompted for by nothing: 76 checklist items across eleven views, every
+# one of them naming a failure mode. A model asked only what is wrong answers
+# only what is wrong. These are the other half of `VIEW_QUESTIONS` - the same
+# parts, asked whether they are sound - and an empty `strengths` on a clean
+# truck is a failure to look, not a clean sheet.
+
+VIEW_CONFIRMATIONS = {
+    "tire_wheel": [
+        "that the tread stands proud of the wear bars, and roughly how far, if you can see it",
+        "that wear is even across the ribs and matched between the tires on this axle",
+        "that the sidewalls are free of cracking, bulges and cuts",
+        "that the rim is straight and the wheel nut indicators, if fitted, are in line",
+    ],
+    "dashboard_odometer": [
+        "that the cluster is live and no engine, brake, ABS/EBS or emissions lamp is lit",
+        "that the display carries no fault, service or regeneration message",
+        "that the dash top and the instrument surround are complete and uncracked",
+        "that the wear on the wheel rim, the stalks and the switches is in proportion to the distance this truck has covered",
+    ],
+    "interior_cab": [
+        "that the driver's seat holds its shape and its bolster has not collapsed",
+        "that the cab is dry, with no staining at the roof hatch or the screen surround",
+        "that the trim, switches and dash top are complete and uncracked",
+        "that the bunk and its panels are sound and the storage doors still shut",
+    ],
+    "engine_bay": [
+        "that the visible joints, hoses and the area under the engine are dry",
+        "that the belts are intact and the pulleys are in line",
+        "that the loom is original: no tape repairs, no disturbed connectors",
+    ],
+    "chassis_undercarriage": [
+        "that the frame rails carry paint rather than lifting scale",
+        "that the air bags are inflated and sitting square, and the shocks are dry",
+        "that no crossmember carries a weld repair or an added plate",
+        "that the air tanks, lines and their straps are sound and unchafed",
+    ],
+    "fifth_wheel": [
+        "that the plate carries a grease film rather than being dry and polished",
+        "that the jaws are closed and the handle is in its stowed position",
+        "that the mounting bolts are present and the mounting plate shows no fretting",
+    ],
+    "exterior_side": [
+        "that the panel gaps run parallel the length of the truck",
+        "that the paint matches panel to panel",
+        "that the tanks, steps and fairings are complete and undamaged",
+        "that any chassis rail visible below the cab still carries its paint",
+    ],
+    "exterior_front": [
+        "that the lamp lenses are clear and dry behind the glass",
+        "that the screen is unchipped through the swept area and unscored by the wipers",
+        "that the bumper, grille and valance are complete, in line and unbroken",
+        "that the mirror arms and glass are undamaged and sitting where they should",
+    ],
+    "exterior_front_34": [
+        "that the truck sits level, with no corner down",
+        "that the paint matches across the two visible sides and the shut lines run parallel",
+        "that the visible tread stands proud of the wear bars and matches across the axle",
+        "that the fairings, deflector and steps are complete",
+    ],
+    "exterior_rear": [
+        "that the catwalk, lamp clusters and suzie coils are complete and undamaged",
+        "that the mudflaps and their brackets are present and straight",
+        "that the rail ends and crossmembers carry paint rather than lifting scale",
+        "that the drive tires match across the axle and are wearing evenly",
+    ],
+    "damage_detail": [
+        "that the damage stops where the frame shows it stopping, with the panels around it straight",
+        "that nothing is wet or running at the damage",
+        "that the metal around any rust still carries paint rather than lifting scale",
+        "that a repair already made is sound: the metal straight, the paint keyed in, no filler cracking",
+    ],
+}
 
 
 # --- the per-view checklists ----------------------------------------------
