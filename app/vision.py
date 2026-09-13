@@ -107,13 +107,29 @@ class ClipTagger:
         self.content_bank = bank(CONTENT_PROMPTS)
         self.logit_scale = self.model.logit_scale.exp().item()
 
+    def _features(self, pil_images: list):
+        batch = torch.stack([self.preprocess(im.convert("RGB"))
+                             for im in pil_images]).to(self.device)
+        with torch.no_grad():
+            feats = self.model.encode_image(batch)
+            return feats / feats.norm(dim=-1, keepdim=True)
+
+    def embed(self, pil_images: list) -> np.ndarray:
+        """L2-normalised image embeddings, no text banks.
+
+        One implementation, three callers: `tag` below, the corpus cache in
+        scripts/cache_embeddings.py, and app.subject, which embeds every
+        candidate crop in a photo set to work out which vehicle recurs.
+        """
+        if not pil_images:
+            return np.zeros((0, 512), dtype=np.float32)
+        return self._features(pil_images).cpu().numpy().astype(np.float32)
+
     def tag(self, pil_images: list) -> list[dict]:
         if not pil_images:
             return []
-        batch = torch.stack([self.preprocess(im.convert("RGB")) for im in pil_images]).to(self.device)
+        feats = self._features(pil_images)
         with torch.no_grad():
-            feats = self.model.encode_image(batch)
-            feats = feats / feats.norm(dim=-1, keepdim=True)
             view = (self.logit_scale * feats @ self.view_bank.T).softmax(dim=-1).cpu().numpy()
             content = (self.logit_scale * feats @ self.content_bank.T).softmax(dim=-1).cpu().numpy()
         emb = feats.cpu().numpy().astype(np.float32)

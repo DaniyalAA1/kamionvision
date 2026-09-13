@@ -232,7 +232,7 @@ def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectI
     # --- which vehicle is being sold --------------------------------------
     # Set-level, and deliberately last: the subject is the vehicle that recurs
     # across the frames, which is evidence no single photograph holds.
-    identity = subject_stage.ground([checks[i] for i in ok_idx])
+    identity = subject_stage.ground([checks[i] for i in ok_idx], embed=vision.clip().embed)
     return checks, identity
 
 

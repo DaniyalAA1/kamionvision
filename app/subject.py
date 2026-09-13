@@ -395,8 +395,10 @@ def _basis(check: PhotoCheck, best: Candidate | None, pool: list[Candidate],
                     f"is the yard behind it")
         return "none: no vehicle box in this frame is the one being sold"
     if identity.prototype is not None and best.sim_abs:
-        return (f"matches the vehicle seen in {identity.frames_agreeing} frame(s) "
-                f"of this set ({best.sim_abs:.2f})")
+        # Frame-local, deliberately: `frames_agreeing` is a set-level count and
+        # is not known until every frame has been assigned.
+        return (f"matches the vehicle the rest of the set is about "
+                f"(cosine {best.sim_abs:.2f})")
     if len(pool) == 1:
         return "the only vehicle in frame"
     return (f"the largest of {len(pool)} vehicle boxes once position and "
