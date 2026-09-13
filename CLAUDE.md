@@ -86,6 +86,8 @@ app/
 .venv/bin/python -m app.cli appraise <folder> --year 2021 --km 164374
 .venv/bin/python -m app.cli serve                        # demo screen on :8000
 .venv/bin/python -m app.demo --build                     # rebuild demo/ fixtures
+.venv/bin/python -m app.demo --export demo_reports/      # freeze every case as offline HTML
+.venv/bin/python -m app.cli appraise <folder> --html r.html   # one case, offline, self-contained
 .venv/bin/python -m app.vlm.bench                        # compare backends on the real task
 .venv/bin/python -m app.pricing.train                    # refit + recalibrate the price model
 .venv/bin/python -m app.calibrate_gate                   # recompute gate thresholds (~2 min)

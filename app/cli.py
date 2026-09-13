@@ -112,6 +112,12 @@ def cmd_appraise(args) -> int:
     else:
         print(report_mod.render_text(result))
 
+    if args.html:
+        from .export import write_html
+        out = write_html(result, args.html)
+        print(f"\nwrote {out} ({out.stat().st_size / 1024:.0f} KB, opens offline)",
+              file=sys.stderr)
+
     if args.save:
         out = Path(args.save)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -153,6 +159,7 @@ def main(argv=None) -> int:
     a.add_argument("--limit", type=int, help="use only the first N photos")
     a.add_argument("--json", action="store_true", help="emit the raw Appraisal JSON")
     a.add_argument("--save", help="also write the JSON here")
+    a.add_argument("--html", help="write a standalone offline HTML report here")
     a.set_defaults(func=cmd_appraise)
 
     s = sub.add_parser("serve", help="run the demo web UI")

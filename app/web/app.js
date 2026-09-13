@@ -541,5 +541,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('lightbox').hidden = true;
 });
 
-loadHealth();
-loadSamples();
+/* A frozen export embeds the appraisal and has no API behind it: render it
+ * straight away and hide the parts that would call a server. */
+if (window.KAMION_APPRAISAL) {
+  document.getElementById('intake').hidden = true;
+  document.getElementById('run').hidden = true;
+  document.getElementById('rig').hidden = true;
+  render(window.KAMION_APPRAISAL);
+} else {
+  loadHealth();
+  loadSamples();
+}

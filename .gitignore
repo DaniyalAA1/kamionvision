@@ -22,3 +22,6 @@ runs/
 .env
 .env.*
 !.env.example
+
+# Exported offline reports (rebuild: python -m app.demo --export demo_reports/)
+demo_reports/

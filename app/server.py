@@ -44,10 +44,13 @@ def index() -> HTMLResponse:
     return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"))
 
 
-@app.get("/static/{name}")
+@app.get("/static/{name:path}")
 def static(name: str) -> FileResponse:
+    # Nested, because the fonts, the schematic and the js modules live in
+    # subdirectories. The guard is `is_relative_to` on the resolved path rather
+    # than a parent comparison, so `..` still cannot climb out of app/web/.
     path = (WEB / name).resolve()
-    if path.parent != WEB.resolve() or not path.exists():
+    if not path.is_relative_to(WEB.resolve()) or not path.is_file():
         raise HTTPException(404)
     return FileResponse(path)
 
@@ -182,11 +185,19 @@ def appraise(session: str, year: int | None = None, km: float | None = None,
             def note(step, detail):
                 events.put({"type": "stage", "step": step, "detail": detail})
 
+            def urls_for(checks):
+                return {c.photo_id: f"/api/photo/{session}/{Path(c.path).name}"
+                        for c in checks}
+
+            def gate_done(gate):
+                events.put({"type": "gate", "gate": gate.to_dict(),
+                            "photo_urls": urls_for(gate.photos)})
+
             result = pipeline.appraise(photos, declared, market=market,
-                                       backend=backend, on_step=note)
+                                       backend=backend, on_step=note,
+                                       on_gate=gate_done)
             payload = result.to_dict()
-            payload["photo_urls"] = {c.photo_id: f"/api/photo/{session}/{Path(c.path).name}"
-                                     for c in result.gate.photos}
+            payload["photo_urls"] = urls_for(result.gate.photos)
             payload["text_report"] = report.render_text(result)
             events.put({"type": "result", "appraisal": payload})
         except Exception as exc:

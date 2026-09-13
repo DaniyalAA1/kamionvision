@@ -25,9 +25,22 @@ cp .env.example .env          # add one vision API key
 Appraise a folder from the terminal:
 
 ```bash
-.venv/bin/python -m app.cli appraise demo/tr_clean --year 2020 --km 420000
-.venv/bin/python -m app.demo                # run all six rehearsed cases
+.venv/bin/python -m app.cli appraise demo/tr_clean --year 2021 --km 164374 --asking 2550000
+.venv/bin/python -m app.demo                        # run all eight rehearsed cases
+.venv/bin/python -m unittest discover -s tests      # 52 offline tests, 0.5s, no API calls
 ```
+
+**Demo insurance.** Any appraisal can be frozen into one self-contained HTML
+file — stylesheet, script and every photo inlined — that opens with no server,
+no network and no API key:
+
+```bash
+.venv/bin/python -m app.cli appraise demo/tr_clean --html report.html
+.venv/bin/python -m app.demo --export demo_reports/   # all eight, plus an index
+```
+
+That is the backup the plan's checklist asks for, and unlike a screen recording
+you can still click through it when a judge asks a question.
 
 ## How it works
 

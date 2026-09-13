@@ -341,7 +341,8 @@ f"{label} fixtures, from Wikimedia Commons:\n\n"
 
 # --- runner ---------------------------------------------------------------
 
-def run_demo(only: str | None = None, backend: str | None = None) -> int:
+def run_demo(only: str | None = None, backend: str | None = None,
+             export: str | None = None) -> int:
     from . import pipeline, report
 
     cases = [c for c in resolved_cases() if only is None or c["id"] == only]
@@ -349,7 +350,7 @@ def run_demo(only: str | None = None, backend: str | None = None) -> int:
         print(f"no such case {only!r}; have {[c['id'] for c in CASES]}", file=sys.stderr)
         return 2
 
-    failures = []
+    failures, exported = [], []
     for case in cases:
         folder = REPO / case["folder"]
         photos = pipeline.collect_photos(folder)
@@ -367,10 +368,25 @@ def run_demo(only: str | None = None, backend: str | None = None) -> int:
                                    backend=backend,
                                    on_step=lambda s, d: print(f"  ... {s}: {d}", flush=True))
         print(report.render_text(result))
+
+        if export:
+            from .export import write_html
+            out = write_html(result, Path(export) / f"{case['id']}.html",
+                             title=f"KamionVision — {case['title']}")
+            exported.append({"file": out.name, "title": case["title"],
+                             "status": result.status,
+                             "headline": result.headline[:160]})
+            print(f"\n  exported {out} ({out.stat().st_size / 1024:.0f} KB)")
+
         expected = set(case["expect"].split("|"))
         if result.status not in expected:
             failures.append((case["id"], f"got {result.status}, expected {case['expect']}"))
             print(f"\n  ** UNEXPECTED: got {result.status}, expected {case['expect']} **")
+
+    if exported:
+        from .export import write_index
+        index = write_index(exported, export)
+        print(f"\nwrote {index} — {len(exported)} offline reports, no server needed")
 
     print("\n" + "=" * 78)
     if failures:
@@ -388,11 +404,13 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-fetch non-truck photos too")
     ap.add_argument("--case")
     ap.add_argument("--backend")
+    ap.add_argument("--export", metavar="DIR",
+                    help="also freeze each case as a standalone offline HTML report")
     args = ap.parse_args()
     if args.build:
         build_fixtures(force=args.force)
         return 0
-    return run_demo(only=args.case, backend=args.backend)
+    return run_demo(only=args.case, backend=args.backend, export=args.export)
 
 
 if __name__ == "__main__":
