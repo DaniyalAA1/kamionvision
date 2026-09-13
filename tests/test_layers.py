@@ -71,6 +71,24 @@ class ScalarContract(unittest.TestCase):
         report = heads.run([_photo(0)])
         self.assertEqual(report.photos, [])
 
+    def test_trainer_max_pools_view_templates_by_class(self):
+        from types import SimpleNamespace
+
+        import torch
+
+        from app import vision
+        from app.perception import train
+
+        tagger = SimpleNamespace(
+            view_bank=torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]]),
+            view_owner=torch.tensor([0, 0, 1]),
+        )
+        with (unittest.mock.patch.object(vision, "clip", return_value=tagger),
+              unittest.mock.patch.object(vision, "VIEW_LABELS", ["whole", "part"])):
+            pred = train.zero_shot_views(np.array([[-1.0, 0.0]]))
+
+        self.assertEqual(pred.tolist(), ["part"])
+
 
 class Reconciliation(unittest.TestCase):
 
@@ -153,6 +171,38 @@ class Reconciliation(unittest.TestCase):
         p = _perception(PhotoPerception(photo_id=0, view="tire_wheel", view_conf=0.3))
         reconcile.apply(gate_report, p, EvidenceReport())
         self.assertEqual(gate_report.missing_views, ["tire_wheel"])
+
+    def test_a_part_tagged_frame_cannot_create_whole_vehicle_coverage(self):
+        gate_report = GateReport(
+            photos=[_photo(0, usable=True, view="exterior_front")],
+            missing_views=["exterior_front"],
+            requests=["send a whole-vehicle front three-quarter photo"],
+            blocks_pricing=True,
+        )
+        p = _perception(PhotoPerception(
+            photo_id=0, view="exterior_front", view_conf=0.95,
+            framing="part", framing_conf=0.95))
+
+        rep = reconcile.apply(gate_report, p, EvidenceReport())
+
+        self.assertEqual(rep.of_kind("coverage_restored"), [])
+        self.assertEqual(len(rep.of_kind("framing_override")), 1)
+        self.assertEqual(gate_report.missing_views, ["exterior_front"])
+        self.assertNotIn("exterior_front", gate_report.views_present)
+
+    def test_a_part_tagged_frame_cannot_clear_an_existing_pricing_block(self):
+        gate_report = GateReport(
+            photos=[_photo(0, usable=True, view="exterior_side")],
+            views_present=["exterior_side"],
+            blocks_pricing=True,
+        )
+        p = _perception(PhotoPerception(
+            photo_id=0, view="exterior_side", view_conf=0.95,
+            framing="part", framing_conf=0.95))
+
+        reconcile.apply(gate_report, p, EvidenceReport())
+
+        self.assertTrue(gate_report.blocks_pricing)
 
     def test_no_perception_is_a_no_op(self):
         ev = self._evidence("tread depth 2mm")

@@ -48,6 +48,7 @@ SEED = 7
 # real photos, then report what that buys.
 FALSE_FLAG_RATE = 0.05
 ROUND = 5
+FRAMING_LABELS = config.DATA / "reference" / "view_framing_labels.jsonl"
 
 
 def load() -> tuple[pd.DataFrame, np.ndarray]:
@@ -187,12 +188,48 @@ def fit_view(df, emb, groups) -> dict:
     return packed
 
 
+def fit_framing(df: pd.DataFrame, emb: np.ndarray) -> dict:
+    """Whole-vs-part classifier fitted only on the hand-labelled dev split."""
+    labels = pd.read_json(FRAMING_LABELS, lines=True)
+    indexed = df[["image_id", "path"]].copy()
+    indexed["_embedding_row"] = np.arange(len(indexed))
+    joined = labels.merge(indexed, on="path", how="left", validate="one_to_one")
+    if joined.image_id.isna().any():
+        missing = joined.loc[joined.image_id.isna(), "path"].tolist()
+        raise ValueError(f"{len(missing)} framing labels have no images.csv match: {missing[:3]}")
+
+    rows = joined["_embedding_row"].to_numpy(dtype=int)
+    X = emb[rows]
+    y = joined.framing.astype(str).to_numpy()
+    dev = joined.split.eq("dev").to_numpy()
+    test = joined.split.eq("test").to_numpy()
+    if not dev.any() or not test.any():
+        raise ValueError("framing labels must contain both dev and test splits")
+
+    mean, scale = _standardise(X[dev])
+    model = LogisticRegression(max_iter=3000, C=1.0)
+    model.fit((X[dev] - mean) / scale, y[dev])
+    pred = model.predict((X[test] - mean) / scale)
+    held_out_acc = float(np.mean(pred == y[test]))
+    held_out_parts = y[test] == "part"
+    dangerous_error = float(np.mean(pred[held_out_parts] == "whole"))
+
+    packed = _pack(model, model.classes_, mean, scale)
+    packed["held_out_acc"] = round(held_out_acc, 3)
+    packed["dangerous_error"] = round(dangerous_error, 3)
+    return packed
+
+
 def zero_shot_views(emb: np.ndarray) -> np.ndarray:
     """What CLIP zero-shot says, recomputed from the cached embeddings."""
     from .. import vision
     tagger = vision.clip()
     bank = tagger.view_bank.cpu().numpy()
-    scores = emb @ bank.T
+    owner = tagger.view_owner.cpu().numpy()
+    template_scores = emb @ bank.T
+    scores = np.full((len(emb), len(vision.VIEW_LABELS)), -np.inf)
+    for class_index in range(len(vision.VIEW_LABELS)):
+        scores[:, class_index] = template_scores[:, owner == class_index].max(axis=1)
     return np.array([vision.VIEW_LABELS[i] for i in scores.argmax(axis=1)])
 
 
@@ -264,6 +301,11 @@ def main() -> int:
           f"zero-shot {vm['twin_agreement_zeroshot']} over {vm['n_pairs']} pairs")
     print(f"  agreement with the zero-shot teacher's own label: {vm['agreement_with_teacher']}")
 
+    print("\nfitting whole-vs-part head (90 hand labels)...")
+    framing = fit_framing(df, emb)
+    print(f"  held-out accuracy {framing['held_out_acc']}   "
+          f"dangerous error {framing['dangerous_error']}")
+
     print("\nfitting identity head (cross-check only)...")
     identity = fit_identity(df, emb)
     im = identity["metrics"]
@@ -285,6 +327,7 @@ def main() -> int:
         "label_provenance": {
             "degradation": "measured - known synthetic transforms, 3729 exact clean/degraded pairs",
             "view": "pseudo-label - CLIP zero-shot teacher; only the twin-agreement delta is measured",
+            "framing": "measured - 60 hand-labelled dev frames, evaluated on 30 held-out frames",
             "identity": "measured - listing metadata, but 78/84 TR vehicles are Ford",
         },
     }
@@ -294,7 +337,8 @@ def main() -> int:
     # prints those from the meta block.
     PERCEPTION_MODEL.write_text(json.dumps(
         {"scalars": SCALARS, "degradation": degradation, "view": view,
-         "identity": identity, "meta": meta}, separators=(",", ":")), encoding="utf-8")
+         "framing": framing, "identity": identity, "meta": meta},
+        separators=(",", ":")), encoding="utf-8")
     print(f"\nwrote {PERCEPTION_MODEL} ({PERCEPTION_MODEL.stat().st_size / 1e3:.0f} KB)")
     return 0
 

@@ -62,6 +62,7 @@ CONFIDENCE_FLOOR = 0.2
 IDENTITY_CONFIDENCE = 0.60
 IDENTITY_WIDENING = 1.25
 VIEW_CONFIDENCE = 0.60
+FRAMING_CONFIDENCE = 0.70
 
 # Odometer rule. A digit slip on a six-figure reading is a few km; a genuine
 # odometer/vision disagreement is a different number entirely. The tolerance is
@@ -88,6 +89,7 @@ def apply(gate, perception, evidence) -> ReconcileReport:
     if perception is not None and perception.photos:
         _downgrade_unsupported(perception, evidence, report)
         _check_identity(perception, evidence, report)
+        _correct_whole_vehicle(gate, perception, report)
         _restore_coverage(gate, perception, report)
 
     report.elapsed_s = round(time.time() - t0, 3)
@@ -222,6 +224,52 @@ def _identity_classes() -> list[str]:
         return []
 
 
+def _correct_whole_vehicle(gate, perception, report) -> None:
+    """Stop a confident part frame from satisfying whole-vehicle coverage."""
+    from .subject import WHOLE_VEHICLE_VIEWS
+
+    if not gate or not gate.photos:
+        return
+    gate_by_id = {p.photo_id: p for p in gate.photos}
+    overridden = set()
+    for p in perception.photos:
+        checked = gate_by_id.get(p.photo_id)
+        if (checked is None or checked.view not in WHOLE_VEHICLE_VIEWS
+                or p.framing != "part" or p.framing_conf < FRAMING_CONFIDENCE):
+            continue
+        overridden.add(p.photo_id)
+        report.corrections.append(Correction(
+            kind="framing_override", photo_id=p.photo_id,
+            detail=f"the gate called this {checked.view}, but the hand-labelled "
+                   f"framing head identifies a component close-up "
+                   f"({p.framing_conf:.0%})",
+            before="counted as a whole-vehicle frame",
+            after="excluded from whole-vehicle coverage"))
+
+    if not overridden:
+        return
+
+    valid_whole = [
+        p for p in gate.photos
+        if p.usable and p.view in WHOLE_VEHICLE_VIEWS and p.photo_id not in overridden
+    ]
+    valid_views = {p.view for p in valid_whole}
+    gate.views_present = [
+        view for view in gate.views_present
+        if view not in WHOLE_VEHICLE_VIEWS or view in valid_views
+    ]
+    if valid_whole:
+        return
+
+    gate.blocks_pricing = True
+    if not any(view in WHOLE_VEHICLE_VIEWS for view in gate.missing_views):
+        gate.missing_views.append("exterior_front_34")
+    from .gate import VIEW_REQUESTS
+    request = VIEW_REQUESTS["exterior_front_34"]
+    if request not in gate.requests:
+        gate.requests.append(request)
+
+
 def _restore_coverage(gate, perception, report) -> None:
     """A muddy tire close-up the zero-shot tagger fumbled is still a tire shot.
 
@@ -232,7 +280,19 @@ def _restore_coverage(gate, perception, report) -> None:
     """
     if not gate or not gate.missing_views:
         return
-    confident = {p.view for p in perception.photos if p.view_conf >= VIEW_CONFIDENCE}
+    from .subject import WHOLE_VEHICLE_VIEWS
+    gate_by_id = {p.photo_id: p for p in gate.photos}
+    confident = set()
+    for p in perception.photos:
+        if p.view_conf < VIEW_CONFIDENCE:
+            continue
+        checked = gate_by_id.get(p.photo_id)
+        if p.view in WHOLE_VEHICLE_VIEWS:
+            if checked is None or checked.view not in WHOLE_VEHICLE_VIEWS:
+                continue
+            if p.framing == "part" and p.framing_conf >= FRAMING_CONFIDENCE:
+                continue
+        confident.add(p.view)
     restored = [v for v in gate.missing_views if v in confident]
     for view in restored:
         report.corrections.append(Correction(

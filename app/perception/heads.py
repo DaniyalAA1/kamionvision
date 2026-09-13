@@ -70,6 +70,7 @@ class PerceptionModel:
     scalars: list[str]
     degradation: dict
     view: dict
+    framing: dict | None
     identity: dict
     meta: dict
 
@@ -80,7 +81,8 @@ class PerceptionModel:
                 f"{path} not found - run: .venv/bin/python -m app.perception.train")
         d = json.loads(path.read_text(encoding="utf-8"))
         return cls(scalars=d["scalars"], degradation=d["degradation"],
-                   view=d["view"], identity=d["identity"], meta=d["meta"])
+                   view=d["view"], framing=d.get("framing"),
+                   identity=d["identity"], meta=d["meta"])
 
 
 def model() -> PerceptionModel:
@@ -151,12 +153,20 @@ def run(checks: list) -> PerceptionReport:
     deg_p = _sigmoid(_apply(m.degradation, X))
     sev = np.clip(_apply(m.degradation["severity"], X).ravel(), 0.0, 1.0)
     view_p = _softmax(_apply(m.view, emb_only))
+    framing_p = (_sigmoid(_apply(m.framing, emb_only)).ravel()
+                 if m.framing is not None else None)
     atoms = m.degradation["atoms"]
     views = m.view["classes"]
     cutoff = float(m.degradation.get("fine_detail_severity", FINE_DETAIL_SEVERITY))
 
     for i, c in enumerate(scored):
         vi = int(np.argmax(view_p[i]))
+        framing = "unknown"
+        framing_conf = 0.0
+        if framing_p is not None:
+            whole_prob = float(framing_p[i])
+            framing = "whole" if whole_prob >= 0.5 else "part"
+            framing_conf = max(whole_prob, 1.0 - whole_prob)
         report.photos.append(PhotoPerception(
             photo_id=c.photo_id,
             degraded_prob=round(float(deg_p[i].max()), 3),
@@ -165,6 +175,8 @@ def run(checks: list) -> PerceptionReport:
                           if deg_p[i][j] >= ATOM_THRESHOLD],
             view=views[vi],
             view_conf=round(float(view_p[i][vi]), 3),
+            framing=framing,
+            framing_conf=round(framing_conf, 3),
             fine_detail_ok=bool(sev[i] < cutoff),
         ))
 

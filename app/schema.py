@@ -174,6 +174,8 @@ class PhotoPerception(_Dict):
     degradations: list[str] = field(default_factory=list)
     view: str = "unknown"
     view_conf: float = 0.0
+    framing: str = "unknown"
+    framing_conf: float = 0.0
     # False when the photo is too corrupted to support a claim resting on fine
     # detail. Consumed by app.reconcile, never by the gate - a degraded photo
     # is still a photo of the truck.
