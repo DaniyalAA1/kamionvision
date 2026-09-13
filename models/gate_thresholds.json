@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-12T18:05:44",
+  "generated_at": "2026-09-12T23:56:52",
   "method": "Derive the gate's reject thresholds from the corpus instead of guessing them.",
   "reject_quantile_of_degraded": 0.04,
   "warn_quantile_of_degraded": 0.15,
@@ -28,29 +28,43 @@
     "disqualify_conf": 0.55,
     "min_truck_area_frac": 0.12,
     "disqualify_area_frac": 0.2,
+    "part_view_subject_area_frac": 0.9464,
     "note": "Set-level, not per-photo. A close-up of a tire or a dashboard legitimately contains no truck box and is never rejected on that basis; the photo SET is refused only when no frame anywhere carries a truck/bus box above truck_conf_weak.",
+    "part_view_note": "q90 of the best vehicle box's area_frac over originals CLIP tags into TRUCK_PART_VIEWS at >= 0.50. Below it a box on a close-up is scenery and app.subject nulls the subject; above it the close-up frame itself is what YOLO drew a box around.",
     "measured": {
       "originals": {
         "photos": 3729,
         "vehicles": 200,
-        "seconds": 87.7,
+        "seconds": 78.0,
         "photo_frac_truck_box_at_0.25": 0.354,
         "photo_frac_truck_box_at_0.50": 0.324,
         "vehicles_with_no_truck_box_at_0.25": 1,
         "vehicles_with_no_truck_box_at_0.50": 3,
         "vehicle_conf_min": 0.193,
-        "vehicle_conf_q05": 0.856
+        "vehicle_conf_q05": 0.856,
+        "part_view_frames": 1955,
+        "part_view_frames_with_a_box": 773,
+        "part_view_area_q90": 0.9464,
+        "whole_vehicle_frames": 681,
+        "whole_vehicle_area_q05_of_boxed": 0.3111,
+        "duplicate_vehicle_pairs_per_frame": 0.2446
       },
       "degraded": {
         "photos": 3729,
         "vehicles": 200,
-        "seconds": 59.0,
+        "seconds": 53.4,
         "photo_frac_truck_box_at_0.25": 0.289,
         "photo_frac_truck_box_at_0.50": 0.251,
         "vehicles_with_no_truck_box_at_0.25": 3,
         "vehicles_with_no_truck_box_at_0.50": 3,
         "vehicle_conf_min": 0.0,
-        "vehicle_conf_q05": 0.798
+        "vehicle_conf_q05": 0.798,
+        "part_view_frames": 0,
+        "part_view_frames_with_a_box": 0,
+        "part_view_area_q90": null,
+        "whole_vehicle_frames": 0,
+        "whole_vehicle_area_q05_of_boxed": null,
+        "duplicate_vehicle_pairs_per_frame": 0.151
       }
     }
   },

@@ -31,6 +31,10 @@ from . import prompts
 CROP_PAD = 0.08
 # Above this the subject already fills the frame and cropping buys nothing.
 CROP_MAX_SUBJECT_FRAC = 0.70
+# A crop this small is not a photograph of a truck any more. 40x40 px used to
+# be accepted, written as a JPEG and handed a full tread-depth checklist.
+CROP_MIN_SIDE_PX = 160
+CROP_MIN_AREA_FRAC = 0.08
 
 
 # --- shared parsing --------------------------------------------------------
@@ -102,8 +106,17 @@ def wants_crop(check: PhotoCheck) -> bool:
     box = check.subject_box
     if not box or not check.width or not check.height:
         return False
-    x1, y1, x2, y2 = box
-    frac = abs((x2 - x1) * (y2 - y1)) / float(check.width * check.height)
+    if not gate_stage.crop_is_safe(check):
+        return False
+    rect = subject_crop_rect(box, check.width, check.height)
+    if rect is None:
+        return False
+    # The PADDED rect, which is the one write_subject_crop actually cuts. The
+    # unpadded box was measured before: CROP_PAD is 1.35x on area, so a subject
+    # at 0.60 of the frame passed the test and then yielded a crop covering
+    # 0.81 of it - while the prompt told the model other vehicles had been
+    # deliberately excluded.
+    frac = (rect[2] - rect[0]) * (rect[3] - rect[1]) / float(check.width * check.height)
     if frac >= CROP_MAX_SUBJECT_FRAC:
         return False
     return gate_stage.competing_vehicles(check) >= 1
@@ -119,7 +132,9 @@ def subject_crop_rect(box, width: int, height: int) -> tuple[int, int, int, int]
     pad_x, pad_y = (x2 - x1) * CROP_PAD, (y2 - y1) * CROP_PAD
     crop = (max(0, int(x1 - pad_x)), max(0, int(y1 - pad_y)),
             min(int(width), int(x2 + pad_x)), min(int(height), int(y2 + pad_y)))
-    if crop[2] - crop[0] < 32 or crop[3] - crop[1] < 32:
+    if min(crop[2] - crop[0], crop[3] - crop[1]) < CROP_MIN_SIDE_PX:
+        return None
+    if (crop[2] - crop[0]) * (crop[3] - crop[1]) < CROP_MIN_AREA_FRAC * width * height:
         return None
     return crop
 
@@ -263,12 +278,12 @@ def parse_closeup(text: str, check: PhotoCheck, *, cropped: bool) -> PhotoFindin
 def closeup(client, check: PhotoCheck, vehicle_line: str, *,
             tmpdir: Path, max_tokens: int) -> PhotoFinding:
     """One photo, one call. Raises VLMError; the caller decides what that costs."""
-    from ..vision import VIEW_PROMPTS
+    from ..vision import VIEW_LABELS
 
     t0 = time.time()
     cropped_path = write_subject_crop(check, tmpdir) if wants_crop(check) else None
     image = cropped_path or Path(check.path)
-    pretty = dict((k, k.replace("_", " ")) for k, _ in VIEW_PROMPTS).get(
+    pretty = {k: k.replace("_", " ") for k in VIEW_LABELS}.get(
         check.view, check.view.replace("_", " "))
     prompt = prompts.closeup_prompt(
         view=check.view, view_pretty=pretty, vehicle=vehicle_line,

@@ -1,12 +1,20 @@
 /* The photographs: the contact strip, the featured frame with the detector's
    box over it, the result grid, and the lightbox.
 
-   One box, not eight. `subject_box` is decided in app/gate.py by area times
-   distance from the centre of the frame, so the box drawn here and the pixels
-   the vision model was given are the same vehicle. The old overlay drew every
-   detection above 0.25 with equal weight, which on a dealer-lot photo meant
-   five trucks outlined and no answer to which one was for sale - and the model
-   was handed the whole frame, so it did not know either.
+   One box, not eight. The subject is decided in app/subject.py, not here, so
+   the box drawn and the pixels the vision model was given are the same
+   vehicle. The old overlay drew every detection above 0.25 with equal weight,
+   which on a dealer-lot photo meant five trucks outlined and no answer to
+   which one was for sale - and the model was handed the whole frame, so it did
+   not know either.
+
+   Which detection is the subject is read off `is_subject`, never recomputed.
+   This used to be an exact float comparison on all four coordinates, which
+   worked only because `subject_box` was literally an element of `detections`;
+   the moment the gate computed the subject anywhere else the match would have
+   failed silently, `shown` would have been empty and no box would have been
+   drawn at all. `sameBox` survives only so an older frozen export still
+   renders.
 
    Everything outside the subject is dimmed rather than deleted: a person can
    still see what else was in the frame, and `show everything it detected`
@@ -87,8 +95,14 @@ export function showFrame(check) {
   if (toggle) toggle.hidden = !hasHiddenBoxes(check);
 }
 
+/* Fallback only: a frozen export written before `is_subject` existed carries
+   the subject as coordinates and nothing else. */
 const sameBox = (a, b) =>
   !!a && !!b && a.length === 4 && b.length === 4 && a.every((v, i) => v === b[i]);
+
+const subjectOf = (all, check) =>
+  all.find((d) => d.is_subject) ||
+  (check.subject_box ? all.find((d) => sameBox(d.box, check.subject_box)) : undefined);
 
 function drawBoxes(root, check) {
   root.replaceChildren();
@@ -98,7 +112,7 @@ function drawBoxes(root, check) {
     (d) => d.box && d.box.length === 4 && check.width && check.height);
   if (!all.length) return;
 
-  const subject = all.find((d) => sameBox(d.box, check.subject_box));
+  const subject = subjectOf(all, check);
   const blockedLabel = (refusedAsNotATruck && check.non_truck_subject)
     ? String(check.non_truck_subject).split(' (')[0] : null;
   const disqualifying = blockedLabel
@@ -167,6 +181,12 @@ function writeMeta(check) {
                  check.usable ? viewName(check.view) : 'dropped by the gate'));
   if (!check.usable && (check.reasons || []).length) {
     meta.append(el('span', 'fm-why', check.reasons[0]));
+  }
+  /* Why that box, or why none. A close-up of an engine bay with a lorry in
+     the yard behind it gets no box at all, and saying so out loud is the
+     difference between a decision and a silence. */
+  if (check.usable && check.subject_basis) {
+    meta.append(el('span', 'fm-why', check.subject_basis));
   }
   /* A capture score of 0.82 means nothing to a seller holding a phone. The
      word does, and the number is still in the disclosure for anyone who wants

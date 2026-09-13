@@ -75,13 +75,14 @@ def main() -> int:
 
 
 def embed(tagger, pils: list) -> np.ndarray:
-    """The image half of ClipTagger.tag, without the text banks."""
-    import torch
-    batch = torch.stack([tagger.preprocess(im.convert("RGB")) for im in pils]).to(tagger.device)
-    with torch.no_grad():
-        feats = tagger.model.encode_image(batch)
-        feats = feats / feats.norm(dim=-1, keepdim=True)
-    return feats.cpu().numpy().astype(np.float32)
+    """The image half of ClipTagger.tag, without the text banks.
+
+    Delegates rather than duplicates: this used to reach into
+    `tagger.preprocess` and `tagger.model` from outside, so a change to the
+    preprocessing in app/vision.py would silently leave the cached corpus
+    embeddings in a different space from the live ones.
+    """
+    return tagger.embed(pils)
 
 
 if __name__ == "__main__":

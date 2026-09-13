@@ -1,0 +1,76 @@
+{
+  "old": {
+    "generated_at": "2026-09-13T00:03:55",
+    "algorithm": "old",
+    "objective": "same-listing retrieval precision@1 on selected subject crops, subject to whole_vehicle_miss_rate no higher than the incumbent",
+    "detector": "yolov8n.pt",
+    "retrieval": {
+      "p_at_1": 0.2409,
+      "n": 1627,
+      "p_at_1_phash_hardened": 0.236
+    },
+    "within_listing": {
+      "consistency": 0.812,
+      "separation": 0.0803,
+      "listings": 197
+    },
+    "rates": {
+      "frames": 3729,
+      "vehicles": 200,
+      "part_view_subject_rate": 0.1187,
+      "part_view_scenery_rate": 0.0389,
+      "part_view_crop_rate": 0.0358,
+      "part_view_frames": 1955,
+      "whole_vehicle_miss_rate": 0.0307,
+      "whole_vehicle_crop_rate": 0.3748,
+      "whole_vehicle_frames": 683,
+      "view_agreement": 0.9041,
+      "vehicles_with_no_subject_anywhere": 0,
+      "crop_rate": 0.1858,
+      "subject_rate": 0.4363
+    },
+    "composites": {
+      "distractor_resisted_rate": 0.475,
+      "distractor_n": 120,
+      "background_truck_rejected_rate": 0.35,
+      "background_n": 120
+    }
+  },
+  "new": {
+    "generated_at": "2026-09-13T04:25:43",
+    "algorithm": "new",
+    "objective": "same-listing retrieval precision@1 on selected subject crops, subject to whole_vehicle_miss_rate no higher than the incumbent",
+    "detector": "yolov8n.pt",
+    "retrieval": {
+      "p_at_1": 0.2236,
+      "n": 1740,
+      "p_at_1_phash_hardened": 0.219
+    },
+    "within_listing": {
+      "consistency": 0.7926,
+      "separation": 0.0741,
+      "listings": 199
+    },
+    "rates": {
+      "frames": 3729,
+      "vehicles": 200,
+      "part_view_subject_rate": 0.1162,
+      "part_view_scenery_rate": 0.0,
+      "part_view_crop_rate": 0.0,
+      "part_view_frames": 1756,
+      "whole_vehicle_miss_rate": 0.0093,
+      "whole_vehicle_crop_rate": 0.1974,
+      "whole_vehicle_frames": 755,
+      "view_agreement": 0.916,
+      "vehicles_with_no_subject_anywhere": 0,
+      "crop_rate": 0.0767,
+      "subject_rate": 0.4666
+    },
+    "composites": {
+      "distractor_resisted_rate": 0.675,
+      "distractor_n": 120,
+      "background_truck_rejected_rate": 0.8583,
+      "background_n": 120
+    }
+  }
+}

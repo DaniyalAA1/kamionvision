@@ -19,7 +19,6 @@ a motorcycle or stonewalling a seller who just forgot the odometer shot.
 """
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
@@ -27,23 +26,17 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from . import subject as subject_stage
 from . import vision
-from .config import GATE_THRESHOLDS
 from .schema import Detection, GateDecision, GateReport, PhotoCheck
+# Which vehicle is being sold is decided in app/subject.py - it stopped being a
+# per-frame fact. Re-exported here so `gate.pick_subject` and the view
+# vocabularies keep resolving for every existing caller.
+from .subject import (MIN_PART_VIEW_CONF, TRUCK_PART_VIEWS,  # noqa: F401
+                      WHOLE_VEHICLE_VIEWS, competing_vehicles, crop_is_safe,
+                      pick_subject, thresholds)
 
 MIN_SIDE = 200
-
-# Views that establish "this is the whole vehicle" rather than a detail of it.
-WHOLE_VEHICLE_VIEWS = {"exterior_front", "exterior_front_34", "exterior_side", "exterior_rear"}
-
-# Close-up views that are still unmistakably part of a heavy vehicle. Used to
-# tell "a real truck, photographed badly" apart from "not a truck at all" when
-# no whole-vehicle frame exists.
-TRUCK_PART_VIEWS = {"tire_wheel", "interior_cab", "dashboard_odometer", "engine_bay",
-                    "chassis_undercarriage", "fifth_wheel"}
-# `damage_detail` is deliberately excluded above: it is the taxonomy's catch-all
-# and it matched a photo of a parked motorcycle at 0.42.
-MIN_PART_VIEW_CONF = 0.50
 
 VIEW_REQUESTS = {
     "exterior_front_34": "a three-quarter front shot of the whole tractor, so the cab and one full side are both visible",
@@ -57,74 +50,6 @@ VIEW_REQUESTS = {
     "exterior_rear": "the back of the tractor",
     "damage_detail": "a close-up of any damage you already know about",
 }
-
-_THRESHOLDS: dict | None = None
-
-
-def thresholds() -> dict:
-    """Load the calibrated thresholds, falling back to the shipped defaults."""
-    global _THRESHOLDS
-    if _THRESHOLDS is None:
-        if GATE_THRESHOLDS.exists():
-            _THRESHOLDS = json.loads(GATE_THRESHOLDS.read_text(encoding="utf-8"))
-        else:
-            raise FileNotFoundError(
-                f"{GATE_THRESHOLDS} missing - run: .venv/bin/python -m app.calibrate_gate")
-    return _THRESHOLDS
-
-
-# How far off-centre a box can sit before it stops looking like the subject.
-# A corner box keeps 45% of its score, so a genuinely larger truck still wins
-# over a small centred one, but two similar trucks are split by composition -
-# which is what a seller photographing their own vehicle actually does.
-CENTRE_BIAS = 0.55
-
-
-def subject_score(box: list[float], width: int, height: int) -> float:
-    """Area, discounted by distance from the centre of the frame."""
-    x1, y1, x2, y2 = box
-    frame = float(width * height) or 1.0
-    area = abs((x2 - x1) * (y2 - y1)) / frame
-    cx, cy = (x1 + x2) / 2 / (width or 1), (y1 + y2) / 2 / (height or 1)
-    far = ((cx - 0.5) ** 2 + (cy - 0.5) ** 2) ** 0.5 / (0.5 * 2 ** 0.5)
-    return area * (1.0 - CENTRE_BIAS * min(1.0, far))
-
-
-def pick_subject(check: PhotoCheck) -> list[float] | None:
-    """The one box that is the vehicle being sold, or None.
-
-    Decided here rather than in the browser. The old screen picked the largest
-    vehicle box client-side while the vision model was handed the whole frame,
-    so the box a viewer was shown and the pixels the model actually read were
-    only coincidentally the same truck. On a dealer-lot photo they were not.
-
-    Area alone is not enough, and neither is area discounted by position. On a
-    real rear three-quarter shot from the corpus the subject ran off the top of
-    the frame, so YOLO measured it at 15% of the area against 23% for a whole
-    white tractor parked to the left - and the left one won. A box clipped by
-    the frame edge is always under-measured, and the thing the photographer
-    actually pointed at is the thing their frame is centred on. So a box that
-    contains the centre of the frame wins outright, and area only breaks ties
-    among those.
-    """
-    boxes = [d for d in check.detections if d.label in ("truck", "bus")]
-    if not boxes:
-        return None
-    cx, cy = check.width / 2, check.height / 2
-    centred = [d for d in boxes
-               if d.box[0] <= cx <= d.box[2] and d.box[1] <= cy <= d.box[3]]
-    pool = centred or boxes
-    best = max(pool, key=lambda d: subject_score(d.box, check.width, check.height))
-    return list(best.box)
-
-
-def competing_vehicles(check: PhotoCheck) -> int:
-    """Vehicle boxes other than the subject. Above one, the frame is a lot shot."""
-    subject = check.subject_box
-    return sum(1 for d in check.detections
-               if d.label in vision.COCO_VEHICLES and d.confidence >= 0.4
-               and d.area_frac >= 0.02 and list(d.box) != subject)
-
 
 def capture_metrics(bgr: np.ndarray) -> dict:
     """Identical formulas to scripts/clean_dataset.py, so a gate score and a
@@ -178,11 +103,18 @@ def _capture_verdict(check: PhotoCheck, cap: dict) -> None:
         check.reasons.append("almost no contrast - the frame is flat grey")
 
 
-def inspect(paths: list[Path]) -> list[PhotoCheck]:
-    """Per-photo metrics, detections and view tags. Batched, one pass."""
+def inspect(paths: list[Path]) -> tuple[list[PhotoCheck], subject_stage.SubjectIdentity]:
+    """Per-photo metrics, detections and view tags, then the set-level subject.
+
+    Returns the identity alongside the checks because "which vehicle is this
+    set about" is not a property of any one of them.
+    """
     cap = thresholds()["capture"]
     checks: list[PhotoCheck] = []
     pils: list[Image.Image] = []
+    # Kept alongside `pils` so `subject.focus_ratio` can score a candidate box
+    # against the frame around it without decoding the image a second time.
+    grays: list[np.ndarray] = []
     ok_idx: list[int] = []
 
     for i, path in enumerate(paths):
@@ -200,6 +132,7 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
             check.reasons.append(f"too small ({pil.width}x{pil.height})")
 
         bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
         m = capture_metrics(bgr)
         for k, v in m.items():
             if hasattr(check, k):
@@ -211,28 +144,37 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
 
         checks.append(check)
         pils.append(pil)
+        grays.append(gray)          # appended with pils so the two cannot drift
         ok_idx.append(i)
 
     if not pils:
-        return checks
+        return checks, subject_stage.NO_IDENTITY
 
     # --- detector ---------------------------------------------------------
     det_cfg = thresholds()["detector"]
     yolo = vision.yolo()
     preds = yolo.predict(pils, verbose=False, conf=0.05, device=vision.device())
     disqualifiers: list[tuple[int, str, float]] = []
-    for idx, r in zip(ok_idx, preds):
+    for idx, r, gray in zip(ok_idx, preds, grays):
         check = checks[idx]
         frame_area = float(check.width * check.height) or 1.0
         best_other = (None, 0.0, 0.0)
+        pool: list[Detection] = []
         for c, f, box in zip(r.boxes.cls, r.boxes.conf, r.boxes.xyxy):
             label, conf = r.names[int(c)], float(f)
             x1, y1, x2, y2 = (float(v) for v in box)
             area_frac = abs((x2 - x1) * (y2 - y1)) / frame_area
-            if conf >= 0.25:
-                check.detections.append(Detection(label=label, confidence=round(conf, 3),
-                                                  box=[round(v, 1) for v in (x1, y1, x2, y2)],
-                                                  area_frac=round(area_frac, 4)))
+            det = Detection(label=label, confidence=round(conf, 3),
+                            box=[round(v, 1) for v in (x1, y1, x2, y2)],
+                            area_frac=round(area_frac, 4))
+            if conf >= subject_stage.DETECTION_CONF:
+                check.detections.append(det)
+            elif (conf >= subject_stage.CANDIDATE_CONF
+                  and label in subject_stage.SUBJECT_LABELS):
+                # Below what the screen draws, but a clipped subject is a
+                # low-confidence box - the calibration measured one real
+                # vehicle whose best box across 20 frames was 0.193.
+                pool.append(det)
             if label in ("truck", "bus"):
                 if conf > check.truck_conf:
                     check.truck_conf, check.truck_area_frac = round(conf, 3), round(area_frac, 4)
@@ -247,16 +189,23 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
         # be what the photo is of, and bigger than any competing vehicle. A van
         # parked behind a motorcycle scored truck=0.87 over 5% of the frame
         # while a car filled 24% of it - that is a street scene, not a listing.
+        #
+        # Computed from the RAW detector output, above, before any of the
+        # subject work below touches anything. truck_dominant, the refusal
+        # ladder and the measured 1-in-200 false refusal are not things a
+        # rendering and cropping decision gets to move.
         check.truck_dominant = bool(
             check.truck_conf >= det_cfg["truck_conf_weak"]
             and check.truck_area_frac >= det_cfg["min_truck_area_frac"]
             and check.truck_area_frac >= check.competing_area_frac)
-        # Independent of truck_dominant, which is a gate verdict about the whole
-        # set. This is a rendering and cropping fact about one frame: if there
-        # is a truck-shaped box here at all, which one is the truck.
-        check.subject_box = pick_subject(check)
         if best_other[0] and best_other[1] >= det_cfg["disqualify_conf"]:
             disqualifiers.append((idx, best_other[0], best_other[1]))
+
+        # One physical vehicle, one box - COCO's per-class NMS leaves a tractor
+        # carrying truck 0.71 / bus 0.44 / car 0.31 at the same pixels, and the
+        # duplicates were being counted as competitors and cropped against.
+        check.detections = subject_stage.dedupe_vehicles(check.detections)
+        check._candidates = subject_stage.build_candidates(check, pool, gray=gray)
 
     # --- view + content tags ---------------------------------------------
     tags = vision.clip().tag(pils)
@@ -284,7 +233,12 @@ def inspect(paths: list[Path]) -> list[PhotoCheck]:
                                  and check.content == "keep")
         if not looks_like_truck_part:
             check.non_truck_subject = f"{label} ({conf:.2f})"
-    return checks
+
+    # --- which vehicle is being sold --------------------------------------
+    # Set-level, and deliberately last: the subject is the vehicle that recurs
+    # across the frames, which is evidence no single photograph holds.
+    identity = subject_stage.ground([checks[i] for i in ok_idx], embed=vision.clip().embed)
+    return checks, identity
 
 
 def run(paths: list[Path]) -> GateReport:
@@ -300,8 +254,12 @@ def run(paths: list[Path]) -> GateReport:
         report.elapsed_s = round(time.time() - t0, 2)
         return report
 
-    checks = inspect(list(paths))
+    checks, identity = inspect(list(paths))
     report.photos = checks
+    report.subject_method = identity.method
+    report.subject_consistency = identity.mean_sim
+    report.subject_frames = identity.frames_agreeing
+    report.subject_evidence = subject_stage.evidence_sentence(identity, checks)
     usable = [c for c in checks if c.usable]
     report.usable_photo_ids = [c.photo_id for c in usable]
 
