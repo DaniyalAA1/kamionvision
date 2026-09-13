@@ -208,7 +208,7 @@ class Correction(_Dict):
     #            | wmi_conflict | generation_conflict
     # evidence:  severity_calibrated | severity_raise_clamped
     #            | uncorroborated_finding | sample_disagreement
-    #            | identity_sample_disagreement
+    #            | identity_disagreement | same_vehicle_disagreement
     kind: str = ""
     photo_id: int | None = None
     detail: str = ""

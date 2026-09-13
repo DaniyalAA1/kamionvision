@@ -23,6 +23,7 @@ from pathlib import Path
 
 from . import register
 from ..config import CURSOR_API_KEY, CURSOR_EFFORT, CURSOR_MODEL, REPO
+from ..config import EVIDENCE_IMAGE_LONG_EDGE
 from .base import BackendStatus, VLMBackend, VLMError, VLMResponse, encode_jpeg
 
 # Substrings that mean "the credentials are fine, the account is not".
@@ -71,7 +72,8 @@ class CursorBackend(VLMBackend):
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 16000,
                  json_schema: dict | None = None,
-                 effort: str | None = None) -> VLMResponse:
+                 effort: str | None = None,
+                 long_edge: int | None = None) -> VLMResponse:
         # The Agent SDK has no constrained-decoding hook, so the schema is
         # carried in the prompt and enforced by evidence.parse. json_schema is
         # accepted and ignored to keep the two backends interchangeable.
@@ -84,7 +86,7 @@ class CursorBackend(VLMBackend):
 
         sdk_images = []
         for path in images:
-            raw, _ = encode_jpeg(path)
+            raw, _ = encode_jpeg(path, long_edge or EVIDENCE_IMAGE_LONG_EDGE)
             sdk_images.append(SDKImage.from_data(raw, "image/jpeg"))
 
         # photo_id is communicated in the prompt header rather than as

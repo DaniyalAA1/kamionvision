@@ -179,6 +179,11 @@ def _badge(chain, client, report: EvidenceReport, gate: GateReport,
     not turn up, because the verdict would then read as if it had.
     """
     if not passes.badge_available():
+        # Cannot happen in a built tree - `prompts.badge_prompt` ships - but a
+        # witness that quietly did not turn up is worse than one that did not,
+        # because the verdict would read as if it had.
+        report.parse_warnings.append(
+            "this build has no badge prompt, so the badge was not read separately")
         return
     check = passes.best_badge_frame(gate)
     crop = passes.write_badge_crop(check, tmpdir) if check is not None else None
@@ -416,7 +421,10 @@ def run(gate: GateReport, declared: dict | None = None, *,
     # `body_type` can stop the pricing stage and `same_vehicle` can stop the
     # valuation - and until now it was the only call in the pipeline still
     # decided by a single draw.
-    read = sampling.identity_consensus(chain, select_identity_photos(gate), declared,
+    # `limit` is pass B's budget and IDENTITY_PHOTOS is pass A's; the smaller
+    # wins, so a caller asking for a cheap four-frame run gets one.
+    identity_photos = select_identity_photos(gate, min(IDENTITY_PHOTOS, limit))
+    read = sampling.identity_consensus(chain, identity_photos, declared,
                                        max_tokens=IDENTITY_MAX_TOKENS, repair=_repair)
     client = read.client
     report.vehicle = read.vehicle

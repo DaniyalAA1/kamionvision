@@ -76,13 +76,21 @@ class VLMBackend:
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 4096,
                  json_schema: dict | None = None,
-                 effort: str | None = None) -> VLMResponse:
-        """`effort` is per-call, not per-backend.
+                 effort: str | None = None,
+                 long_edge: int | None = None) -> VLMResponse:
+        """`effort` and `long_edge` are per-call, not per-backend.
 
         The passes are not one kind of work. Reading a tread block off a
         photograph is perception; deciding whether that tread block is
         "moderate" against a written rubric is deduction, and the second wants
         a budget the first does not. None means the backend's configured
         default, so every existing caller keeps its behaviour.
+
+        `long_edge` is the same idea for pixels. The close-ups are downscaled to
+        `EVIDENCE_IMAGE_LONG_EDGE` because sixteen frames at full size is a
+        twenty-thousand-token call for no gain on a tread block. Identity is the
+        opposite problem: a model badge is small in frame, and 1024 px across a
+        whole tractor leaves "F-MAX 500" a few pixels tall. None means the
+        module default, so every existing caller keeps its behaviour.
         """
         raise NotImplementedError

@@ -155,20 +155,6 @@ class _Router(_Client):
         return VLMResponse(text=text, backend=self.name, model="r-1")
 
 
-def _badge_prompt_bridge():
-    """`prompts.badge_prompt` belongs to another agent; bridge it if it is late.
-
-    The contract is fixed - keyword-only `make` and `model`, one string out -
-    so a stand-in that honours it exercises exactly the same wiring.
-    """
-    if hasattr(prompts, "badge_prompt"):
-        return unittest.mock.patch.object(prompts, "badge_prompt",
-                                          wraps=prompts.badge_prompt)
-    return unittest.mock.patch.object(
-        prompts, "badge_prompt", create=True,
-        new=lambda *, make=None, model=None: 'Return "badge_text" as JSON.')
-
-
 # --- item 6: the identity pass, sampled ------------------------------------
 
 class IdentityConsensus(unittest.TestCase):
@@ -658,8 +644,7 @@ class BadgeReadInTheRun(unittest.TestCase):
                                       box=[200, 100, 1000, 900]))
 
     def _run(self, router):
-        with _badge_prompt_bridge(), \
-             unittest.mock.patch.object(stage_module.vlm, "resolve_chain",
+        with unittest.mock.patch.object(stage_module.vlm, "resolve_chain",
                                         return_value=[router]):
             return stage_module.run(_gate(self.photos), None, limit=3)
 
@@ -697,11 +682,10 @@ class BadgeReadInTheRun(unittest.TestCase):
 
     def test_turning_it_off_removes_the_call_and_nothing_else(self):
         router = _Router()
-        with unittest.mock.patch.object(stage_module, "BADGE_READ", False):
-            with _badge_prompt_bridge(), \
-                 unittest.mock.patch.object(stage_module.vlm, "resolve_chain",
-                                            return_value=[router]):
-                report = stage_module.run(_gate(self.photos), None, limit=3)
+        with unittest.mock.patch.object(stage_module, "BADGE_READ", False), \
+             unittest.mock.patch.object(stage_module.vlm, "resolve_chain",
+                                        return_value=[router]):
+            report = stage_module.run(_gate(self.photos), None, limit=3)
         self.assertEqual(router.badge_calls, 0)
         self.assertEqual(report.vehicle.make, "Ford Trucks")
 
