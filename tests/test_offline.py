@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from app import evidence, gate, report
+from app import evidence, gate, report, subject
 from app.config import USD_TRY
 from app.schema import (Appraisal, Detection, EvidenceReport, GateDecision,
                         GateReport, Issue, PhotoCheck)
@@ -1395,3 +1395,142 @@ class SubjectDrawContract(unittest.TestCase):
             if "dataset.disqualifying" in line:
                 self.assertIn("blockedLabel", line, line)
         self.assertIn("refusedAsNotATruck = decision === 'refuse_not_a_truck'", src)
+
+
+def _boxes(*boxes, width=1000, height=600, view="unknown", view_conf=0.0):
+    """A PhotoCheck carrying synthetic detections. Same shape the SubjectBox
+    helper builds, hoisted so the newer classes can share it."""
+    c = _check(0)
+    c.width, c.height = width, height
+    c.view, c.view_conf = view, view_conf
+    c.detections = [Detection(label=lbl, confidence=conf, box=list(box),
+                              area_frac=abs((box[2] - box[0]) * (box[3] - box[1]))
+                              / float(width * height))
+                    for lbl, conf, box in boxes]
+    return c
+
+
+class VehicleDedup(unittest.TestCase):
+    """One physical vehicle, one box.
+
+    COCO runs NMS per class, so a tractor comes back as truck 0.71, bus 0.44
+    and car 0.31 at the same pixels. The duplicates were counted as competing
+    vehicles - which triggers a crop - and one of them could be picked as the
+    subject in its own right.
+    """
+
+    def test_one_vehicle_three_labels_collapses_to_the_truck(self):
+        c = _boxes(("truck", 0.71, (300, 100, 800, 500)),
+                   ("bus", 0.44, (305, 104, 795, 498)),
+                   ("car", 0.31, (298, 98, 802, 502)))
+        kept = subject.dedupe_vehicles(c.detections)
+        self.assertEqual([(d.label, d.confidence) for d in kept], [("truck", 0.71)])
+
+    def test_two_trucks_side_by_side_both_survive(self):
+        c = _boxes(("truck", 0.9, (0, 100, 300, 500)),
+                   ("truck", 0.8, (320, 100, 620, 500)))
+        self.assertEqual(len(subject.dedupe_vehicles(c.detections)), 2)
+
+    def test_a_cab_inside_a_whole_rig_survives_as_two_candidates(self):
+        # Nested, but not the same object: IoU well under the merge threshold.
+        c = _boxes(("truck", 0.9, (100, 100, 900, 500)),
+                   ("truck", 0.6, (100, 150, 400, 480)))
+        self.assertEqual(len(subject.dedupe_vehicles(c.detections)), 2)
+
+    def test_a_motorcycle_over_a_truck_is_never_merged_away(self):
+        # COCO_DISQUALIFYING is fed by exactly these boxes, and the gate's
+        # worst possible error is refusing a real listing.
+        c = _boxes(("truck", 0.87, (100, 100, 900, 500)),
+                   ("motorcycle", 0.62, (105, 105, 895, 495)))
+        kept = subject.dedupe_vehicles(c.detections)
+        self.assertEqual(sorted(d.label for d in kept), ["motorcycle", "truck"])
+
+    def test_the_duplicates_stop_counting_as_competition(self):
+        c = _boxes(("truck", 0.71, (300, 100, 800, 500)),
+                   ("bus", 0.44, (305, 104, 795, 498)),
+                   ("car", 0.60, (298, 98, 802, 502)),
+                   ("truck", 0.8, (10, 100, 250, 450)))
+        c.detections = subject.dedupe_vehicles(c.detections)
+        c.subject_box = gate.pick_subject(c)
+        self.assertEqual(gate.competing_vehicles(c), 1)
+
+
+class SubjectScore(unittest.TestCase):
+    """What the frame score buys over "a centred box wins outright".
+
+    An override has no crossover point. Any 0.26-confidence box straddling the
+    centre pixel eliminated a 0.95-confidence box filling a third of the frame,
+    which is how an engine-bay close-up came to be cropped to a background
+    lorry. The nine cases in SubjectBox are the regression floor; these are the
+    ones the old rule got wrong.
+    """
+
+    def test_the_reported_bug_a_big_truck_beats_a_speck_on_the_centre(self):
+        c = _boxes(("truck", 0.95, (0, 80, 480, 518)),     # 35% of frame, off-centre
+                   ("truck", 0.26, (460, 265, 540, 332)))  # 0.9%, holds the centre
+        self.assertEqual(gate.pick_subject(c), [0, 80, 480, 518])
+
+    def test_confidence_counts(self):
+        # Mirror-image boxes, identical area and identical distance from the
+        # centre. Under area x centrality they tie and the answer is whichever
+        # one YOLO happened to emit first.
+        c = _boxes(("truck", 0.3, (600, 150, 900, 450)),
+                   ("truck", 0.9, (100, 150, 400, 450)))
+        self.assertEqual(gate.pick_subject(c), [100, 150, 400, 450])
+
+    def test_a_centred_box_beats_a_rival_twice_its_size(self):
+        c = _boxes(("truck", 0.8, (420, 220, 620, 380)),
+                   ("truck", 0.8, (20, 20, 340, 220)))
+        self.assertEqual(gate.pick_subject(c), [420, 220, 620, 380])
+
+    def test_and_loses_to_one_four_times_its_size(self):
+        c = _boxes(("truck", 0.8, (420, 220, 620, 380)),
+                   ("truck", 0.8, (20, 20, 660, 220)))
+        self.assertEqual(gate.pick_subject(c), [20, 20, 660, 220])
+
+    def test_a_car_wins_when_it_is_the_only_vehicle_in_frame(self):
+        # COCO labels a tight cab shot `car`. Excluding the class outright
+        # loses real subjects; it is only barred when something better is
+        # on offer, which is what test_a_car_is_never_the_subject pins.
+        c = _boxes(("car", 0.9, (100, 100, 600, 500)))
+        self.assertEqual(gate.pick_subject(c), [100, 100, 600, 500])
+
+    def test_exactly_one_detection_is_flagged_as_the_subject(self):
+        c = _boxes(("truck", 0.9, (300, 100, 800, 500)),
+                   ("truck", 0.8, (10, 100, 200, 400)),
+                   ("car", 0.7, (820, 300, 980, 420)))
+        box = gate.pick_subject(c)
+        flagged = [d for d in c.detections if d.is_subject]
+        self.assertEqual(len(flagged), 1)
+        self.assertEqual(list(flagged[0].box), box)
+
+    def test_a_sub_threshold_winner_is_appended_to_the_detections(self):
+        # The screen is asked to draw the subject box. A candidate below the
+        # 0.25 the screen shows would otherwise be a box it cannot find.
+        c = _boxes(("car", 0.9, (0, 0, 200, 200)))
+        faint = Detection(label="truck", confidence=0.19, box=[200, 80, 800, 520],
+                          area_frac=(600 * 440) / 600000)
+        c._candidates = subject.build_candidates(c, [faint])
+        self.assertEqual(gate.pick_subject(c), [200, 80, 800, 520])
+        self.assertIn(faint, c.detections)
+        self.assertTrue(faint.is_subject)
+
+    def test_the_real_tr_clean_000_frame_not_just_the_stylised_one(self):
+        """The detections YOLOv8n actually returns on `demo/tr_clean/000.jpg`.
+
+        `SubjectBox.test_a_clipped_centre_subject_beats_a_whole_truck_at_the_edge`
+        stylises this frame, and it stylises it with the clipping the wrong way
+        round: on the real photograph it is the BACKGROUND tractor that is
+        flush against x=0, and the subject the photographer framed sits clear
+        of every edge. Edge relief for any box touching an edge scored the
+        wrong truck 0.378 against the right one's 0.349 while the synthetic
+        test stayed green.
+        """
+        c = _boxes(("car", 0.249, (309.3, 506.7, 1145.1, 992.2)),
+                   ("truck", 0.805, (0.0, 213.1, 526.4, 898.6)),
+                   ("truck", 0.454, (549.3, 76.4, 998.6, 588.4)),
+                   ("bus", 0.677, (1240.3, 302.4, 1439.1, 634.9)),
+                   ("truck", 0.549, (1107.0, 403.6, 1246.9, 579.1)),
+                   ("car", 0.519, (985.2, 478.8, 1151.3, 597.3)),
+                   width=1440, height=1080)
+        self.assertEqual(gate.pick_subject(c), [549.3, 76.4, 998.6, 588.4])
