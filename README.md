@@ -45,9 +45,10 @@ you can still click through it when a judge asks a question.
 ## How it works
 
 ```
-photos ──▶ 1. Gate ──────▶ 2. Evidence ──▶ 3. Price ──────▶ 4. Report
-           reject/re-ask   one VLM call    comps + a        range +
-           ~1s, no LLM     fixed schema    calibrated band  citations
+photos ─▶ 1. Gate ─▶ 1b. Heads ─▶ 2. Evidence ─▶ 2b. Reconcile ─▶ 3. Price ─▶ 4. Report
+          reject/    trained on   one VLM call   heads correct    comps +     range +
+          re-ask     the corpus   fixed schema   the VLM, aloud   new-price   citations
+          ~1s                                                     anchor
 ```
 
 The ordering is the argument. The cheap deterministic stage runs first and can
@@ -70,6 +71,21 @@ Truck detection is **set-level, never per-photo**: a close-up of a tire has no
 truck-shaped object in it and is still a photo of the truck. A truck box only
 counts when it is the *subject* — at least 12% of the frame and no smaller than
 a competing vehicle in the same frame.
+
+**1b. Perception heads** (`app/perception/`) — three linear heads trained on the
+corpus, learning on the CLIP embedding the gate already computes. They exist
+because the gate can only *measure* a photo and the VLM can only *describe* one;
+neither can say "this frame is too corrupted for the claim you are about to
+read". The degradation head can, and its labels are real: 3,729 exactly-paired
+clean/degraded images where the applied transform is known. Every fold is
+grouped by vehicle.
+
+The view head is the interesting one. Its labels are CLIP zero-shot
+pseudo-labels, so accuracy against them only measures agreement with a noisy
+teacher. But a degraded twin inherits its original's label, so we can ask a
+better question — does the head hold its answer when the photo is muddied? It
+does, on **75.8%** of twins against the teacher's own **69.6%**. That is a real
+robustness gain from a teacher that is otherwise the ceiling.
 
 **2. Evidence** (`app/evidence.py`) — one structured call, all photos at once,
 into a fixed schema over a closed enum of 33 heavy-vehicle components. Every
@@ -94,6 +110,26 @@ cupping, fifth wheel plate scoring, frame rail corrosion, air bag sag, AdBlue
 tank, DPF, bunk and bolster wear. A generic dent/scratch/paint taxonomy is the
 tell that a car tool was pointed at a truck.
 
+**2b. Reconciliation** (`app/reconcile.py`) — `Issue.confidence` is a number the
+vision model writes about its own claim, and it is multiplied straight into the
+price. Nothing else in the pipeline was in a position to disagree with it. Now a
+fine-detail claim resting on a frame the degradation head scores past its
+calibrated cutoff gets downgraded, and the downgrade is written down. On the
+phone-photo case:
+
+```
+2 correction(s) applied to the vision model's findings:
+  · steer_tires: fine detail claimed from a photo scored 0.38 for degradation
+    (low_light_noise, awkward_angle) [photo 8]
+      confidence 0.98 → confidence 0.61
+```
+
+Nothing is deleted. A downgraded finding is still shown, still cites its photo,
+and carries the reason — the same posture as `fell_back_from`: changing your
+mind is allowed, doing it quietly is not. The identity head is forbidden from
+disputing a brand it was never trained on, because the corpus contains no Scania
+and a head that has never seen one will still name a class, confidently.
+
 **3. Price** (`app/pricing/`) — a hedonic ridge on `log(price) ~ log1p(age) +
 log(km) + brand + market + euro6` fit on the harvested asking prices, plus the
 comparable listings it was priced against and a bounded condition adjustment.
@@ -103,6 +139,32 @@ If the seller's asking price is supplied, it is judged against the comparable
 band — the measured one — and reported as in line with, above, or below the
 market, with the gap to the condition-adjusted estimate alongside. That is the
 question a Kamion buyer actually opens the app with.
+
+A **second pricing route** (`app/pricing/anchor.py`) covers what comparables
+cannot. The fit is 84 Turkish listings and 78 are Ford, so an unseen make
+previously got only a 1.85× widening — and the worst holdout needed 3.25× at 75%
+median error. Judges bring unseen photos, so that was the likeliest way this
+fails in the room.
+
+Published new price × a fitted retention curve needs no same-brand comparable to
+exist. The curve turns out to be a *better* model of the corpus than the hedonic
+fit — R² **0.936** out-of-fold against 0.842 — because a published price carries
+brand, segment and specification that three brand dummies cannot. Anchoring on
+today's price for the current model keeps both sides of `price / new_price`
+current, which sidesteps ~31% Turkish CPI rather than trying to model it.
+
+The two routes combine by inverse variance, so neither is privileged; inflating
+the hedonic variance by the measured unknown-brand factor is what hands the
+decision to the anchor. The blend may claw a widening back but is floored at
+1.0×, because the measured 80.3% coverage belongs to the unwidened band.
+
+Reference prices are hand-curated and stamped like `USD_TRY`, each row carrying
+a source URL, a date and a `source_type` — Ford Trucks Türkiye and MAN Türkiye
+official lists, Mercedes from trade press and widened 1.35× for it. Scania
+publishes its list only as a JPG, so that row is a deliberate null: OCR-ing a
+price off a scan to put a number in a truck valuation is not a risk worth
+taking. A brand with no row falls back to the existing widening, as Freightliner
+and Scania both correctly do.
 
 **4. Report** (`app/report.py`) — the same `Appraisal` object rendered as a
 terminal card or streamed to the web screen. Every condition line names its
@@ -127,10 +189,43 @@ is named:
 | Capture-quality floors | drop 2.3% of originals, 14.4% of twins | quantiles of the degraded-twin population, not round numbers |
 | Condition adjustment cap | ±9.4% | one out-of-fold residual standard deviation — the price variation age, km, brand and market do *not* explain |
 | Unseen-brand widening | 1.85× | **within-market** leave-one-brand-out over 7 holdouts across two markets |
+| Degradation head | AUC **0.985** degraded-vs-original, severity R² 0.695 | `app/perception/train.py`, vehicle-grouped 5-fold, against known synthetic transforms |
+| View head stability | **0.758** vs 0.696 zero-shot | agreement between a photo and its degraded twin, held out |
+| Identity head | **79.5%** brand vs 39.0% majority | vehicle-grouped, one row per vehicle |
+| Fine-detail cutoff | flags 5% of clean photos, catches **97%** of degraded | a quantile of predicted severity on clean photos, so the fixed quantity is a false-flag rate |
+| Retention curve | R² **0.936**, median error 3.1% | `app/pricing/train.py`, spec-grouped, out-of-fold |
+| Anchor on an unseen make | band 1.85×→**1.00×**, coverage 0.17→**0.83**, error 16.3%→**3.7%** | TR:MAN held out of the fit entirely and priced as an unknown — **n=6**, which is small and stated everywhere the number is |
 
-Two numbers are **stated assumptions, not measurements**, and the report says so
-where it uses them: the 1.12× band widening per missing canonical view, and the
-severity/impact weights that convert findings into a condition score.
+Three numbers are **stated assumptions, not measurements**, and the report says so
+where it uses them: the 1.12× band widening per missing canonical view, the
+severity/impact weights that convert findings into a condition score, and the
+1.35× widening applied to a trade-press list price against an OEM-official one.
+
+**A learned image→price model was measured, and does not exist on this corpus.**
+The obvious next move is to let the photos predict the part of the price that age
+and kilometres cannot explain, and fit the condition weights instead of stating
+them. `scripts/probe_residual_signal.py` asks whether that signal is there at all,
+under nested vehicle-grouped CV against a permuted-target null:
+
+| | residual sd | R² | null 95th pct | p |
+|---|---|---|---|---|
+| TR | 9.9% | −0.222 | −0.005 | 1.00 |
+| US | 22.1% | −0.038 | +0.017 | 0.57 |
+| pooled | 18.9% | −0.046 | −0.004 | 0.93 |
+
+Six pooling variants, all negative. The same pipeline passes its positive
+controls — brand 76.5% against a 39% majority, market 100%, year R² +0.23 — so
+this is the data, not the code. The blocker is the *target*, not the perceiver:
+Turkish asking prices are **23 distinct values across 84 listings**, 70% of them
+round to ₺100k, and ₺2,800,000 alone covers 26 of them. That is a dealer's price
+table, not a market. Both OEM sources also sell reconditioned stock, which
+compresses visible condition variance on purpose.
+
+So the condition weights stay hand-set and stay labelled an assumption. The gate
+that established this cost one script and saved 155 vision calls on a fit with
+nothing to learn. What the probe *does* bound is a linear read of CLIP
+embeddings; it is not proof that no perceiver could do better, and the honest
+next step is a corpus with real transaction prices rather than asking prices.
 
 Three things that went the other way, and were fixed because they were measured:
 
@@ -325,6 +420,17 @@ scripts/
   apply_manual_review.py      apply the review verdicts
   degrade_images.py           paired "seller with a phone" variants
   package_dataset.py          manifest, CSVs, splits, dataset card
+  cache_embeddings.py         CLIP embedding per image, what the heads train on
+  probe_residual_signal.py    the measurement that killed the learned price head
+
+data/reference/
+  new_prices_tr.json          hand-curated new-truck list prices, each row cited
+
+models/
+  gate_thresholds.json        capture floors, from quantiles of the degraded twins
+  price_model.json            hedonic ridge + calibration + the retention curve
+  perception.json             the three trained heads
+  yolov8n.pt                  stock COCO detector, vendored, never fine-tuned
 ```
 
 Reading it from anywhere:
@@ -350,7 +456,21 @@ memorisation.
 - **OEM stock is reconditioned**, which independently compresses visible condition
   variance on the two OEM sources.
 - **No damage labels.** Condition annotation is not included; `damaged` exists only
-  as a Mascus field and is unset across the harvested set.
+  as a Mascus field and is unset across the harvested set. This is why the
+  condition weights are stated rather than fitted, and why the image→price probe
+  above has nothing to learn from.
+- **The degradation head was trained on synthetic corruption.** The 14 transforms
+  in `scripts/degrade_images.py` are a stand-in for a seller with a phone, not a
+  sample of one. It scores 0.985 AUC against the corruptions it was shown; on a
+  judge's genuine bad photo the failure mode is unknown, and the calibrated 5%
+  false-flag rate is a rate on *clean corpus* photos, not on real phone shots.
+- **The new-price reference covers four brands and one market.** Ford, MAN and
+  Mercedes have prices; Scania's is a deliberate null. A Volvo, DAF, Iveco or
+  Renault falls back to the 1.85× unseen-brand widening, and every non-Turkish
+  market falls back entirely.
+- **The anchor's payoff is measured on n=6.** Turkish stock is two makes, so
+  holding out Ford leaves six MAN rows to fit on — there is no larger honest
+  holdout available on this corpus.
 - **View tags are zero-shot**, not human-verified — treat them as a strong prior.
   `vehicle_class` is advisory only and nothing is dropped on it; a forced
   truck/car/trailer choice proved unreliable on real vehicle photos.
