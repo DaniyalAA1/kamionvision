@@ -24,7 +24,14 @@ from app.schema import EvidenceReport, Issue, PhotoFinding
 
 # The measured cap. `test_the_shipped_model_still_carries_the_measured_numbers`
 # pins this against the artifact rather than letting the two drift.
-CAP_LOG = 0.0988
+#
+# Halved from 0.0988 when `log_new_price` entered the design matrix. That is
+# the right direction and not a loosening: the cap is one residual sigma, which
+# is a statement about what the fit CANNOT see, and the fit can now see which
+# model it is. A condition adjustment that could move the band +-10.4% when the
+# regression did not know an F-MAX from a Cargo should not still move it that
+# far now that it does.
+CAP_LOG = 0.0551
 
 ALL_VIEWS = ["exterior_front_34", "exterior_side", "exterior_front", "exterior_rear",
              "interior_cab", "dashboard_odometer", "tire_wheel", "engine_bay",
@@ -682,10 +689,22 @@ class ConditionBand(unittest.TestCase):
         # the cap and every basis string in the product move with it.
         c = self.model.calibration
         self.assertEqual(self.model.residual_std, CAP_LOG)
-        self.assertEqual(c["r2_oof"], 0.8422)
-        self.assertEqual(c["median_ape_oof"], 4.2)
-        self.assertEqual(c["coverage_0.8"], 0.8027)
+        self.assertEqual(c["r2_oof"], 0.9506)
+        self.assertEqual(c["median_ape_oof"], 3.6)
+        self.assertEqual(c["coverage_0.8"], 0.8038)
         self.assertEqual(c["coverage_n"], 958)
+        # The same 84 rows and the same folds with `log_new_price` removed, so
+        # the gain the column is claimed to deliver can be read off the artifact
+        # rather than taken on trust. These four ARE the previously documented
+        # numbers, which is what makes them the honest baseline.
+        without = c["without_new_price_column"]
+        self.assertEqual(without["r2_oof"], 0.8422)
+        self.assertEqual(without["median_ape_oof"], 4.2)
+        self.assertEqual(without["residual_std_oof"], 0.0988)
+        self.assertEqual(without["coverage_0.8"], 0.8027)
+        # Half the band width at the same coverage is the whole claim.
+        self.assertLess(c["band_width_pct_0.8"], without["band_width_pct_0.8"] / 1.8)
+        self.assertAlmostEqual(c["coverage_0.8"], without["coverage_0.8"], places=2)
 
     def test_the_condition_band_is_never_narrower_than_the_comparable_one(self):
         """The mirror of the anchor's floor, and for the same reason.
