@@ -244,37 +244,41 @@
   aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--lot-deep);
-  border: 0;
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   cursor: pointer;
   text-align: left;
   color: var(--card);
-  transition: transform .22s var(--ease-out), box-shadow .22s var(--ease-out);
+  transition: transform .3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow .3s cubic-bezier(0.2, 0.8, 0.2, 1), border-color .3s ease;
 }
-.truck:hover, .truck:focus-visible { transform: translateY(-3px); box-shadow: var(--lift); }
+.truck:hover, .truck:focus-visible { 
+  transform: translateY(-4px); 
+  box-shadow: 0 12px 24px -8px rgba(12, 18, 25, 0.15); 
+  border-color: var(--steel-dim);
+}
 .truck img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform .5s var(--ease-out), opacity .4s;
+  transition: transform .6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity .4s;
   opacity: 0;
 }
 .truck img.in { opacity: 1; }
-.truck:hover img { transform: scale(1.035); }
+.truck:hover img { transform: scale(1.05); }
 
 .truck-scrim {
   position: absolute;
   inset: auto 0 0 0;
-  padding: 2.6rem .8rem .7rem;
+  padding: 2.6rem 1rem 1rem;
   background: linear-gradient(to top,
-    rgba(12, 18, 25, .88) 0%, rgba(12, 18, 25, .6) 45%, rgba(12, 18, 25, 0) 100%);
+    rgba(12, 18, 25, 0.95) 0%, rgba(12, 18, 25, 0.5) 50%, rgba(12, 18, 25, 0) 100%);
   pointer-events: none;
 }
 .truck-name {
   display: block;
-  font: 600 var(--t-base)/1.2 var(--sans);
+  font: 500 var(--t-base)/1.2 var(--sans);
   letter-spacing: -.01em;
 }
 .truck-spec {
@@ -282,8 +286,8 @@
   flex-wrap: wrap;
   gap: .45rem .7rem;
   font: 400 var(--t-xs)/1.4 var(--sans);
-  color: rgba(255, 255, 255, .72);
-  margin-top: .28rem;
+  color: rgba(255, 255, 255, .8);
+  margin-top: .35rem;
 }
 .truck-spec-item {
   display: inline-flex;
