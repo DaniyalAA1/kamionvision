@@ -32,11 +32,23 @@ class LandingTests(unittest.TestCase):
         self.assertGreaterEqual(links.count('/app'), 4)
         self.assertIn('id="dropzone"', (WEB / 'index.html').read_text())
 
-    def test_guided_demo_is_explicit(self):
-        self.assertIn('not a live appraisal', self.source)
-        controls = [attrs for _, attrs in self.page.tags if 'data-inspect' in attrs]
-        self.assertEqual(len(controls), 6)
-        self.assertTrue(all('aria-pressed' in attrs for attrs in controls))
+    def test_the_scroll_story_is_labelled_as_a_frozen_run(self):
+        # The page's whole argument is that its evidence is real. It has to say
+        # both halves out loud: this one is frozen, and yours runs live.
+        self.assertIn('one real run on a real Turkish listing', self.source)
+        self.assertIn('Your own photos run live', self.source)
 
     def test_motion_preference_is_supported(self):
-        self.assertIn('prefers-reduced-motion:reduce', (WEB / 'styles/landing.css').read_text())
+        for sheet in ('styles/landing.css', 'styles/story.css'):
+            self.assertIn('prefers-reduced-motion', (WEB / sheet).read_text(), sheet)
+
+    def test_every_in_page_anchor_has_a_target(self):
+        ids = {attrs['id'] for _, attrs in self.page.tags if 'id' in attrs}
+        for tag, attrs in self.page.tags:
+            href = attrs.get('href', '')
+            if tag == 'a' and href.startswith('#') and len(href) > 1:
+                self.assertIn(href[1:], ids, href)
+
+
+if __name__ == '__main__':
+    unittest.main()

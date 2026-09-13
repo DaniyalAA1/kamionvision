@@ -1,11 +1,171 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Get a photo-backed condition assessment and a Turkish-market price range for your used truck. Meet KamionVision, your second pair of eyes."><title>KamionVision — Big rigs. Zero guesswork.</title><link rel="icon" href="/static/assets/kip.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/styles/fonts.css"><link rel="stylesheet" href="/static/styles/landing.css"></head>
-<body><a class="skip" href="#playground">Skip to interactive demo</a>
-<header class="nav wrap"><a class="brand" href="/" aria-label="KamionVision home"><span class="brand-icon">k<span>↗</span></span>kamion<span class="brand-light">vision</span><span class="beta">BETA</span></a><nav aria-label="Main navigation"><a href="#how">How it works</a><a href="#playground">Take a test drive</a></nav><a class="button small dark" href="/app">Appraise a truck <span>↗</span></a></header>
-<main><section class="hero wrap"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> A SECOND PAIR OF EYES. NOT A SECOND OPINION.</div><h1>Big rigs.<br>Zero <span class="orange">guesswork.</span><span class="heading-star" aria-hidden="true">✳</span></h1><p class="intro">A truck has a story. Read it before you buy it.<br>Turn photos into a clearer picture of its condition<br class="desktop"> and what it could be worth.</p><div class="hero-actions"><a class="button orange-button" href="/app">Let's look at your truck <span>↗</span></a><a class="text-link" href="#playground">Try the demo <span>↓</span></a></div><p class="micro">YOUR PHOTOS. REAL COMPARABLES. NO CRYSTAL BALL.</p></div>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Get a photo-backed condition assessment and a Turkish-market price range for your used truck. Meet KamionVision, your second pair of eyes."><title>KamionVision — Big rigs. Zero guesswork.</title><link rel="icon" href="/static/assets/kip.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/styles/fonts.css"><link rel="stylesheet" href="/static/styles/landing.css"><link rel="stylesheet" href="/static/styles/story.css"></head>
+<body><a class="skip" href="#story">Skip to how it works</a>
+<header class="nav wrap"><a class="brand" href="/" aria-label="KamionVision home"><span class="brand-icon">k<span>↗</span></span>kamion<span class="brand-light">vision</span><span class="beta">BETA</span></a><nav aria-label="Main navigation"><a href="#story">How it works</a><a href="#story">See a real run</a></nav><a class="button small dark" href="/app">Appraise a truck <span>↗</span></a></header>
+<main><section class="hero wrap"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> A SECOND PAIR OF EYES. NOT A SECOND OPINION.</div><h1>Big rigs.<br>Zero <span class="orange">guesswork.</span><span class="heading-star" aria-hidden="true">✳</span></h1><p class="intro">A truck has a story. Read it before you buy it.<br>Turn photos into a clearer picture of its condition<br class="desktop"> and what it could be worth.</p><div class="hero-actions"><a class="button orange-button" href="/app">Let's look at your truck <span>↗</span></a><a class="text-link" href="#story">Watch a real run <span>↓</span></a></div><p class="micro">YOUR PHOTOS. REAL COMPARABLES. NO CRYSTAL BALL.</p></div>
 <div class="world" aria-label="Pixel art landscape with Kip the friendly truck"><div class="world-label">MEET YOUR NEW CO-DRIVER</div><span class="pixel-sun" aria-hidden="true"></span><span class="cloud cloud-one" aria-hidden="true"></span><span class="cloud cloud-two" aria-hidden="true"></span><div class="hill hill-back"></div><div class="hill hill-front"></div><div class="distance-sign">İSTANBUL <span>↗</span></div><div class="speech" id="kip-speech" role="status">Big wheels. Bigger peace of mind.</div><button class="mascot" id="kip" aria-label="Say hello to Kip the pixel truck"><img src="/static/assets/kip.svg" alt="Kip, a smiling orange 8-bit truck"><span class="mascot-shadow"></span></button><div class="road"><div class="road-dashes"></div></div><div class="world-bottom"><span>↑ CLICK KIP. HE'S FRIENDLY.</span><button id="cruise" aria-pressed="false">GO FOR A SPIN →</button></div><span class="world-coordinate">41.0082° N / 28.9784° E</span></div>
 </section><div class="promise-strip"><div class="wrap"><span>BUILT FOR THE PEOPLE<br><b>BEHIND THE WHEEL.</b></span><span>↗ Buy with context</span><span>◎ Sell with confidence</span><span>▧ Every claim, a photo</span><span class="strip-end">LESS GUESS. MORE GO.</span></div></div>
-<section class="playground wrap" id="playground"><div class="section-top"><div><p class="eyebrow">01 / KICK THE DIGITAL TIRES</p><h2>Don't take our word.<br><span class="muted">Take the wheel.</span></h2></div><p>A real truck. A guided walkthrough.<br>Tap a marker to see how photo-backed<br>evidence takes the guesswork out.</p></div><div class="demo"><div class="photo-panel"><div class="photo-toolbar"><span><i class="status-dot"></i> THE INSPECTION PLAYGROUND</span><span>01 / 01</span></div><div class="photo-stage"><img src="/static/assets/demo-truck.jpg" alt="Rear view of a red Ford tractor showing cab, fifth wheel and rear tires" width="1000" height="750"><div class="scan-line" aria-hidden="true"></div><button class="hotspot spot-one active" data-inspect="0" aria-label="Inspect cab" aria-pressed="true">1</button><button class="hotspot spot-two" data-inspect="1" aria-label="Inspect fifth wheel" aria-pressed="false">2</button><button class="hotspot spot-three" data-inspect="2" aria-label="Inspect rear tires" aria-pressed="false">3</button><span class="photo-caption">SAMPLE PHOTO · FORD TRACTOR UNIT</span></div></div><aside class="demo-report"><div class="report-top"><span class="eyebrow">A CLOSER LOOK</span><span class="example-tag">GUIDED EXAMPLE</span></div><div class="inspection-tabs" role="group" aria-label="Inspection area"><button data-inspect="0" class="active" aria-pressed="true">01 Cab</button><button data-inspect="1" aria-pressed="false">02 Coupling</button><button data-inspect="2" aria-pressed="false">03 Tires</button></div><div id="inspection-copy" aria-live="polite"><span class="finding-label">VISIBLE IN THIS PHOTO</span><h3>The backstory<br>starts at the cab.</h3><p>The rear cab panel is visible. This angle helps locate exterior wear, but it can't establish accident history.</p><div class="evidence-note"><span>↳</span><div><b>The honest next step</b><p>Ask for front and side views to complete the exterior picture.</p></div></div></div><div class="report-footer"><span id="inspected-count">1 OF 3 AREAS EXPLORED</span><div class="explore-progress"><i id="explore-fill"></i></div><a href="/app" class="button dark">Now inspect your truck <span>↗</span></a><p>Illustrative walkthrough, not a live appraisal.<br>Your full appraisal runs on your own photos.</p></div></aside></div></section>
-<section class="how wrap" id="how"><div class="section-top"><div><p class="eyebrow">02 / FROM CAMERA ROLL TO CLEARER CALL</p><h2>Three stops.<br>One smarter decision.</h2></div><img class="tiny-kip" src="/static/assets/kip.svg" alt="Kip is ready to help"></div><div class="steps"><article><span class="step-no">[ 01 ]</span><div class="step-art camera-art" aria-hidden="true">▣ <span>+</span></div><h3>Show us the truck.</h3><p>Upload your photos. Add the year, mileage or asking price if you know them. Start with a few clear angles.</p></article><article><span class="step-no">[ 02 ]</span><div class="step-art" aria-hidden="true">[ <span>⌕</span> ]</div><h3>Look beyond the listing.</h3><p>We check the photos, identify visible condition signals and point back to the evidence. Missing a view? We'll say so.</p></article><article><span class="step-no">[ 03 ]</span><div class="step-art range-art" aria-hidden="true">├<span>━━◆━</span>┤</div><h3>Get a grounded range.</h3><p>See an estimated price range informed by Turkish-market listings, plus what the photos can—and can't—tell you.</p></article></div></section>
+<!-- story:start -->
+<section class="story" id="story" data-story>
+<div class="story-intro"><p class="eyebrow"><span class="status-dot"></span> 01 / WHAT HAPPENS TO YOUR PHOTOS</p><h2>21 photos.<br><span class="muted">One truck.</span><br>Here is every step<br>between them and a number.</h2><p class="story-lede">Not a mock-up. This is one real run on a real Turkish listing, frozen on 2026-09-13 so it can be shown without a network. Your own photos run live.</p></div>
+<div class="story-track" data-track>
+<div class="story-stage" data-stage>
+<div class="stage-head"><span class="stage-act" data-act-label>Identify</span><span class="stage-count" data-act-count></span></div>
+<div class="stage-body" data-stage-body>
+<article class="act act-gate" data-act="gate">
+<h3>Which of these is being sold?</h3>
+<figure class="lot-figure" data-lot data-detections="[{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.612,&quot;box&quot;:[0.2732,0.0006,0.9649,0.9051],&quot;area_frac&quot;:0.6255,&quot;is_subject&quot;:true},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.511,&quot;box&quot;:[0.823,0.1739,0.9994,0.5885],&quot;area_frac&quot;:0.0731,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.509,&quot;box&quot;:[0.1902,0.4142,0.2542,0.4758],&quot;area_frac&quot;:0.004,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.44,&quot;box&quot;:[0.2392,0.4038,0.3044,0.4932],&quot;area_frac&quot;:0.0058,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.373,&quot;box&quot;:[0.1284,0.4063,0.202,0.4778],&quot;area_frac&quot;:0.0053,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.316,&quot;box&quot;:[0.6924,0.2413,0.8578,0.5535],&quot;area_frac&quot;:0.0517,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;truck&quot;,&quot;confidence&quot;:0.305,&quot;box&quot;:[0.2767,0.0062,0.6238,0.617],&quot;area_frac&quot;:0.212,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.288,&quot;box&quot;:[0.2715,0.4052,0.3023,0.4369],&quot;area_frac&quot;:0.001,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;bus&quot;,&quot;confidence&quot;:0.28,&quot;box&quot;:[0.6177,0.2631,0.7658,0.5277],&quot;area_frac&quot;:0.0392,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;car&quot;,&quot;confidence&quot;:0.276,&quot;box&quot;:[0.2496,0.4024,0.3012,0.438],&quot;area_frac&quot;:0.0018,&quot;is_subject&quot;:false},{&quot;label&quot;:&quot;person&quot;,&quot;confidence&quot;:0.27,&quot;box&quot;:[0.0,0.0,0.1678,0.9972],&quot;area_frac&quot;:0.1674,&quot;is_subject&quot;:false}]"><span class="frame"><img src="/static/assets/story/lot.jpg" width="1100" height="825" alt="A dealer lot frame in which the detector found 10 vehicles and 1 other object" loading="lazy" decoding="async"></span><figcaption>10 vehicles and 1 other object in this one frame. The subject fills 62.5% of it and matches the vehicle the rest of the set is about (cosine 0.87).</figcaption></figure>
+<div class="gate-side">
+<dl class="gate-facts"><div><dt>Photos accepted</dt><dd><span data-count>21</span> of <span data-count>21</span></dd></div><div><dt>Read in depth</dt><dd><span data-count>16</span>, one vision call each</dd></div><div><dt>Views covered</dt><dd><span data-count>7</span> of <span data-count>11</span></dd></div><div><dt>Identified as</dt><dd>Ford Trucks F-MAX 500, 4x2 tractor unit</dd></div></dl>
+<p class="act-note">The vehicle in 8 of 10 boxed frame(s) recurs, seeded from 3 unambiguous whole-vehicle frame(s) at mean cosine 0.82. Truck detection is decided across the set, never frame by frame: a tire close-up contains no truck-shaped object and is still a photo of the truck.</p>
+<p class="act-timing">Stage 1 took 5.4s, on this machine, before any vision call.</p>
+</div>
+</article>
+<ol class="act act-read" data-act="read">
+<li class="beat" data-beat="0" data-photo="1" data-box="[0.2306, 0.0375, 0.7031, 0.795]">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/000.jpg" width="1100" height="825" alt="A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit." loading="lazy" decoding="async"></span><figcaption>A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 1 of 6</p>
+<p class="beat-shows">A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit.</p>
+<p class="beat-clean">Nothing wrong found in this frame.</p>
+<details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
+<li>Visible front cab panels and bumper sit square, with parallel gaps and no evident distortion.</li>
+<li>Red paint matches across the visible cab front, bumper corners and roof section.</li>
+<li>Front bumper and lower valance are complete and aligned, with only ordinary road-use marks visible.</li>
+<li>Grille is complete, securely seated and free of visible cracks or missing sections.</li>
+<li>Both headlamp assemblies are complete and their lenses appear clear and undamaged.</li>
+<li>Windscreen is clear in the visible area, with no evident chips or cracks.</li>
+<li>Mirror housings and arms on both sides are complete and appear correctly aligned.</li>
+<li>Roof deflector and upper cab trim appear complete, straight and securely fitted.</li>
+</ul></details>
+</div></li>
+<li class="beat" data-beat="1" data-photo="18" data-box="[0.004, 0.0071, 0.7378, 0.9282]">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/001.jpg" width="1100" height="825" alt="A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear." loading="lazy" decoding="async"></span><figcaption>A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 2 of 6</p>
+<p class="beat-shows">A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear.</p>
+<ul class="beat-issues">
+<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>paint finish</b><span class="issue-text">The lower-centre rear cab panel carries a local band of pale paint scuffing; the panel itself remains straight with no visible split or distortion.</span></li>
+</ul>
+<details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
+<li>The fifth-wheel plate is complete and level, with a grease film across the working face and no visible cracking, distortion or pronounced throat step.</li>
+<li>The visible catwalk sections, rear lamp clusters and suzie coils are present, with no obvious breakage or severed lines.</li>
+<li>Both rear mudflaps, guards and their brackets are present and substantially straight.</li>
+<li>Visible chassis rails and crossmembers retain their paint, with no lifting scale, perforation or deformation apparent.</li>
+<li>The visible drive tires have matching-looking tread patterns, substantial tread standing proud of the wear area and no obvious irregular shoulder wear or sidewall damage.</li>
+<li>The rear cab panel and adjacent covers appear straight, with parallel closures and no visible impact distortion.</li>
+<li>The fifth-wheel plate appears flat and complete, with a grease film and only ordinary coupling marks; no crack or distortion is visible.</li>
+<li>The rear cab structure and visible side fairing run straight without abnormal panel-gap divergence.</li>
+</ul></details>
+</div></li>
+<li class="beat" data-beat="2" data-photo="2">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/002.jpg" width="1100" height="825" alt="Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible." loading="lazy" decoding="async"></span><figcaption>Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 3 of 6</p>
+<p class="beat-shows">Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible.</p>
+<ul class="beat-issues">
+<li class="sev-minor"><span class="sev-chip">minor</span><b>drive tires</b><span class="issue-text">The outer dual has a broad shoulder scrub band worn noticeably below the centre ribs, with local chunking along the tread edge; this is uneven wear beyond the stated distance and calls for tire replacement plus pressure, alignment and suspension checks. The angle does not prove that the lowest area is level with the wear bars or expose casing, either of which would require immediate removal from service.</span></li>
+</ul>
+<details class="beat-strengths"><summary>5 things this frame confirms are in order</summary><ul>
+<li>The inner dual&#x27;s visible crown retains defined tread blocks and grooves standing proud of the wear bars.</li>
+<li>No bulge, exposed cord or casing-deep cut is visible on the exposed outer sidewall.</li>
+<li>The visible rim edge appears straight, without an evident crack or heavy kerbing.</li>
+<li>The inner drive tire&#x27;s visible tread remains clearly proud of the wear bars, without obvious cupping or scalloping.</li>
+<li>The visible rim edge appears straight and free of cracking.</li>
+</ul></details>
+</div></li>
+<li class="beat" data-beat="3" data-photo="15">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/003.jpg" width="1100" height="825" alt="A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame." loading="lazy" decoding="async"></span><figcaption>A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 4 of 6</p>
+<p class="beat-shows">A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame.</p>
+<ul class="beat-issues">
+<li class="sev-minor"><span class="sev-chip">minor</span><b>steer tires</b><span class="issue-text">The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service.</span> <span class="also">also seen in 1 other photo</span></li>
+</ul>
+<details class="beat-strengths"><summary>6 things this frame confirms are in order</summary><ul>
+<li>The visible sidewall shows no obvious bulge, exposed cord or deep cracking.</li>
+<li>The wheel rim appears straight, with all visible wheel fasteners present and no obvious hub-fluid streaking.</li>
+<li>The steel wheel rim appears circular and serviceable, with no visible impact distortion.</li>
+<li>Wheel fasteners are present, and the visible hub area is dry with no oil sling or active leakage.</li>
+<li>The wheel rim appears straight without visible impact distortion; all visible wheel nuts are present.</li>
+<li>The hub face is dry, with no visible fresh lubricant leakage.</li>
+</ul></details>
+</div></li>
+<li class="beat" data-beat="4" data-photo="10">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/004.jpg" width="1100" height="825" alt="The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat." loading="lazy" decoding="async"></span><figcaption>The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 5 of 6</p>
+<p class="beat-shows">The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat.</p>
+<ul class="beat-issues">
+<li class="sev-cosmetic"><span class="sev-chip">cosmetic</span><b>bunk sleeper</b><span class="issue-text">Light grey handling and scuff soiling is visible along the lower edge of the folded bunk mattress; the covering remains intact.</span></li>
+</ul>
+<details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
+<li>The visible bunk upholstery holds its shape with no tear, collapse or damp staining apparent.</li>
+<li>Overhead storage doors sit shut and aligned, and the retaining net remains secured.</li>
+<li>The headliner and roof-hatch surround appear dry, clean and free of sagging or water marks.</li>
+<li>Visible sleeper trim and panels are complete and uncracked, with wear consistent with the stated distance.</li>
+<li>The visible portion of the passenger seat retains its shape without apparent bolster collapse.</li>
+<li>The visible sleeper upholstery is intact, with no tears, damp marks or mould staining apparent.</li>
+<li>The folded bunk mattress holds its shape and shows no visible tears, cracked covering or damp staining.</li>
+<li>The luggage net is complete, taut and securely mounted.</li>
+</ul></details>
+</div></li>
+<li class="beat" data-beat="5" data-photo="4" data-box="[0.0, 0.0008, 0.9897, 1.0]">
+<figure class="beat-figure"><span class="frame"><img src="/static/assets/story/005.jpg" width="1100" height="825" alt="The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres." loading="lazy" decoding="async"></span><figcaption>The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres.</figcaption></figure>
+<div class="beat-verdict">
+<p class="beat-index">Photo 6 of 6</p>
+<p class="beat-shows">The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres.</p>
+<p class="beat-clean">Nothing wrong found in this frame.</p>
+<p class="beat-odo">Odometer read here: <b>164,374 km</b></p>
+<details class="beat-strengths"><summary>8 things this frame confirms are in order</summary><ul>
+<li>Odometer reads 164374 km, with &quot;km&quot; printed beside the digits; no digits are guessed.</li>
+<li>Cluster is live and displays neutral, zero road speed and zero engine speed.</li>
+<li>Fuel is at or very near empty: the display reads &quot;0 km to E&quot; and the amber low-fuel lamp is lit.</li>
+<li>AdBlue gauge appears approximately one-third full; no numeric quantity is displayed.</li>
+<li>Red parking-brake and seat-belt reminder lamps are lit while stationary. The red battery/charging lamp is also lit with the engine evidently stopped; no engine, ABS/EBS or emissions fault lamp is visible.</li>
+<li>The displayed message is the trip-reset instruction &quot;Sıfırlamak için OK basılı tutun&quot;; no service-interval, DPF-regeneration or fault-code message is shown.</li>
+<li>Visible trip data reads 1492.4 km, 65 km/h average speed, 27.6 l/100km average consumption and 22:40:03 elapsed time.</li>
+<li>Instrument surround and visible dash top are complete, aligned and free from visible cracking or delamination.</li>
+</ul></details>
+</div></li>
+</ol>
+<article class="act act-merge" data-act="merge">
+<h3>One defect seen twice is one defect.</h3>
+<p class="merge-count"><b><span data-count>13</span></b> raw observations <span aria-hidden="true">&rarr;</span> <b><span data-count>6</span></b> findings</p>
+<div class="merge-side">
+<p class="merge-example"><b>steer tires</b> &mdash; The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service. <span class="also">seen in 2 photos</span></p>
+<p class="act-note">1 finding had a raised severity clamped because only one sample of that photo reported it, and 1 had samples that disagreed with each other. Both are shown with the change recorded, never deleted &mdash; changing your mind is allowed, doing it quietly is not.</p>
+</div>
+</article>
+<article class="act act-check" data-act="check">
+<h3>Then it checks itself.</h3>
+<div class="check"><h4>The odometer, read twice</h4><ul class="readings"><li><span>Seller typed</span><b><span data-count>164,374</span> km</b></li><li><span>Vision model read</span><b><span data-count>164,374</span> km</b></li><li><span>Offline OCR read</span><b><span data-count>164,374</span> km</b><em>confidence 0.99</em></li></ul><p class="check-verdict agree">All three agree, so the band does not widen. Had they disagreed past 2%, both figures would be shown and the range would widen 1.25&times; rather than the number quietly moving.</p></div>
+<div class="check"><h4>The price, reached twice</h4><ul class="readings"><li><span>From 84 comparable listings</span><b><span data-count>₺2,451,000</span></b></li><li><span>From new price &times; fitted retention</span><b><span data-count>₺2,472,000</span></b></li></ul><p class="check-verdict agree">Two routes that share no inputs, 0.9% apart. The second starts from ₺7,433,143 new (<a href="https://www.fordtrucks.com.tr/fiyat-listesi" rel="nofollow noopener">Ford Trucks Turkiye official price list</a>, 2026-09-08) and applies 33.3% retention at 164,374 km.</p></div>
+</article>
+<article class="act act-price" data-act="price">
+<h3>And only then, a number.</h3>
+<div class="story-band" data-band><div class="band-row" data-band-row="adjusted"><span class="band-label">Photo-adjusted estimate</span><span class="band-values"><span data-count>₺2,015,000</span> &ndash; <span data-count>₺2,619,000</span></span><span class="band-sub">The comparable estimate moved by what the photos show. No measured coverage guarantee.</span></div><div class="band-row" data-band-row="baseline"><span class="band-label">Comparable-market baseline</span><span class="band-values"><span data-count>₺2,084,000</span> &ndash; <span data-count>₺2,604,000</span></span><span class="band-sub">80.3% of held-out listings fall inside this band &mdash; measured, and it belongs to this row only.</span></div></div>
+<p class="band-usd">About $41,500 &ndash; $53,900 at 48.596 TRY/USD.</p>
+<p class="band-asking">The seller asks ₺2,550,000 &mdash; in line with the market. The asking price sits inside the band that comparable trucks of this age and mileage are listed at.</p>
+<p class="band-grade">Condition <b>good</b> &mdash; 6 finding(s), none of them severe enough or confident enough to set a grade on its own; the wear totals 0.2 against a 1.8 threshold for fair.</p>
+<p class="act-note">The vision model never sees a price and never emits one. The price model never sees the photographs. The only thing that crosses between them is a condition multiplier, and these are estimated asking prices, not confirmed sale prices.</p>
+</article>
+<article class="act act-limits" data-act="limits">
+<h3>And what it will not say.</h3>
+<ul class="limits">
+<li>Measured tread depth, tire date codes, retread status, concealed dual sidewalls and opposite steer-tire condition</li>
+<li>Brake linings, discs or drums and complete hub inspection</li>
+<li>Air bags, shocks, steering and suspension condition</li>
+<li>Fifth-wheel jaws, locking action and mounting play</li>
+<li>Engine, driveline, fluid leakage and running condition</li>
+<li>AdBlue tank, exhaust and DPF condition</li>
+<li>Driver&#x27;s seat, pedals and entry-step wear</li>
+<li>Engine hours and running-engine warning-lamp check</li>
+</ul>
+<a class="button orange-button" href="/app">Run this on your truck <span>&#8599;</span></a>
+</article>
+</div></div></div>
+</section>
+<!-- story:end -->
 <section class="honesty wrap"><span class="eyebrow">NO X-RAY VISION. NO MAGIC NUMBERS.</span><h2>A good co-driver knows<br>when to say <em>“I can't tell.”</em></h2><p>Photos can't reveal everything under the hood. KamionVision supports your judgment; it doesn't replace a physical inspection or guarantee a sale price.</p><a class="text-link" href="/app">See what your photos can tell you ↗</a></section>
-<section class="last-stop wrap"><div><p class="eyebrow">YOUR NEXT TRUCK DESERVES A CLOSER LOOK.</p><h2>Good eye.<br>Great next move.</h2></div><a class="button orange-button" href="/app">Appraise a truck <span>↗</span></a></section></main><footer class="wrap"><a class="brand" href="/">kamion<span class="brand-light">vision</span></a><span>BIG RIG ENERGY. SMALL PIXEL FRIEND.</span><a href="#">Back to the top ↑</a></footer><script src="/static/js/landing.js" defer></script></body></html>
+<section class="last-stop wrap"><div><p class="eyebrow">YOUR NEXT TRUCK DESERVES A CLOSER LOOK.</p><h2>Good eye.<br>Great next move.</h2></div><a class="button orange-button" href="/app">Appraise a truck <span>↗</span></a></section></main><footer class="wrap"><a class="brand" href="/">kamion<span class="brand-light">vision</span></a><span>BIG RIG ENERGY. SMALL PIXEL FRIEND.</span><a href="#">Back to the top ↑</a></footer><script type="module" src="/static/js/landing.js"></script><script type="module" src="/static/js/story/index.js"></script></body></html>
