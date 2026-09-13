@@ -8,11 +8,25 @@
    Cards land out of order, because concurrent calls finish out of order.
    Newest work sits above the unread deck. Nothing here re-sorts. */
 
-import { $, el, viewAngle, reduced, titleise } from './dom.js';
-import { urlFor, citePhoto, checkFor, showFrame, markCell } from './frames.js';
+import { $, el, viewAngle, reduced, titleise, animate } from './dom.js';
+import { urlFor, citePhoto, checkFor, showFrame, markCell,
+         photoOrdinal, photoTotal } from './frames.js';
 import { partIcon } from './icons.js';
 
 const SEV_RANK = { major: 3, moderate: 2, minor: 1, cosmetic: 0 };
+
+/* Past this many photos in flight at once, sixteen individual sheen cards is
+   clutter rather than narration - fold them into one "reading N" card and let
+   them re-emerge as each finishes. */
+const LIVE_CAP = 4;
+const liveIds = new Set();
+let playheadId = null;
+
+function ordinalTag(id) {
+  const total = photoTotal();
+  const n = photoOrdinal(id);
+  return total ? `Photo ${n} of ${total}` : `Photo ${n}`;
+}
 
 export function begin(ids) {
   const rail = $('thoughts');
@@ -35,6 +49,8 @@ export function begin(ids) {
 export function clear() {
   hidePop();
   $('thoughts').replaceChildren();
+  liveIds.clear();
+  playheadId = null;
 }
 
 export function identity(msg) {
@@ -90,9 +106,22 @@ export function identity(msg) {
 
 export function reading(photoId) {
   const rail = $('thoughts');
-  if (rail.querySelector(`.thought-live[data-photo="${photoId}"]`)) return;
+  if (liveIds.has(photoId)) return;
+  liveIds.add(photoId);
   const waiting = rail.querySelector(`.thought-deck-print[data-photo="${photoId}"]`);
   if (waiting) waiting.classList.add('is-up');
+  syncLiveDisplay(rail);
+}
+
+function individualLiveCard(photoId) {
+  return document.querySelector(`.thought-live[data-photo="${photoId}"]`);
+}
+
+function liveSummary() {
+  return document.querySelector('#thoughts .thought-live-summary');
+}
+
+function buildLiveCard(photoId) {
   const plate = el('article', 'thought thought-live');
   plate.dataset.photo = String(photoId);
   const print = el('div', 'thought-print');
@@ -102,9 +131,102 @@ export function reading(photoId) {
   const cap = el('div', 'thought-caption');
   const check = checkFor(photoId);
   cap.append(el('strong', 'thought-view', viewAngle(check && check.view)));
+  cap.append(el('span', 'thought-ordinal', ordinalTag(photoId)));
   print.append(img, cap);
   plate.append(print);
-  insertWork(rail, plate);
+  return plate;
+}
+
+function buildSummaryCard() {
+  const card = el('div', 'thought thought-live thought-live-summary');
+  card.append(el('strong', 'thought-view', ''), el('p', 'thought-preview', ''));
+  return card;
+}
+
+function updateSummaryCard(card) {
+  card.querySelector('.thought-view').textContent = `Reading ${liveIds.size} photos`;
+  card.querySelector('.thought-preview').textContent =
+    'Concurrent calls in flight - cards land as each one finishes.';
+}
+
+/* Past LIVE_CAP simultaneous in-flight calls, replace every individual card
+   with one collapsed summary; below it, make sure each still-live photo has
+   its own card. Called on every arrival and every resolution, so the rail
+   never carries a stale mix of both states. */
+function syncLiveDisplay(rail) {
+  if (liveIds.size > LIVE_CAP) {
+    document.querySelectorAll('.thought-live:not(.thought-live-summary)')
+      .forEach((n) => n.remove());
+    let summary = liveSummary();
+    if (!summary) { summary = buildSummaryCard(); insertWork(rail, summary); }
+    updateSummaryCard(summary);
+  } else {
+    const summary = liveSummary();
+    if (summary) summary.remove();
+    for (const id of liveIds) {
+      if (!individualLiveCard(id)) insertWork(rail, buildLiveCard(id));
+    }
+  }
+}
+
+/* The deck print's own thumbnail flies to the finished card's position,
+   rather than fading in place while an unrelated card appears elsewhere -
+   the causality ("this exact photo just got read") is visible in motion. */
+function flyDeckToCard(waitingEl, cardEl) {
+  if (reduced() || !waitingEl || !cardEl) return;
+  const cardImg = cardEl.querySelector('.thought-print img');
+  if (!cardImg) return;
+  const startRect = waitingEl.getBoundingClientRect();
+  const endRect = cardImg.getBoundingClientRect();
+  if (!startRect.width || !endRect.width) return;
+  const ghost = waitingEl.cloneNode(true);
+  ghost.classList.add('thought-flip-ghost');
+  Object.assign(ghost.style, {
+    position: 'fixed', left: `${startRect.left}px`, top: `${startRect.top}px`,
+    width: `${startRect.width}px`, height: `${startRect.height}px`,
+    margin: '0', opacity: '1',
+  });
+  document.body.append(ghost);
+  const dx = endRect.left - startRect.left, dy = endRect.top - startRect.top;
+  const sx = endRect.width / startRect.width, sy = endRect.height / startRect.height;
+  const anim = animate(ghost, {
+    transform: ['translate(0px, 0px) scale(1, 1)', `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`],
+    opacity: [1, .85],
+  }, { duration: .5, easing: 'cubic-bezier(.22,1,.36,1)' });
+  const cleanup = () => ghost.remove();
+  if (anim && anim.finished) anim.finished.then(cleanup).catch(cleanup);
+  else setTimeout(cleanup, 520);
+}
+
+function inView(node, container) {
+  const n = node.getBoundingClientRect(), c = container.getBoundingClientRect();
+  return n.top >= c.top && n.bottom <= c.bottom;
+}
+
+/* Which card `presentNext` is showing on the main stage right now - distinct
+   from "arrived" (settled) and "still reading" (live), so a viewer glancing
+   at the rail always has one authoritative answer to "what is it looking at". */
+export function markPlayhead(photoId) {
+  const rail = $('thoughts');
+  if (playheadId === photoId) return;
+  if (playheadId != null) {
+    const prev = rail.querySelector(`.thought[data-photo="${playheadId}"]`);
+    if (prev) prev.classList.remove('is-playing');
+  }
+  playheadId = photoId;
+  const node = rail.querySelector(`.thought[data-photo="${photoId}"]`);
+  if (!node) return;
+  node.classList.add('is-playing');
+  if (!inView(node, rail)) {
+    node.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'nearest' });
+  }
+}
+
+export function clearPlayhead() {
+  if (playheadId == null) return;
+  const prev = $('thoughts').querySelector(`.thought[data-photo="${playheadId}"]`);
+  if (prev) prev.classList.remove('is-playing');
+  playheadId = null;
 }
 
 export function note(message) {
@@ -147,6 +269,7 @@ export function add(finding) {
     title.append(el('span', 'thought-cropped', ' · cropped'));
   }
   cap.append(title);
+  cap.append(el('span', 'thought-ordinal', ordinalTag(finding.photo_id)));
   const lead = issues[0];
   const previewText = finding.error
     ? finding.error
@@ -181,8 +304,11 @@ export function add(finding) {
 
   if (live) live.replaceWith(card);
   else insertWork(rail, card);
+  liveIds.delete(finding.photo_id);
+  syncLiveDisplay(rail);
 
   if (!atTop) rail.scrollTop += rail.scrollHeight - previousHeight;
+  flyDeckToCard(waiting, card);
   if (!reduced()) {
     card.classList.add('resolve');
     for (const [node, top] of previousCards) {
@@ -307,6 +433,7 @@ export function hidePop() {
    where a finding came from can scroll back through the frames it came from. */
 export function done(evidence) {
   hidePop();
+  clearPlayhead();
   const deck = $('thought-deck');
   if (deck && !deck.querySelector('.thought-deck-print:not(.is-up)')) deck.remove();
   $('thoughts').querySelectorAll('.thought').forEach((n) => n.classList.add('settled'));

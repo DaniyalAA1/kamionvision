@@ -147,6 +147,7 @@ function cancelPresentation() {
   }
   presenting = false;
   reasoning.hidePop();
+  reasoning.clearPlayhead();
 }
 
 function sleep(gen, ms) {
@@ -177,6 +178,7 @@ async function presentNext() {
   if (gen !== reviewGen) return;
   if (!following) { presenting = false; return; }
   frames.markCell(check.photo_id, 'read');
+  reasoning.markPlayhead(finding.photo_id);
   $('scan-status').textContent = `${viewName(check.view)} · photo ${frames.photoOrdinal(check.photo_id)}`;
   setScanning(false);
   const boxed = (finding.issues || []).filter((i) => Array.isArray(i.box) && i.box.length === 4).length;
@@ -186,6 +188,7 @@ async function presentNext() {
     if (!await sleep(gen, 420)) return;
     if (!following) { presenting = false; return; }
   }
+  elevation.setFindings(runElev, finding.issues || []);
   reasoning.showPop(finding);
   const hold = boxed
     ? Math.max(2600, Math.min(7600, boxed * 1600 + 700))
@@ -196,6 +199,7 @@ async function presentNext() {
   presenting = false;
   if (reviewQueue.length) presentNext();
   else {
+    reasoning.clearPlayhead();
     $('scan-status').textContent = finished
       ? 'Done'
       : activityDetail || `${read} of ${evidenceIds.length}`;
@@ -384,7 +388,10 @@ export function onPhoto(msg) {
     reviewQueue.push(finding);
     presentNext();
   }
-  elevation.setFindings(runElev, finding.issues || []);
+  /* The truck drawing updates when presentNext actually shows this finding,
+     not on raw arrival - see elevation.setFindings inside presentNext. Only
+     the rail (reasoning.add, above) stays eager; the diagram reads as "the
+     verdict" and is the thing most damaged by finishing the story early. */
 
   const total = evidenceIds.length || read;
   progress(`${read} of ${total}`, 0.12 + 0.8 * (read / Math.max(1, total)));

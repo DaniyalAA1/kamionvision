@@ -140,6 +140,11 @@ export const photoOrdinal = (id) => {
   return i < 0 ? id : i + 1;
 };
 
+/* The set size "of N" belongs with the ordinal - the reasoning rail cites
+   both together so a card is placed in the sequence regardless of the order
+   concurrent calls actually return in. */
+export const photoTotal = () => checks.length;
+
 /* The frame the refusal is about: whichever one the gate named a non-truck
    subject in, most confident first. */
 export function smokingGun() {
