@@ -74,6 +74,7 @@ BACKEND_OVERRIDE = os.environ.get("KAMION_VLM_BACKEND", "cursor").strip().lower(
 
 CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "").strip()
 CURSOR_MODEL = os.environ.get("KAMION_CURSOR_MODEL", "gpt-5.6-sol").strip()
+CURSOR_EFFORT = os.environ.get("KAMION_CURSOR_EFFORT", "low").strip()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 # The GPT-5.6 family ships as luna / sol / terra - there is no bare
@@ -110,11 +111,44 @@ SYNTHESIS_MAX_TOKENS = int(os.environ.get("KAMION_SYNTHESIS_MAX_TOKENS", "6000")
 # 12.4 s, so five meant four waves and an 84 s run. Eight halves the waves
 # without tripping a provider; the whole point of the pool is that
 # wall-clock stays roughly where the single call was while the depth goes up.
-EVIDENCE_CONCURRENCY = int(os.environ.get("KAMION_EVIDENCE_CONCURRENCY", "8"))
+#
+# Raised 8 -> 16 when each photo became CLOSEUP_SAMPLES calls instead of one.
+# 48 calls at 8-way is six waves; at 16-way it is three.
+EVIDENCE_CONCURRENCY = int(os.environ.get("KAMION_EVIDENCE_CONCURRENCY", "16"))
 # Long edge the photos are downscaled to before upload. 1024 keeps tread
 # blocks and rust pitting legible while holding a 14-photo call near 20k
 # input tokens.
 EVIDENCE_IMAGE_LONG_EDGE = 1024
+
+# --- self-consistency -----------------------------------------------------
+# Each photo is read this many times and the samples are combined. One read
+# was a single draw from a distribution nobody had measured: the severity a
+# finding got depended on a sample, and that sample was multiplied straight
+# into a price. Three is the smallest k that supports both a majority and a
+# median. It is a config value rather than a constant so `eval.suites.retest`
+# can settle it with a number instead of an assertion.
+CLOSEUP_SAMPLES = int(os.environ.get("KAMION_CLOSEUP_SAMPLES", "3"))
+# Samples that must report a defect before it counts as corroborated. Below
+# this the finding is still shown and still cited - it just cannot be
+# promoted to `major` on one vote.
+CLOSEUP_QUORUM = int(os.environ.get("KAMION_CLOSEUP_QUORUM", "2"))
+# Pass D: the set-aware severity calibration, text-only, after the merge.
+CALIBRATION_MAX_TOKENS = int(os.environ.get("KAMION_CALIBRATION_MAX_TOKENS", "8000"))
+
+# --- reasoning effort, per pass -------------------------------------------
+# Not one dial. Pass B was pinned at "low" because it was framed as pure
+# perception, and that was true until it was given a rubric to apply. Reading
+# a tread block off a photograph is perception; deciding whether that tread
+# block is "moderate" against a written standard is deduction.
+#
+# These defaults are a hypothesis, not a measurement, and the hypothesis can
+# fail in a specific way: more reasoning budget on a task whose failure mode
+# is over-reporting may produce MORE findings rather than better-calibrated
+# ones. `eval.suites.retest` sweeps low/medium/high and settles it.
+IDENTITY_EFFORT = os.environ.get("KAMION_IDENTITY_EFFORT", "medium").strip()
+CLOSEUP_EFFORT = os.environ.get("KAMION_CLOSEUP_EFFORT", "high").strip()
+SYNTHESIS_EFFORT = os.environ.get("KAMION_SYNTHESIS_EFFORT", "high").strip()
+CALIBRATION_EFFORT = os.environ.get("KAMION_CALIBRATION_EFFORT", "high").strip()
 
 
 # --- market constants -----------------------------------------------------
@@ -122,6 +156,34 @@ EVIDENCE_IMAGE_LONG_EDGE = 1024
 # CPI runs ~30%/yr, so re-stamp this rather than quoting it months later.
 USD_TRY = 48.596
 FX_AS_OF = "2026-09-11"
+
+# Turkish tractor-unit distance per year, as (q25, median, q75) over the 84 TR
+# listings in the corpus. Used to tell a close-up call whether the wear in
+# front of it is ahead of or behind what the odometer predicts - a judgement
+# it could not make at all before, because it was never told the distance.
+#
+# Measured (n=84), but measured on DEALER STOCK OFFERED FOR SALE, which is not
+# the same population as trucks in service. Label it that way wherever it
+# surfaces.
+KM_PER_YEAR_TR = (48_981, 61_901, 71_267)
+KM_PER_YEAR_AS_OF = "2026-09-12"
+
+# What each severity level costs to put right, in lira. NEVER goes in a
+# prompt - the rubric anchors severity on repair EFFORT ("a workshop
+# morning", "a component replacement") precisely so that teaching the model
+# what a severity means never puts a currency figure in front of it, and the
+# "the VLM never sees or emits a price" invariant stays whole. This table is
+# for the README and the panel card only, and a test asserts it never appears
+# in a prompt template.
+#
+# Guessed, and inflation-sensitive at ~31% CPI. Stamped like USD_TRY.
+REPAIR_BANDS = {
+    "cosmetic": (0, 5_000),
+    "minor": (5_000, 25_000),
+    "moderate": (25_000, 120_000),
+    "major": (120_000, None),
+}
+REPAIR_BANDS_AS_OF = "2026-09-12"
 
 # Euro emission standard is a step function in this segment, not a gradient.
 # Türkiye mandated Euro 6 for new heavy-vehicle type approvals from 2016, so

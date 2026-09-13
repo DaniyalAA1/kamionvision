@@ -58,7 +58,8 @@ class OpenAIBackend(VLMBackend):
 
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 16000,
-                 json_schema: dict | None = None) -> VLMResponse:
+                 json_schema: dict | None = None,
+                 effort: str | None = None) -> VLMResponse:
         content: list[dict] = []
         for i, path in enumerate(images):
             data, _ = encode_b64(path)
@@ -70,7 +71,7 @@ class OpenAIBackend(VLMBackend):
         kwargs: dict = {
             "model": self.model,
             "input": [{"role": "user", "content": content}],
-            "reasoning": {"effort": self.effort},
+            "reasoning": {"effort": effort or self.effort},
             "max_output_tokens": max_tokens,
         }
         if system:

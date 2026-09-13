@@ -75,5 +75,14 @@ class VLMBackend:
 
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 4096,
-                 json_schema: dict | None = None) -> VLMResponse:
+                 json_schema: dict | None = None,
+                 effort: str | None = None) -> VLMResponse:
+        """`effort` is per-call, not per-backend.
+
+        The passes are not one kind of work. Reading a tread block off a
+        photograph is perception; deciding whether that tread block is
+        "moderate" against a written rubric is deduction, and the second wants
+        a budget the first does not. None means the backend's configured
+        default, so every existing caller keeps its behaviour.
+        """
         raise NotImplementedError

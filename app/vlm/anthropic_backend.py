@@ -60,7 +60,8 @@ class AnthropicBackend(VLMBackend):
 
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 16000,
-                 json_schema: dict | None = None) -> VLMResponse:
+                 json_schema: dict | None = None,
+                 effort: str | None = None) -> VLMResponse:
         content: list[dict] = []
         for i, path in enumerate(images):
             data, _ = encode_b64(path)
@@ -69,7 +70,7 @@ class AnthropicBackend(VLMBackend):
                 "type": "base64", "media_type": "image/jpeg", "data": data}})
         content.append({"type": "text", "text": prompt})
 
-        output_config: dict = {"effort": self.effort}
+        output_config: dict = {"effort": effort or self.effort}
         if json_schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": json_schema}
 

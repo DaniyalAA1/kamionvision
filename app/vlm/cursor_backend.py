@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 from . import register
-from ..config import CURSOR_API_KEY, CURSOR_MODEL, REPO
+from ..config import CURSOR_API_KEY, CURSOR_EFFORT, CURSOR_MODEL, REPO
 from .base import BackendStatus, VLMBackend, VLMError, VLMResponse, encode_jpeg
 
 # Substrings that mean "the credentials are fine, the account is not".
@@ -42,6 +42,7 @@ class CursorBackend(VLMBackend):
 
     def __init__(self) -> None:
         self.model = CURSOR_MODEL
+        self.effort = CURSOR_EFFORT
 
     def probe(self) -> BackendStatus:
         try:
@@ -69,7 +70,8 @@ class CursorBackend(VLMBackend):
 
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 16000,
-                 json_schema: dict | None = None) -> VLMResponse:
+                 json_schema: dict | None = None,
+                 effort: str | None = None) -> VLMResponse:
         # The Agent SDK has no constrained-decoding hook, so the schema is
         # carried in the prompt and enforced by evidence.parse. json_schema is
         # accepted and ignored to keep the two backends interchangeable.
@@ -96,7 +98,7 @@ class CursorBackend(VLMBackend):
         try:
             with Agent.create(AgentOptions(
                 model=ModelSelection(id=self.model, params=[
-                    ModelParameterValue(id="reasoning", value="low"),
+                    ModelParameterValue(id="reasoning", value=effort or self.effort),
                 ]),
                 api_key=CURSOR_API_KEY,
                 local={"cwd": str(REPO)},

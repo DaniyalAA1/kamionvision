@@ -56,6 +56,12 @@ class Detection(_Dict):
     confidence: float
     box: list[float]                # xyxy in pixels
     area_frac: float                # share of the frame
+    # Whether the gate chose this box as the vehicle being sold. The screen
+    # used to find the subject by exact float equality on all four
+    # coordinates, which held only because `subject_box` was literally an
+    # element of this list; a subject computed from anywhere else would have
+    # drawn no box at all and told nobody.
+    is_subject: bool = False
 
 
 @dataclass
@@ -88,6 +94,14 @@ class PhotoCheck(_Dict):
     # viewer sees and the pixels the vision model is given are the same truck:
     # a dealer-lot photo has five, and averaging them describes none of them.
     subject_box: list[float] | None = None
+    # Why that box, in a sentence: "recurs in 9 of 12 frames", "the only
+    # vehicle in frame", "none: engine bay close-up, the only truck box is 4%
+    # of the frame". Same posture as `EvidenceReport.fell_back_from` - the
+    # gate is allowed to change its mind, not to do it where nobody can see.
+    subject_basis: str = ""
+    subject_score: float = 0.0
+    # Cosine between the chosen crop and the set's appearance prototype.
+    subject_sim: float = 0.0
     non_truck_subject: str | None = None
     view: str = "unknown"
     view_conf: float = 0.0
@@ -100,6 +114,10 @@ class PhotoCheck(_Dict):
     # The L2-normalised CLIP image embedding, carried for app.perception and
     # dropped on serialisation. Computed by ClipTagger.tag either way.
     _embedding: Any = None
+    # Every vehicle box that could be the subject, with its crop embedding.
+    # Underscore-prefixed for the same reason as `_embedding`: numpy arrays
+    # never reach JSON or an SSE frame.
+    _candidates: Any = None
     # verdict
     usable: bool = True
     reasons: list[str] = field(default_factory=list)
@@ -115,6 +133,13 @@ class GateReport(_Dict):
     missing_views: list[str] = field(default_factory=list)
     requests: list[str] = field(default_factory=list)   # "send me a shot of X"
     truck_evidence: str = ""
+    # What the set concluded about which vehicle is being sold. Set-level,
+    # because a background lorry appears in one frame and the subject appears
+    # in fifteen - and that is evidence no single frame can hold.
+    subject_evidence: str = ""
+    subject_method: str = ""        # recurring_vehicle | single_frame | none
+    subject_consistency: float = 0.0    # mean cosine of the chosen crops
+    subject_frames: int = 0             # frames that agreed with the prototype
     # Coverage can be too thin to defend a number while still being rich
     # enough to describe condition. That case re-asks instead of refusing.
     blocks_pricing: bool = False
@@ -167,7 +192,11 @@ class Correction(_Dict):
     `EvidenceReport.fell_back_from`: the system is allowed to change its mind,
     it is not allowed to do so where nobody can see it.
     """
-    kind: str = ""              # unsupported_detail | identity_conflict | coverage_restored | odometer_recovered | odometer_conflict
+    # reconcile: unsupported_detail | identity_conflict | coverage_restored
+    #            | odometer_recovered | odometer_conflict
+    # evidence:  severity_calibrated | severity_raise_clamped
+    #            | uncorroborated_finding | sample_disagreement
+    kind: str = ""
     photo_id: int | None = None
     detail: str = ""
     before: str = ""
@@ -193,6 +222,23 @@ class ReconcileReport(_Dict):
 # --- stage 2: evidence ----------------------------------------------------
 
 @dataclass
+class Magnitude(_Dict):
+    """What one photograph can honestly say about how big a defect is.
+
+    Every field is ABSOLUTE - answerable from a single frame with no knowledge
+    of what else is on the truck. The severity ordinal is not: asking one
+    close-up call whether a tire is "moderate" is asking for a relative
+    judgement from an absolute-only observation, sixteen times, and then
+    summing the answers into a price. So the close-up reports magnitude and a
+    provisional ordinal, and the set-aware calibration pass decides severity.
+    """
+    extent: str = ""        # spot | local | widespread | whole_component
+    state: str = ""         # as_new | worn_in_service | end_of_life | failed
+    consumable: bool = False
+    blocks_use: str = ""    # no | maybe | yes | cannot_tell
+
+
+@dataclass
 class Issue(_Dict):
     """One defect, bound to the photo it was seen in.
 
@@ -216,6 +262,28 @@ class Issue(_Dict):
     # pass is asked to point at the pixels that show the defect; missing or
     # junk boxes stay None and the screen opens the photo unmarked.
     box: list[float] | None = None
+    # What one frame could say on its own, before the set had an opinion.
+    magnitude: Magnitude | None = None
+    # The ordinal the single-photo call proposed, kept when the calibration
+    # pass revised it. A recalibrated finding is shown as recalibrated.
+    severity_provisional: str = ""
+    severity_reason: str = ""
+    # One entry per sample of this photo that reported this defect. The spread
+    # is the honest uncertainty; `confidence` is the agreement rate over it.
+    severity_votes: list[str] = field(default_factory=list)
+    # Reported by fewer samples than the quorum. Kept and shown - never
+    # deleted - but it cannot be promoted to `major` on one vote.
+    corroborated: bool = True
+    # What the model said about its own claim, kept for the disclosure now
+    # that `confidence` means cross-sample agreement instead.
+    self_confidence: float = 0.0
+    # A field that could not be read as its enum. Shown with its photo and
+    # weighted at zero, because rounding an unreadable value up to "minor" was
+    # silent inflation.
+    ungraded: bool = False
+    # ["minor", "moderate"] when two frames disagreed and the merge had to
+    # pick. Printed, so a reader sees the disagreement rather than its winner.
+    severity_span: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -249,6 +317,11 @@ class PhotoFinding(_Dict):
     # because "I looked at this truck, not the four behind it" is part of the
     # answer, not an implementation detail.
     cropped: bool = False
+    # Which backend answered, and how many samples of this photo were taken.
+    # A fallback inside the fan-out names the photo it happened on.
+    backend: str = ""
+    samples: int = 1
+    sample_errors: list[str] = field(default_factory=list)
     elapsed_s: float = 0.0
     # This photo's call failed and the appraisal carried on without it. Recorded
     # rather than swallowed: thirteen frames read and one lost is a different
@@ -272,6 +345,37 @@ class VehicleRead(_Dict):
 
 
 @dataclass
+class FamilyRollup(_Dict):
+    """One subsystem of the truck, rolled up across every finding on it."""
+    family: str
+    demerit: float = 0.0        # saturated: the worst counts in full, the rest decay
+    n_findings: int = 0
+    worst: str = ""             # severity id
+    seen: float = 0.0           # 0.0 | 0.5 | 1.0 - how well it was photographed
+    credit: float = 0.0         # 0.0 | 0.5 | 1.0 - clean, and affirmed clean
+    note: str = ""
+
+
+@dataclass
+class ConditionRollup(_Dict):
+    """The one object the grade and the price are both derived from.
+
+    They used to be computed by unrelated code from the same list under
+    opposite rules - the grade was worst-of and count-blind, the price was an
+    uncapped sum where count drove money - and nothing checked them against
+    each other.
+    """
+    families: list[FamilyRollup] = field(default_factory=list)
+    demerit: float = 0.0            # S, summed across families
+    worst_family_demerit: float = 0.0
+    coverage: float = 0.0           # C, in 0..1, from legible photos only
+    merit: float = 0.0              # M, in 0..C by construction
+    grade: str = "unknown"
+    grade_reason: str = ""          # the term that decided it, in a sentence
+    ungraded_findings: int = 0
+
+
+@dataclass
 class EvidenceReport(_Dict):
     vehicle: VehicleRead = field(default_factory=VehicleRead)
     # Whether every photo is of the SAME vehicle. A seller padding a listing
@@ -283,6 +387,19 @@ class EvidenceReport(_Dict):
     issues: list[Issue] = field(default_factory=list)
     condition_summary: dict[str, str] = field(default_factory=dict)
     condition_grade: str = "unknown"      # excellent | good | fair | poor
+    # The deterministic rollup the grade and the price both come from.
+    condition: ConditionRollup | None = None
+    # What the synthesis pass graded it. A recorded second opinion, shown and
+    # not obeyed, because the deterministic one is reproducible and testable.
+    condition_grade_model: str = ""
+    grade_disagreement: str = ""
+    # Severity changes the calibration pass made, in `reconcile`'s format:
+    # before, after, reason, never deleted.
+    corrections: list[Correction] = field(default_factory=list)
+    calibration_note: str = ""
+    # Components the photos positively showed to be in order. Collected on
+    # every close-up call and, until now, worth nothing downstream.
+    confirmed_sound: list[str] = field(default_factory=list)
     coverage_gaps: list[str] = field(default_factory=list)
     confidence: float = 0.0
     backend: str = ""
@@ -327,6 +444,17 @@ class ConditionAdjustment(_Dict):
     cap_pct: float = 0.0
     drivers: list[str] = field(default_factory=list)
     basis: str = ""
+    # The cap and the weights are not the same kind of number and must not be
+    # labelled as though they were. The cap is one out-of-fold residual sigma,
+    # measured on 84 listings over 958 evaluations. The weight tables that
+    # decide where inside the cap a truck lands are hand-set assumptions -
+    # this corpus has no condition ground truth to fit them against.
+    cap_basis: str = ""         # measured
+    weights_basis: str = ""     # assumed
+    coverage_pct: float = 0.0   # how much of the truck was photographed well
+    merit_pct: float = 0.0      # how much of it was affirmed sound
+    direction: str = "none"     # discount | premium | none
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
