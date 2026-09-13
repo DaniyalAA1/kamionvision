@@ -1,22 +1,180 @@
 {
   "what": "World Manufacturer Identifier (VIN characters 1-3) to brand, for the heavy tractor units this system appraises.",
   "why": "app/vin.py already reads a 17-character VIN off a chassis plate and already returns `wmi=vin[:3]` - and nothing consumed it. The WMI is a deterministic, standards-backed brand identifier, which makes it the one brand cross-check that works in exactly the case the trained identity head cannot help with: the head may only dispute brands in its own class list, and the corpus contains no Scania, no DAF and no Volvo. A judge arriving with an unseen brand is the measured 1.85x failure mode of this system; this table is the cheapest defence against it.",
-  "basis": "ISO 3780 world manufacturer identifiers. Each row must carry a source URL that was actually fetched. A row whose `verified` is false has NOT been checked against a source and must not be relied on - app/vin.py ignores unverified rows unless KAMION_WMI_ALLOW_UNVERIFIED is set.",
+  "basis": "ISO 3780 world manufacturer identifiers. Each row must carry a source URL that was actually fetched. A row whose `verified` is false has NOT been checked against a source and must not be relied on - app/vin.py ignores unverified rows unless a caller explicitly passes allow_unverified.",
   "caveat": "A WMI identifies the MANUFACTURER, not the model, and a manufacturer may hold several. Absence from this table means 'unknown', never 'conflict' - a VIN whose WMI is not listed must never dispute a badge the vision model can plainly read.",
-  "refresh": "Hand-curated and stamped, like new_prices_tr.json and models_tr.json. app.cli doctor reports the age and the verified count.",
+  "also_badged": "Other marques that legitimately appear on a vehicle carrying this WMI, plus badge spellings that pricing.features.normalise_brand does not fold into the primary. Two different things, recorded in one list because the rule does the same thing with both: it stays silent. Navistar's WMIs really do carry Chevrolet, GM, IC Bus, Caterpillar and Workhorse badges, and `RENAULT TRUCKS` really is how a Renault Trucks T badges itself - disputing either would be the rule inventing a conflict out of its own vocabulary.",
+  "source_types": {
+    "government_registry": "NHTSA vPIC, the US DOT's own manufacturer registry, queried by API. The strongest row: a government database keying the WMI to a manufacturer and a make.",
+    "government_recall": "An Australian Government (Department of Infrastructure, Transport, Regional Development, Communications and the Arts) recall notice, which names the make and publishes the list of affected VINs. The WMI is read off those VINs. Used for the European manufacturers, which do not appear in vPIC because they do not certify heavy trucks in the United States.",
+    "oem_official": "The manufacturer's own website stating the prefix."
+  },
+  "refresh": "Hand-curated and stamped, like new_prices_tr.json and models_tr.json. app.cli doctor reports the verified count. A WMI assignment does not expire the way a list price does - it is a registry entry, not a market observation - so there is no staleness warning here. What does change is a manufacturer taking a NEW WMI: Mercedes-Benz heavy trucks moved from WDB to W1T when Daimler Truck AG separated from Mercedes-Benz Group, and both are listed for that reason. When a new range appears, look for its WMI rather than assuming the old row still covers it.",
   "as_of": "2026-09-13",
   "rows": [
-    {"wmi": "NM0", "brand": "FORD", "note": "Ford Otosan, Turkiye", "verified": false, "source_url": null},
-    {"wmi": "WDB", "brand": "MERCEDES-BENZ", "note": "Daimler, Germany", "verified": false, "source_url": null},
-    {"wmi": "WMA", "brand": "MAN", "note": "MAN Truck & Bus, Germany", "verified": false, "source_url": null},
-    {"wmi": "YS2", "brand": "SCANIA", "note": "Scania, Sweden", "verified": false, "source_url": null},
-    {"wmi": "XLR", "brand": "DAF", "note": "DAF Trucks, Netherlands", "verified": false, "source_url": null},
-    {"wmi": "YV2", "brand": "VOLVO", "note": "Volvo Trucks, Sweden", "verified": false, "source_url": null},
-    {"wmi": "VF6", "brand": "RENAULT", "note": "Renault Trucks, France", "verified": false, "source_url": null},
-    {"wmi": "ZCF", "brand": "IVECO", "note": "Iveco, Italy", "verified": false, "source_url": null},
-    {"wmi": "1FU", "brand": "FREIGHTLINER", "note": "Freightliner, USA", "verified": false, "source_url": null},
-    {"wmi": "1XK", "brand": "KENWORTH", "note": "Kenworth, USA", "verified": false, "source_url": null},
-    {"wmi": "1XP", "brand": "PETERBILT", "note": "Peterbilt, USA", "verified": false, "source_url": null},
-    {"wmi": "1M1", "brand": "MACK", "note": "Mack Trucks, USA", "verified": false, "source_url": null}
+    {"wmi": "NM0", "brand": "FORD", "also_badged": ["FORD OTOSAN"],
+     "note": "Ford Otomotiv Sanayi A.S., Turkiye - the F-MAX and Cargo builder, and 78 of this corpus's 84 Turkish vehicles. vPIC records make FORD, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/NM0?format=json"},
+
+    {"wmi": "WDB", "brand": "MERCEDES-BENZ", "also_badged": ["MERCEDES-BENZ TRUCKS", "MERCEDES BENZ TRUCKS", "MERCEDES TRUCKS"],
+     "note": "Daimler AG, Germany. vPIC records make MERCEDES-BENZ. This is the older assignment, carried by Actros generations up to MP4; current heavy trucks use W1T.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/WDB?format=json"},
+
+    {"wmi": "W1T", "brand": "MERCEDES-BENZ", "also_badged": ["MERCEDES-BENZ TRUCKS", "MERCEDES BENZ TRUCKS", "MERCEDES TRUCKS"],
+     "note": "Daimler Truck AG, Germany - the current Actros/Arocs assignment. Read off the published VIN list of recall REC-005858, 'Mercedes-Benz Actros 963 and Arocs 964 models 2022-2023': 143 of 143 VINs begin W1T. Not in vPIC.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-005858"},
+
+    {"wmi": "WMA", "brand": "MAN", "also_badged": ["MAN TRUCK & BUS", "MAN TRUCKS"],
+     "note": "MAN Truck & Bus SE, Germany. Read off the published VIN list of recall REC-006367, 'Man TGL, TGM, TGS & TGX 2024-2025': 167 of 167 VINs begin WMA. Not in vPIC.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006367"},
+
+    {"wmi": "YS2", "brand": "SCANIA", "also_badged": ["SCANIA TRUCKS"],
+     "note": "Scania CV AB, Sodertalje, Sweden. Read off the published VIN list of recall REC-006566, 'Scania PGRS 2024-2026': 975 of 978 VINs begin YS2 (the other three begin 9BS, the Brazilian plant, listed below). Not in vPIC.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006566"},
+
+    {"wmi": "9BS", "brand": "SCANIA", "also_badged": ["SCANIA TRUCKS"],
+     "note": "Scania Latin America, Brazil. The three non-Swedish VINs in the same REC-006566 list - evidence that one manufacturer holds several WMIs, which is why this table is keyed by WMI and not by brand.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006566"},
+
+    {"wmi": "XLR", "brand": "DAF", "also_badged": ["DAF TRUCKS"],
+     "note": "DAF Trucks N.V., Eindhoven, Netherlands. Read off the published VIN list of recall REC-006624, 'Daf CF 2019-2025': every VIN begins XLR. Not in vPIC.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006624"},
+
+    {"wmi": "YV2", "brand": "VOLVO", "also_badged": ["VOLVO TRUCKS"],
+     "note": "Volvo Truck Corporation, Sweden - complete vehicles. Read off the published VIN list of recall REC-006487, 'VOLVO TRUCKS FH & FM 2022-2025': 14 VINs begin YV2 and 100 begin YV5. vPIC has a YV2 row but attributes it to Volvo Car Corporation, which is why the recall is cited here instead.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006487"},
+
+    {"wmi": "YV5", "brand": "VOLVO", "also_badged": ["VOLVO TRUCKS"],
+     "note": "Volvo Truck Corporation, Sweden - incomplete vehicles (a cab-chassis delivered for bodying, which is what a tractor unit usually is). The majority of the REC-006487 list.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-006487"},
+
+    {"wmi": "4V4", "brand": "VOLVO", "also_badged": ["VOLVO TRUCKS"],
+     "note": "Volvo Group North America, LLC - the US-built VNL/VNR. vPIC records make VOLVO TRUCK, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/4V4?format=json"},
+
+    {"wmi": "VF6", "brand": "RENAULT", "also_badged": ["RENAULT TRUCKS"],
+     "note": "Renault Trucks SAS, France (formerly Renault Vehicules Industriels). Renault Trucks' own UK recall-check page asks owners 'I have a Renault but my VIN does not begin with VF6?', which is the manufacturer stating the prefix. vPIC lists VF1/VG6/VG8 for Renault Group's cars and buses but has no row for Renault Trucks.",
+     "verified": true, "source_type": "oem_official",
+     "source_url": "https://www.renault-trucks.co.uk/l/vehicle-recall-check"},
+
+    {"wmi": "ZCF", "brand": "IVECO", "also_badged": ["IVECO TRUCKS"],
+     "note": "Iveco S.p.A., Italy. vPIC records make IVECO, country ITALY, vehicle type Incomplete Vehicle.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/GetWMIsForManufacturer/iveco?format=json"},
+
+    {"wmi": "WJM", "brand": "IVECO", "also_badged": ["IVECO TRUCKS", "IVECO MAGIRUS"],
+     "note": "Iveco Magirus AG, Ulm, Germany. Read off the published VIN list of recall REC-005689, 'Iveco S WAY AS NP - X WAY AS NP - S WAY AT/AD NP - S WAY AS - S WAY AT-AD 2022': 88 of 88 VINs begin WJM. Not in vPIC.",
+     "verified": true, "source_type": "government_recall",
+     "source_url": "https://www.vehiclerecalls.gov.au/recalls/rec-005689"},
+
+    {"wmi": "1FU", "brand": "FREIGHTLINER",
+     "note": "Daimler Truck North America LLC - complete vehicles. vPIC records make FREIGHTLINER, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1FU?format=json"},
+
+    {"wmi": "1FV", "brand": "FREIGHTLINER",
+     "note": "Daimler Truck North America LLC - incomplete vehicles. vPIC records make FREIGHTLINER.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1FV?format=json"},
+
+    {"wmi": "3AK", "brand": "FREIGHTLINER",
+     "note": "Daimler Vehiculos Comerciales Mexico - the Saltillo-built Cascadia, and the WMI on the Cascadias in this repo's US corpus. vPIC records make FREIGHTLINER, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/3AK?format=json"},
+
+    {"wmi": "3AL", "brand": "FREIGHTLINER",
+     "note": "Daimler Vehiculos Comerciales Mexico - incomplete vehicles. vPIC records make FREIGHTLINER.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/3AL?format=json"},
+
+    {"wmi": "1XK", "brand": "KENWORTH",
+     "note": "Kenworth Truck Company (PACCAR) - complete vehicles. vPIC records make KENWORTH, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1XK?format=json"},
+
+    {"wmi": "1NK", "brand": "KENWORTH",
+     "note": "Kenworth Truck Company (PACCAR) - incomplete vehicles. vPIC records make KENWORTH.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1NK?format=json"},
+
+    {"wmi": "2NK", "brand": "KENWORTH",
+     "note": "Kenworth Truck Company, Canadian assembly. vPIC records make KENWORTH.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/2NK?format=json"},
+
+    {"wmi": "1XP", "brand": "PETERBILT",
+     "note": "Peterbilt Motors Company (PACCAR) - complete vehicles. vPIC records make PETERBILT, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1XP?format=json"},
+
+    {"wmi": "1NP", "brand": "PETERBILT",
+     "note": "Peterbilt Motors Company (PACCAR) - incomplete vehicles. vPIC records make PETERBILT.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1NP?format=json"},
+
+    {"wmi": "2NP", "brand": "PETERBILT",
+     "note": "Peterbilt Motors Company, Canadian assembly. vPIC records make PETERBILT.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/2NP?format=json"},
+
+    {"wmi": "1M1", "brand": "MACK", "also_badged": ["MACK TRUCKS"],
+     "note": "Mack Trucks Inc. - complete vehicles. vPIC records make MACK, vehicle type Truck. Mack is the brand the anchor holds out in the measured TR:MAN experiment's US counterpart.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1M1?format=json"},
+
+    {"wmi": "1M2", "brand": "MACK", "also_badged": ["MACK TRUCKS"],
+     "note": "Mack Trucks Inc. - incomplete vehicles. vPIC records make MACK.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1M2?format=json"},
+
+    {"wmi": "1HS", "brand": "INTERNATIONAL",
+     "also_badged": ["NAVISTAR", "IC BUS", "CATERPILLAR", "WORKHORSE"],
+     "note": "International Motors, LLC (Navistar) - complete vehicles. vPIC lists all five makes against this WMI, and a Navistar chassis genuinely wears any of them, so the rule stays silent on all five rather than calling four of them a lie.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1HS?format=json"},
+
+    {"wmi": "3HS", "brand": "INTERNATIONAL",
+     "also_badged": ["NAVISTAR", "IC BUS", "CATERPILLAR", "WORKHORSE"],
+     "note": "International Motors, LLC (Navistar) - Mexican assembly. Same make list in vPIC.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/3HS?format=json"},
+
+    {"wmi": "2HS", "brand": "INTERNATIONAL",
+     "also_badged": ["NAVISTAR", "IC BUS", "CATERPILLAR", "WORKHORSE"],
+     "note": "Navistar Canada, Inc. Same make list in vPIC.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/2HS?format=json"},
+
+    {"wmi": "1HT", "brand": "INTERNATIONAL",
+     "also_badged": ["NAVISTAR", "IC BUS", "CATERPILLAR", "WORKHORSE",
+                     "CHEVROLET", "GM"],
+     "note": "International Motors, LLC (Navistar) - incomplete vehicles. vPIC adds CHEVROLET and GM to this one: Navistar built the Chevrolet/GMC medium-duty ranges on it. The longest alternate list in the table, and the clearest illustration of why one exists.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/1HT?format=json"},
+
+    {"wmi": "5KJ", "brand": "WESTERN STAR",
+     "note": "Daimler Truck North America LLC - complete vehicles. vPIC records make WESTERN STAR, vehicle type Truck.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/5KJ?format=json"},
+
+    {"wmi": "5KK", "brand": "WESTERN STAR",
+     "note": "Daimler Truck North America LLC - incomplete vehicles. vPIC records make WESTERN STAR.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/5KK?format=json"},
+
+    {"wmi": "2WL", "brand": "WESTERN STAR",
+     "note": "Western Star Trucks Inc, Canadian assembly. vPIC records make WESTERN STAR.",
+     "verified": true, "source_type": "government_registry",
+     "source_url": "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeWMI/2WL?format=json"}
   ]
 }

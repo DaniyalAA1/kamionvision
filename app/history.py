@@ -107,6 +107,7 @@ def scan(gate, *, backend=None, database: Path | None = None) -> HistoryReport:
     from PIL import Image, ImageOps
     from . import vlm
     from .evidence.passes import extract_json
+    from .config import IDENTITY_IMAGE_LONG_EDGE
 
     report = HistoryReport()
     configured = os.environ.get("KAMION_HISTORY_DB", "").strip()
@@ -153,7 +154,7 @@ def scan(gate, *, backend=None, database: Path | None = None) -> HistoryReport:
                     'Country is the ISO two-letter country ONLY when explicitly legible on the plate; otherwise null. '
                     'Return only JSON: {"plate":string|null,"country":string|null,'
                     '"confidence":number,"reason":string}. No history or prices.',
-                    [crop], max_tokens=600)
+                    [crop], max_tokens=600, long_edge=IDENTITY_IMAGE_LONG_EDGE)
                 raw = extract_json(response.text)
                 obs.reason = str(raw.get("reason") or "")[:500]
                 value = raw.get("plate")

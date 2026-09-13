@@ -90,7 +90,11 @@ def load(weight: str, weights_dir: Path | None):
                       Path("models") / weight):
         if candidate and candidate.exists():
             return YOLO(str(candidate))
-    return YOLO(weight)
+    try:
+        return YOLO(weight)
+    except (OSError, ConnectionError, ValueError) as exc:
+        print(f"skip {weight}: {exc}", flush=True)
+        return None
 
 
 def main() -> None:
@@ -112,9 +116,17 @@ def main() -> None:
           f"({args.stage1_frac:.0%} of every vehicle, both variants), "
           f"{len(GRID)} arms\n")
 
-    results = []
+    results = _resume(args.out, args.stage1_frac, args.seed, len(rows))
+    skipped = []
     for weight, imgsz in GRID:
+        if any(r.get("weights") == weight and r.get("imgsz") == imgsz for r in results):
+            print(f"{weight:12s} @{imgsz:5d}  already in {args.out}", flush=True)
+            continue
         yolo = load(weight, args.weights_dir)
+        if yolo is None:
+            skipped.append({"weights": weight, "imgsz": imgsz, "error": "weight missing"})
+            _write(args, rows, results, skipped)
+            continue
         t0 = time.time()
         stats = sweep(yolo, rows, conf=vision_candidate_conf(), imgsz=imgsz, **PREDICT)
         stats.update({"weights": weight, "imgsz": imgsz,
@@ -126,13 +138,47 @@ def main() -> None:
               f"dup_pairs {stats['duplicate_vehicle_pairs_per_frame']:.3f}  "
               f"part_q90 {stats['part_view_area_q90']}  "
               f"{stats['wall_s']:.0f}s", flush=True)
+        _write(args, rows, results, skipped)
 
-    base = next(r for r in results if r["weights"] == "yolov8n.pt" and r["imgsz"] == 640)
+    _write(args, rows, results, skipped)
+    print(f"\nwrote {args.out}")
+    base = next((r for r in results
+                 if r["weights"] == "yolov8n.pt" and r["imgsz"] == 640), None)
+    if base is None:
+        print("incumbent yolov8n@640 missing; no shortlist")
+        return
+    short = sorted([r for r in results if r.get("passes_constraints")],
+                   key=lambda r: -r["photo_frac_truck_box_at_0.25"])[:3]
+    print("shortlist for stage 2: "
+          + ", ".join(f"{r['weights']}@{r['imgsz']}" for r in short))
+
+
+def _resume(path: Path, frac: float, seed: int, n_frames: int) -> list:
+    if not path.exists():
+        return []
+    try:
+        prev = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if prev.get("stage1_frac") != frac or prev.get("stage1_frames") != n_frames:
+        return []
+    return list(prev.get("stage1") or [])
+
+
+def _write(args, rows, results, skipped) -> None:
+    base = next((r for r in results
+                 if r.get("weights") == "yolov8n.pt" and r.get("imgsz") == 640), None)
+    scored = []
     for r in results:
-        r["passes_constraints"] = bool(
-            r["vehicles_with_no_truck_box_at_0.25"] <= base["vehicles_with_no_truck_box_at_0.25"]
-            and r["duplicate_vehicle_pairs_per_frame"] <= base["duplicate_vehicle_pairs_per_frame"])
-
+        row = dict(r)
+        if base is not None:
+            row["passes_constraints"] = bool(
+                r["vehicles_with_no_truck_box_at_0.25"]
+                <= base["vehicles_with_no_truck_box_at_0.25"]
+                and r["duplicate_vehicle_pairs_per_frame"]
+                <= base["duplicate_vehicle_pairs_per_frame"])
+        scored.append(row)
+    results[:] = scored
     payload = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "objective": ("same-listing retrieval P@1 on selected subject crops, subject to "
@@ -147,14 +193,10 @@ def main() -> None:
         "stage1_frames": len(rows),
         "incumbent": {"weights": "yolov8n.pt", "imgsz": 640},
         "stage1": results,
+        "skipped": skipped,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"\nwrote {args.out}")
-    short = sorted([r for r in results if r["passes_constraints"]],
-                   key=lambda r: -r["photo_frac_truck_box_at_0.25"])[:3]
-    print("shortlist for stage 2: "
-          + ", ".join(f"{r['weights']}@{r['imgsz']}" for r in short))
 
 
 def vision_candidate_conf() -> float:

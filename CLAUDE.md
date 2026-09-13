@@ -84,6 +84,11 @@ app/
                  stage.py    orchestration, concurrency, the on_photo stream
   odometer.py    an offline OCR (RapidOCR) that reads the dashboard mileage; reconcile's fourth rule
   reconcile.py   stage 2b: cross-checks the VLM against the heads and the OCR read, records every change
+  modelspec.py   what this repo knows about a specific MODEL, not about trucks;
+                 reads data/reference/models_tr.json, price-guarded on load
+  identity.py    stage 2c: the four identity witnesses adjudicated into one
+                 verdict, and the single place an identity widening is applied
+  vin.py         chassis-plate VIN: check digit, model year, and the WMI brand
   gallery.py     the unified truck grid: 200 corpus vehicles + the rehearsed cases
   vlm/           backends: openai (GPT-5.6), cursor (Agent SDK), anthropic
   pricing/       stage 3: features, ridge fit + calibration (train.py), estimate
@@ -106,8 +111,16 @@ app/
     js/band.js          the two price bands drawn apart, in lira; the dollar
                         equivalent sits under the price
     js/panels.js        the result blocks and the "how I worked this out" body
-    styles/             tokens, base, gallery, run, reasoning, result, elevation
+    landing.html        `/` - the hero, Kip, and the scroll story between the
+                        `<!-- story:start -->` / `<!-- story:end -->` markers
+    js/landing.js       Kip, the speech bubble, the cruise toggle
+    js/story/           the scroll story: scroll.js (one shared reader),
+                        deck.js (the six-card deck), boxes.js, reveal.js,
+                        index.js (wires acts to scroll progress)
+    styles/             tokens, base, gallery, run, reasoning, result, elevation,
+                        landing, story
     assets/             tractor-elevation.svg, self-hosted woff2 + OFL
+    assets/story/       the frozen run's six hero photos + story.json
     vendor/motion.min.js  Motion 13.2.0, MIT, vendored - never a CDN
 ```
 
@@ -124,6 +137,8 @@ app/
 .venv/bin/python scripts/cache_embeddings.py             # CLIP embedding cache (~2 min, once)
 .venv/bin/python -m app.perception.train                 # refit the three perception heads
 .venv/bin/python scripts/probe_residual_signal.py        # is there image signal in price? (it says no)
+.venv/bin/python scripts/freeze_story.py data/reference/story_appraisal.json
+.venv/bin/python scripts/freeze_story.py data/reference/story_appraisal.json --check
 ```
 
 ### Invariants the appraisal system encodes — don't break these either
@@ -141,11 +156,17 @@ app/
   is handed exactly one photograph per call, the binding is structural rather than something the
   model has to remember - `parse_closeup` takes the id from the caller and never reads one out of
   the response. The identity pass still sees the whole set, so it keeps the old index mapping.
-- **Evidence is four passes, and two of them exist because of what the other two cannot see.**
-  `identity()` sees every selected photo at once and answers make / model / body type /
-  `same_vehicle` - do not collapse it into the synthesis, because a text-only pass cannot notice
-  that photo 9 is a different truck, and `pipeline.pricing_blocker` and the `mixed_vehicles` case
-  both rest on that answer. `closeup()` is one call per photo, sampled `CLOSEUP_SAMPLES` times.
+- **Evidence is five passes, and three of them exist because of what the others cannot see.**
+  `identity()` answers make / model / body type / `same_vehicle` - do not collapse it into the
+  synthesis, because a text-only pass cannot notice that photo 9 is a different truck, and
+  `pipeline.pricing_blocker` and the `mixed_vehicles` case both rest on that answer. It is now
+  sampled `IDENTITY_SAMPLES` times on ONE backend and gets its OWN photo selection
+  (`select_identity_photos`) and its own resolution: it was the single most load-bearing call in
+  the run - make picks the brand column, model picks the anchor row, body type can stop pricing -
+  and it was one draw from an unmeasured distribution while every close-up got three.
+  `badge()` is one full-resolution call on a crop of the grille and door, and it is deliberately
+  blind to what `identity()` concluded. `closeup()` is one call per photo, sampled
+  `CLOSEUP_SAMPLES` times.
   `synthesize()` is text-only. `calibrate()` is text-only and runs **between `merge_duplicates`
   and `condition.rollup`**, and neither side of that is negotiable: after the merge because the
   pre-merge list still holds three paraphrases of one worn drive tire, and before the rollup
@@ -207,12 +228,35 @@ app/
   against `tr_only` R²=0.84 on held-out Turkish listings. 14x the data makes it worse. The
   European rows stay as a measurement instrument, not as training data. Don't re-pool without
   re-running `app.pricing.train` and beating 0.84.
-- **Two bands, and they are not interchangeable.** The measured 80.3% coverage belongs to the
+- **`log_new_price` is the only column carrying the MODEL, and its gain is mostly model identity —
+  say that, don't oversell it.** Before it, the model name reached the fit nowhere: it was in the
+  fold key and the anchor lookup and in no term, so an F-MAX and a Cargo-derived `TRUCKS` were the
+  same truck to the regression. A per-model dummy is the wrong fix (23 distinct prices across 84
+  listings, and it learns nothing about a model it has never seen — the judges' case). The column
+  is TR-only, missing gets the training mean plus an indicator, and it is **clipped to the
+  6.85M–8.67M TRY span it was identified on**, because the coefficient is ≈+2.4 per log unit and
+  extrapolating a slope fitted on a 0.24-log lever turns a dearer reference row into a 90% uplift.
+  The permutation test is in the artifact and is honest: across rows p=0.000, but **across models
+  the true assignment ranks 2nd of 24 (p=0.083, floor 0.042)** — with four models that test cannot
+  return significance, and the best wrong assignment scores 0.9508 against the true 0.9506. Read
+  it as "model identity was missing and now is not", not as "published prices carry segment". The
+  generalisation evidence is split: TR:MAN|TGS held out entirely goes 23.0%→4.4% median error;
+  FORD|TRUCKS held out goes 24.69%→24.69% because the clip costs exactly that gain. The clip stays.
+- **The blend's two routes are no longer independent** — the same reference figure feeds the column
+  and the anchor. The `max(1.0, ...)` floor in `estimate()` is what stops that becoming a band
+  narrower than the measured one, and a test over five makes asserts it never does.
+- **A VIN's position-10 year is a North American convention, and applying it to a European VIN
+  invents a year.** Real DAF VINs from trucks built 2019–2025 decode to **1994**, and
+  `pricing/model.py` falls back to `vin_year` — so a 2023 DAF was priced as a 1994 truck *and* its
+  seller accused of lying about the year. `vin.model_year` now requires the North American region
+  AND `_check_vin` requires the check digit: both, because roughly 1 European VIN in 11 passes the
+  check digit by chance, so that test alone leaks ~9% of them.
+- **Two bands, and they are not interchangeable.** The measured 80.4% coverage belongs to the
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
 - **Measured numbers and assumed ones are labelled differently in the output.** Measured:
   interval coverage, gate false-refusal, the 1.85× unseen-brand widening, the price model's
-  residual sigma (0.0988, out-of-fold), the focus threshold, the subject area floor, and the
+  residual sigma (0.0551, out-of-fold), the focus threshold, the subject area floor, and the
   view-framing accuracy against 90 hand-labelled frames. Assumed and labelled so wherever they
   surface: the 1.12×-per-missing-view widening, **the choice to cap condition at exactly one
   residual sigma**, and the severity × impact weight tables, the per-subsystem decay, the family
@@ -233,7 +277,7 @@ app/
   model-shaped - R squared, out-of-fold coverage, the driver table in log space, backend ids,
   stage timings, parse warnings - lives inside the `How I worked this out` disclosure on the
   result screen. The measured-versus-assumed labelling travels there with the figures it
-  qualifies, and the measured 80.3% stays welded to the comparable-asking band. What stays in the
+  qualifies, and the measured 80.4% stays welded to the comparable-asking band. What stays in the
   open, in words: the band, the condition, the findings with their photos, and the backend
   fallback note - falling back is allowed, doing it quietly is not, and a disclosure nobody opens
   would be quiet.
@@ -338,12 +382,49 @@ app/
 - **The identity head may not dispute a brand it was never trained on.** The corpus has no Scania;
   a head that has never seen one still names a class, at high confidence. `reconcile` only raises
   an identity conflict when the VLM's make is in the head's own class list. A test pins this.
+  `app/identity.py` applies the same test to the head's vote, and it is easy to get backwards:
+  gating on the head's OWN output lets the artefact straight through, because the class it names
+  is by construction one it was trained on.
+- **One widening per fact.** `reconcile` records a correction when the head disputes the badge and
+  another when the chassis-plate WMI does; `app/identity.py` adjudicates all four witnesses and
+  owns the multiplier. Each per-rule widening is right alone and wrong together - 1.25 × 1.20 ×
+  1.25 is a 1.87× band for one disagreement. `identity.merge_widening` drops the superseded ones.
+  The corrections stay: the audit trail is the point, and nothing there deletes one.
+- **A witness that cannot have an opinion gets no vote, and absence is never conflict.** A WMI
+  missing from `data/reference/wmi.json`, or present but unverified, means unknown - it must never
+  dispute a badge the vision model can plainly read. Same posture as the head's class list.
+- **The badge pass is blind to what pass A concluded.** `prompts.badge_prompt` takes `make` and
+  `model` and deliberately ignores both; a test asserts the string is identical with and without
+  them. Naming either makes the pass a paraphrase of pass A rather than a second witness, and its
+  entire value is independence. Its crop is the upper cab band, which on a dealer lot contains the
+  windscreen - so transcription is restricted to what is moulded, pressed or scripted on the
+  truck, which serves the no-price rule and the no-seller-PII rule at once.
+- **The generation is read off the bodywork, never off the declared year.** The year is the thing
+  the generation read exists to check, so a year-derived generation agrees by construction and the
+  cross-check measures nothing. `generation` is not a schema enum - the legal list belongs to a
+  (brand, model) pair and the schema is built before the model is known - so the closed list
+  travels in the prompt text instead.
+- **A generation with no visual marker is dropped, not shipped.** Its only job is to be read off a
+  photograph; offering an ungroundable one in the closed list hands the model a choice it cannot
+  justify from anything it can see. One DAF and two Volvo generations were dropped on this rule.
+- **`data/reference/models_tr.json` is stamped and cited like the price reference, and it may not
+  contain money.** `modelspec.assert_priceless` walks it on load, because this file is read into
+  the prompt that assigns severity and the natural way to write a weak point is "cracks, and a
+  replacement is expensive". Scoped to `models` and skipping maintainer-only keys. Both narrowings
+  it needed are the same lesson: **"Euro 6" is an emission standard and "worth noting" is not a
+  valuation** - a guard that fires on the most common phrases in its own subject matter gets
+  switched off, and then the real leak goes through. Pinned from both directions.
+- **`normalise_model` is the half of the pair that was missing.** `normalise_brand` has existed
+  since the first fit, but `anchor.lookup` matched the model exactly, so "F Max", "FMAX" and
+  "F-MAX 500" all missed the F-MAX row and fell through to the brand default. An unknown model
+  passes through uppercased rather than becoming None - returning None loses a model the anchor
+  could still match.
 - **The view head's number to quote is twin agreement, not accuracy.** Its labels are CLIP
   zero-shot pseudo-labels, so accuracy against them measures agreement with a noisy teacher. What
   is real is stability: a degraded twin inherits its original's label, so 0.758 vs the teacher's
   own 0.696 is a measured robustness gain. Never report the 0.772 teacher-agreement as accuracy.
 - **The anchor may claw back a widening; it may never narrow below the measured band.**
-  `estimate()` floors the blended band factor at 1.0 because the 80.3% coverage belongs to the
+  `estimate()` floors the blended band factor at 1.0 because the 80.4% coverage belongs to the
   unwidened hedonic interval. Measured payoff, TR:MAN held out (n=6, and say the n): band
   1.85×→1.00×, coverage 0.17→0.83, median error 16.3%→3.7%.
 - **`data/reference/new_prices_tr.json` is hand-curated and stamped, like `USD_TRY`.** Every row
@@ -353,6 +434,35 @@ app/
 - **HEIC is registered in `config.py` at import.** iPhones shoot it by default and the brief is
   "a seller with a phone". `config.IMAGE_SUFFIXES` is the single source of truth; the CLI folder
   walk and the web upload filter both read it, and a test asserts they agree.
+- **Nothing on the landing page's scroll story is authored prose about the truck.** Its whole
+  argument is that this is not a thin wrapper, and a page that argued that with copywriting would
+  be self-refuting. Every sentence comes out of one run that actually happened
+  (`data/reference/story_appraisal.json`, 2021 Ford F-MAX, 21 photos, 231 s, cursor/gpt-5.6-sol),
+  and `scripts/freeze_story.py` is the only thing allowed to put it on the page. Edit the region
+  between the `story:start` / `story:end` markers by hand and `tests/test_story.py` fails, because
+  it regenerates the region and diffs it. Re-freeze rather than retype. The two claims it reshapes
+  rather than quotes - capitalising `subject_evidence`, dropping the grade `grade_reason` restates -
+  each have their own test asserting no substance was lost.
+- **The static markup is the fallback, not a second implementation.** `freeze_story.py` writes the
+  whole section into `landing.html` as a readable document; `js/story/index.js` only adds
+  `.is-driven`, and every pinned, absolutely-positioned or transformed rule in `story.css` is scoped
+  to it. No-JS, `prefers-reduced-motion: reduce` and anything under 820px therefore all land on the
+  *same* page. A test walks the stylesheet asserting `position: sticky` never escapes that scope, so
+  a rule written one level too high does not silently stack six photographs on top of each other.
+- **The measured 80.4% is asserted to be in the comparable-asking row and nowhere else.** It is the
+  same invariant as everywhere else in the repo, but the landing page is where getting it wrong is
+  worst: it would put a measured guarantee on the photo-adjusted band in the largest type on the
+  site. `tests/test_story.py` reads the two `band-row`s and checks the figure appears in one and not
+  the other, and that the adjusted row carries its disclaimer.
+- **`vector-effect: non-scaling-stroke` takes the dash pattern out of user space too.** The subject
+  box draws itself with `stroke-dashoffset`, and a perimeter computed in the viewBox's 0-1 units
+  became 2.6 *screen pixels*, so the box rendered dotted rather than drawing. The perimeter is
+  measured in the frame's `offsetWidth`/`offsetHeight`, which is the space the dash is really in.
+- **The odometer OCR is re-read at freeze time, because `reconcile` is silent when it agrees.** That
+  silence is correct in the pipeline and useless on a page whose point is the agreement, so
+  `freeze_story.py` calls `odometer.read` itself and records all three figures. A test re-runs it
+  against the shipped frame. RapidOCR is a soft dependency everywhere else; here its absence drops
+  act 4's OCR line rather than asserting a reading nobody took.
 
 ## Dataset pipeline
 
@@ -400,8 +510,11 @@ That is why the live numbers below are smaller than the cleaning report's.
 | Images | 3,729 original + 3,729 degraded twins, median 19/vehicle (14–22) |
 | Priced | 155 — all 84 TR, 71 of the US; Mascus is price-on-request throughout |
 | TR brands | **78 of 84 are Ford**, 6 MAN — the binding limitation, see README source vetting |
-| Price model | `tr_only`, R² 0.84, median error 4.2%, 80% band covers 80.3% |
+| Price model | `tr_only`, R² 0.95, median error 3.6%, 80% band covers 80.4% at ±8% |
+| — without `log_new_price` | R² 0.84, median error 4.2%, covers 80.3% at ±16% — same 84 rows, same folds, one column fewer; carried in the artifact as `calibration.without_new_price_column` so the gain is readable, not asserted |
 | New-price anchor | retention curve R² 0.94, median error 3.1%; 5 cited reference rows |
+| Model spec card | 12 models, 12 cited, 25 generations, 47 weak points; 55 sources |
+| VIN manufacturer table | 32 WMIs, 32 verified against vPIC or a published recall VIN list |
 | Perception heads | degradation AUC 0.985, view stability 0.758 vs 0.696, brand 79.5% vs 39% |
 | Gate thresholds | calibrated on all 7,458 images; 1 of 200 vehicles false-refused |
 | EU comparables | 1,056 TruckStore tractor units (95% Mercedes) — measurement only, not training |

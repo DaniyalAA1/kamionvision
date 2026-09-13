@@ -1,19 +1,31 @@
 """Stage 2 - the evidence fan-out, and the photo selection that feeds it.
 
-Four passes now, described in `passes.py` and `calibration.py`. What this
-module owns is the orchestration: which photos go, which backend answers, how
-many calls run at once, what happens when one of them fails, and how each
-finished photo reaches the screen while the rest are still in flight.
+Five passes now, described in `passes.py` and `calibration.py`. What this
+module owns is the orchestration: which photos go to which pass, which backend
+answers, how many calls run at once, what happens when one of them fails, and
+how each finished photo reaches the screen while the rest are still in flight.
 
-Pass D is the newest and it is sequenced where it is for a reason that is not
-negotiable: it runs AFTER `merge_duplicates`. Severity cannot be decided
-set-aware until the duplicates are folded, because `notes_block` numbers the
-pre-merge flat list and three paraphrases of one worn drive tire are still
-three rows in it.
+Two of those five are about identity rather than condition, and they no longer
+read the same photographs as the rest. `select_photos` round-robins on a
+condition-first view priority that leads with a tire close-up: correct for pass
+B, wrong for pass A, where a tire contributes nothing to make, model or axle
+count and costs a slot. `select_identity_photos` picks for pass A instead, and
+the badge read gets one crop of one frame.
+
+Pass D is sequenced where it is for a reason that is not negotiable: it runs
+AFTER `merge_duplicates`. Severity cannot be decided set-aware until the
+duplicates are folded, because `notes_block` numbers the pre-merge flat list
+and three paraphrases of one worn drive tire are still three rows in it.
 
 Failure posture, which is most of why this file exists:
 
-  pass A fails on every backend   -> raise. There is nothing to describe.
+  one sample of pass A fails      -> it retries on the next backend, and the
+                                     identity is decided by the samples that
+                                     did come back. Recorded.
+  every sample of pass A fails    -> raise. There is nothing to describe.
+  the badge read fails            -> the appraisal continues on the sampled
+                                     identity pass alone, and says so. It is a
+                                     corroborating witness, not the answer.
   one sample of a photo fails     -> it retries on the next backend, and if
                                      that fails too the photo is read by the
                                      samples that did come back. Recorded.
@@ -39,10 +51,12 @@ from pathlib import Path
 
 from .. import condition as condition_stage
 from .. import vlm
-from ..config import (CALIBRATION_MAX_TOKENS, CLOSEUP_MAX_TOKENS,
-                      EVIDENCE_CONCURRENCY, IDENTITY_MAX_TOKENS,
+from ..config import (BADGE_MAX_TOKENS, BADGE_READ, CALIBRATION_MAX_TOKENS,
+                      CLOSEUP_MAX_TOKENS, EVIDENCE_CONCURRENCY,
+                      IDENTITY_MAX_TOKENS, IDENTITY_PHOTOS,
                       MAX_EVIDENCE_PHOTOS, SYNTHESIS_MAX_TOKENS)
 from ..schema import Correction, EvidenceReport, GateReport, PhotoFinding
+from ..subject import WHOLE_VEHICLE_VIEWS
 from . import calibration, passes, prompts, sampling
 
 # View priority for photo selection: what a buyer needs, in order.
@@ -50,22 +64,24 @@ VIEW_PRIORITY = ["exterior_front_34", "tire_wheel", "dashboard_odometer", "exter
                  "interior_cab", "chassis_undercarriage", "fifth_wheel", "engine_bay",
                  "damage_detail", "exterior_front", "exterior_rear"]
 
+# What pass A is looking for, in order, and it is a different list. Identity
+# lives in the front three-quarter (badge and cab shape), the side profile -
+# the only view that can honestly settle 4x2 against 6x2 - the front, and the
+# rear. Everything else in VIEW_PRIORITY still follows, because `same_vehicle`
+# is the other half of this pass's job: a padded listing whose odd frame is an
+# interior shot of a tidier truck has to be able to reach it.
+IDENTITY_VIEW_PRIORITY = ["exterior_front_34", "exterior_side", "exterior_front",
+                          "exterior_rear"]
 
 
-def select_photos(gate: GateReport, limit: int = MAX_EVIDENCE_PHOTOS) -> list:
-    """View-diverse subset of the usable photos, best capture quality first.
-
-    A seller uploads 15-40 frames and most of them are the same three angles.
-    Round-robin over views first, so one slot is spent per view before any
-    view gets a second, then fill the remainder by capture quality.
-    """
-    usable = [c for c in gate.photos if c.usable]
+def _round_robin(usable: list, priority: list[str], limit: int) -> list:
+    """One slot per view before any view gets a second, best capture first."""
     by_view: dict[str, list] = {}
     for check in sorted(usable, key=lambda c: -c.capture_quality):
         by_view.setdefault(check.view, []).append(check)
 
-    order = [v for v in VIEW_PRIORITY if v in by_view] + \
-            [v for v in by_view if v not in VIEW_PRIORITY]
+    order = [v for v in priority if v in by_view] + \
+            [v for v in by_view if v not in priority]
     picked = []
     while len(picked) < limit:
         progressed = False
@@ -82,25 +98,35 @@ def select_photos(gate: GateReport, limit: int = MAX_EVIDENCE_PHOTOS) -> list:
     return picked
 
 
-# --- pass A, with the backend chain ---------------------------------------
+def select_photos(gate: GateReport, limit: int = MAX_EVIDENCE_PHOTOS) -> list:
+    """View-diverse subset of the usable photos, best capture quality first.
 
-def _identity(chain, selected, declared, report: EvidenceReport):
-    """Walk every usable backend rather than only the best one.
-
-    A provider that rate-limits or 500s halfway through a live demo should cost
-    one retry against the next provider, not the appraisal. The fallback is
-    recorded on the report and shown on screen - falling back is allowed,
-    doing it quietly is not.
+    A seller uploads 15-40 frames and most of them are the same three angles.
+    Round-robin over views first, so one slot is spent per view before any
+    view gets a second, then fill the remainder by capture quality.
     """
-    failures: list[str] = []
-    for candidate in chain:
-        try:
-            response = passes.identity(candidate, selected, declared,
-                                       max_tokens=IDENTITY_MAX_TOKENS)
-            return candidate, response, failures
-        except vlm.VLMError as exc:
-            failures.append(f"{candidate.name}: {exc}")
-    raise vlm.VLMError("every vision backend failed:\n  " + "\n  ".join(failures))
+    return _round_robin([c for c in gate.photos if c.usable], VIEW_PRIORITY, limit)
+
+
+def select_identity_photos(gate: GateReport, limit: int = IDENTITY_PHOTOS) -> list:
+    """The subset pass A gets: whole-vehicle views first, then the rest.
+
+    Same round-robin, a different priority, and fewer frames - which buys the
+    resolution back. `IDENTITY_IMAGE_LONG_EDGE` is higher than the 1024 the
+    close-ups use because a model badge is small in frame, and sending half as
+    many photographs is what pays for it.
+
+    A set with no whole-vehicle frame at all falls back to today's selection
+    rather than sending nothing: a truck photographed only in close-up is still
+    a truck being sold, and the identity pass reading tires and a dashboard is
+    worth more than no identity pass.
+    """
+    usable = [c for c in gate.photos if c.usable]
+    if not any(c.view in WHOLE_VEHICLE_VIEWS for c in usable):
+        return select_photos(gate, limit)
+    priority = IDENTITY_VIEW_PRIORITY + [v for v in VIEW_PRIORITY
+                                         if v not in IDENTITY_VIEW_PRIORITY]
+    return _round_robin(usable, priority, limit)
 
 
 def _walk(chain, preferred, call, report: EvidenceReport, label: str):
@@ -136,11 +162,89 @@ def _repair(client, response, exc, schema, max_tokens):
         json_schema=schema if client.supports_structured_output else None)
 
 
+# --- pass A2: the badge read ----------------------------------------------
+
+def _badge(chain, client, report: EvidenceReport, gate: GateReport,
+           tmpdir: Path) -> None:
+    """A second, independent witness to make and model. Never fatal.
+
+    One full-resolution call on a crop of the badge band, rather than trusting
+    a badge read off a downscaled montage of eight photographs. What it says is
+    recorded on `VehicleRead.badge_*` and is never allowed to overwrite
+    `make`/`model`: `app/identity.py` is the only thing that adjudicates
+    between witnesses, and it needs both readings intact to do it.
+
+    Every way this can fail costs the badge and not the appraisal, and each one
+    says so - a witness that quietly did not turn up is worse than one that did
+    not turn up, because the verdict would then read as if it had.
+    """
+    if not passes.badge_available():
+        # Cannot happen in a built tree - `prompts.badge_prompt` ships - but a
+        # witness that quietly did not turn up is worse than one that did not,
+        # because the verdict would read as if it had.
+        report.parse_warnings.append(
+            "this build has no badge prompt, so the badge was not read separately")
+        return
+    check = passes.best_badge_frame(gate)
+    crop = passes.write_badge_crop(check, tmpdir) if check is not None else None
+    if crop is None:
+        report.parse_warnings.append(
+            "no whole-vehicle frame carried a subject box big enough to cut a "
+            "badge crop from, so the badge was not read separately; identity "
+            "rests on the sampled identity pass alone")
+        return
+
+    t = time.time()
+    try:
+        _, response = _walk(
+            chain, client,
+            lambda c: passes.badge(c, check, image=crop, max_tokens=BADGE_MAX_TOKENS),
+            report, "badge")
+        try:
+            data = passes.parse_badge(response.text)
+        except (ValueError, json.JSONDecodeError) as exc:
+            # Text-only, and safe: the photo this read belongs to comes from
+            # `check`, never out of the response, so a repair cannot re-bind it.
+            response = _repair(client, response, exc,
+                               getattr(prompts, "BADGE_SCHEMA", None), BADGE_MAX_TOKENS)
+            data = passes.parse_badge(response.text)
+            report.parse_warnings.append(
+                f"the badge read was unparseable ({exc}); repaired")
+    except (vlm.VLMError, ValueError, json.JSONDecodeError) as exc:
+        report.parse_warnings.append(
+            f"the badge read failed ({exc}); identity rests on the sampled "
+            f"identity pass alone")
+        report.calls.append(["badge (failed)", round(time.time() - t, 2)])
+        return
+
+    report.calls.append(["badge", response.elapsed_s])
+    report.vehicle.badge_text = data["badge_text"]
+    report.vehicle.badge_photo_id = check.photo_id
+    if not data["legible"]:
+        # "I looked at the badge and could not read it" is information, and it
+        # is not the same as not having looked. `identity.collect` gets no
+        # badge witness either way, which widens the band rather than narrowing
+        # it on a guess.
+        report.parse_warnings.append(
+            f"the badge crop from photo {check.photo_id} was not legible; the make "
+            f"and model rest on the sampled identity pass alone")
+        return
+    report.vehicle.badge_make = data["make"]
+    report.vehicle.badge_model = data["model"]
+    # The trim is literal text on the badge and there is nowhere else on
+    # `VehicleRead` for it, so it joins the transcription rather than being
+    # dropped: "F-MAX" and "F-MAX 500" are different rows to `anchor.lookup`.
+    trim = data["trim_or_power"]
+    if trim and not any(trim.lower() in line.lower()
+                        for line in report.vehicle.badge_text):
+        report.vehicle.badge_text.append(trim)
+
+
 # --- pass B, concurrent ----------------------------------------------------
 
 def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
              on_photo, report: EvidenceReport, *, expectation: str = "",
-             band: str | None = None) -> list[PhotoFinding]:
+             band: str | None = None, vehicle=None) -> list[PhotoFinding]:
     """One photo per task, read `CLOSEUP_SAMPLES` times, `EVIDENCE_CONCURRENCY`
     tasks at a time.
 
@@ -156,7 +260,10 @@ def _fan_out(chain, selected, vehicle_line: str, tmpdir: Path,
         futures = {
             pool.submit(sampling.closeup_consensus, chain, check, vehicle_line,
                         tmpdir=tmpdir, max_tokens=CLOSEUP_MAX_TOKENS,
-                        expectation=expectation, band=band, repair=_repair): check
+                        expectation=expectation, band=band, repair=_repair,
+                        # Filtered per view: what this model is known to go
+                        # wrong on, in the parts this frame can actually show.
+                        weak_points=passes.weak_points_for_view(vehicle, check.view)): check
             for check in selected
         }
         for future in as_completed(futures):
@@ -308,19 +415,26 @@ def run(gate: GateReport, declared: dict | None = None, *,
     chain = vlm.resolve_chain(backend)
 
     # --- pass A: what is this truck, and is it one truck ------------------
-    client, response, failures = _identity(chain, selected, declared, report)
-    try:
-        vehicle, same, mismatch = passes.parse_identity(response.text)
-    except (ValueError, json.JSONDecodeError) as exc:
-        response = _repair(client, response, exc, prompts.IDENTITY_SCHEMA,
-                           IDENTITY_MAX_TOKENS)
-        vehicle, same, mismatch = passes.parse_identity(response.text)
-        report.parse_warnings.insert(0, f"identity pass was unparseable ({exc}); repaired")
-    report.vehicle, report.same_vehicle, report.vehicle_mismatch = vehicle, same, mismatch
-    report.backend, report.model = response.backend, response.model
-    report.fell_back_from = failures
-    report.calls.append(["identity", response.elapsed_s])
-    vehicle_line = passes.vehicle_line(vehicle)
+    # Its own photo selection, and read `IDENTITY_SAMPLES` times on one
+    # backend. This is the most load-bearing call in the run - `make` picks the
+    # brand column in the price model, `model` picks the anchor row,
+    # `body_type` can stop the pricing stage and `same_vehicle` can stop the
+    # valuation - and until now it was the only call in the pipeline still
+    # decided by a single draw.
+    # `limit` is pass B's budget and IDENTITY_PHOTOS is pass A's; the smaller
+    # wins, so a caller asking for a cheap four-frame run gets one.
+    identity_photos = select_identity_photos(gate, min(IDENTITY_PHOTOS, limit))
+    read = sampling.identity_consensus(chain, identity_photos, declared,
+                                       max_tokens=IDENTITY_MAX_TOKENS, repair=_repair)
+    client = read.client
+    report.vehicle = read.vehicle
+    report.same_vehicle, report.vehicle_mismatch = read.same_vehicle, read.vehicle_mismatch
+    report.backend, report.model = read.backend, read.model
+    report.fell_back_from = list(read.fallbacks)
+    report.corrections.extend(read.corrections)
+    report.parse_warnings.extend(read.warnings)
+    report.calls.extend(read.calls)
+    vehicle_line = passes.vehicle_line(report.vehicle)
 
     # The truck's own baseline, composed once. `declared` has been in hand
     # since the top of this function - what was missing was anywhere to put it:
@@ -331,10 +445,13 @@ def run(gate: GateReport, declared: dict | None = None, *,
     expectation = passes.expectation_line(declared)
     band = prompts.wear_band(passes._int((declared or {}).get("km")))
 
-    # --- pass B: every photo, on its own, CLOSEUP_SAMPLES times ------------
+    # --- pass A2 and pass B, sharing one temp directory for their crops ----
     with passes.tempdir() as tmp:
+        if BADGE_READ:
+            _badge(chain, client, report, gate, Path(tmp))
         findings = _fan_out(chain, selected, vehicle_line, Path(tmp), on_photo,
-                            report, expectation=expectation, band=band)
+                            report, expectation=expectation, band=band,
+                            vehicle=report.vehicle)
     findings.sort(key=lambda f: f.photo_id)
     report.photo_findings = findings
     report.photos_read = sum(1 for f in findings if not f.error)

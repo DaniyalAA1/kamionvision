@@ -1,0 +1,643 @@
+/* The scroll story.
+
+   One sticky stage, seven acts, driven by how far through a tall track the
+   page has been scrolled. The stage is dark for the same reason `run.css` is
+   dark: the lights drop while the model looks at the photographs and come back
+   up with the answer, and a photograph under inspection reads better against
+   deep navy than against the light background.
+
+   Two rules govern everything below.
+
+   The markup this styles is written by `scripts/freeze_story.py` and is a
+   complete, readable section on its own. Every choreographed state here is an
+   ENHANCEMENT over a layout that already works with no JavaScript at all, so
+   nothing load-bearing may live in a `.is-live` class.
+
+   `prefers-reduced-motion: reduce` and narrow viewports both fall back to that
+   same static layout - the stage unpins, the acts stack, everything is visible
+   at once. One fallback, not two. */
+
+.story {
+  /* The dark stage's colours are `tokens.css`'s, which the landing page does
+     not load. They are scoped here rather than opened into a second `:root`,
+     and `tests/test_offline.py::BrandPalette` pins them against the originals
+     so three copies cannot drift into three products. */
+  --stage:       #081b43;
+  --stage-lift:  #102b56;
+  --stage-rule:  #35517a;
+  --stage-text:  #eef5ff;
+  --stage-haze:  #a8bddb;
+  --verified-lit: #8ac8ff;
+  --caution-lit:  #e8b45c;
+  --stop-lit:     #f2705c;
+
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --story-gut: clamp(1.15rem, 4vw, 2.75rem);
+
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* --- the approach: cream, big type, then the lights go down --------------- */
+
+.story-intro {
+  max-width: 1328px;
+  width: calc(100% - 112px);
+  margin-inline: auto;
+  padding-block: clamp(4rem, 11vw, 9rem) clamp(2.5rem, 6vw, 5rem);
+}
+.story-intro h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: clamp(2.75rem, 7.2vw, 6.5rem);
+  line-height: .93;
+  letter-spacing: -.03em;
+  margin: 1.1rem 0 1.6rem;
+  text-wrap: balance;
+}
+.story-intro .muted { color: #60718a; }
+.story-lede {
+  max-width: 46ch;
+  font-size: clamp(1rem, 1.35vw, 1.18rem);
+  line-height: 1.62;
+  color: #52657f;
+  margin: 0;
+}
+
+/* --- the track and the stage --------------------------------------------- */
+
+/* Height is set by `js/story/index.js` from the number of acts it finds, so
+   adding an act to the freeze script does not also mean editing a magic
+   number here. The declared value is the no-JS height: auto, everything flows. */
+.story-track { position: relative; }
+
+.story-stage {
+  background: var(--stage);
+  color: var(--stage-text);
+  padding: clamp(1.1rem, 2.4vw, 2rem) var(--story-gut) clamp(1.4rem, 3vw, 2.4rem);
+}
+
+.stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: .85rem;
+  border-bottom: 1px solid var(--stage-rule);
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+}
+.stage-act { color: var(--stage-text); }
+.stage-count { color: var(--stage-haze); font-variant-numeric: tabular-nums; }
+/* Nothing to count until JS is driving the acts. */
+.stage-count:empty { display: none; }
+
+.stage-body { position: relative; }
+
+/* --- the acts, as a plain stacked document (the no-JS / reduced state) ---- */
+
+.act {
+  padding-block: clamp(2.5rem, 6vw, 4.5rem);
+  border-bottom: 1px solid var(--stage-rule);
+}
+.act:last-child { border-bottom: 0; }
+.act h3 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: clamp(2rem, 4.6vw, 3.9rem);
+  line-height: .97;
+  letter-spacing: -.025em;
+  margin: 0 0 1.4rem;
+  max-width: 18ch;
+  text-wrap: balance;
+}
+.act h4 {
+  font: 500 .95rem/1.3 'Barlow', sans-serif;
+  letter-spacing: .01em;
+  margin: 0 0 .7rem;
+  color: var(--stage-text);
+}
+.act p { line-height: 1.62; }
+.act-note {
+  max-width: 62ch;
+  color: var(--stage-haze);
+  font-size: .95rem;
+  margin: 1.4rem 0 0;
+}
+.act-timing {
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1px;
+  color: var(--stage-haze);
+  text-transform: uppercase;
+  margin: .8rem 0 0;
+}
+.act a { color: inherit; }
+.act a[rel] { border-bottom: 1px solid var(--stage-rule); }
+.act a[rel]:hover { border-color: var(--orange); color: var(--orange); }
+
+/* --- act 1: which of these is being sold --------------------------------- */
+
+.act-gate { display: grid; gap: clamp(1.5rem, 3vw, 2.75rem); }
+@media (min-width: 900px) {
+  .act-gate { grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr); }
+  .act-gate h3 { grid-column: 1 / -1; margin-bottom: 0; }
+}
+.gate-side { align-self: start; }
+
+.act-merge { display: grid; gap: clamp(1.5rem, 3vw, 2.75rem); }
+@media (min-width: 900px) {
+  .act-merge { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .act-merge h3, .act-merge .merge-count { grid-column: 1; margin-bottom: 0; }
+  .merge-side { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+}
+
+.lot-figure { margin: 0; }
+.frame { position: relative; display: block; }
+.lot-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: var(--stage-lift);
+}
+.lot-figure figcaption {
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: .9px;
+  color: var(--stage-haze);
+  margin-top: .7rem;
+  text-transform: uppercase;
+}
+/* The overlay JS draws the detection boxes into. Absent JS there is no
+   overlay and the photograph stands on its own. */
+.lot-boxes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.lot-boxes rect { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.lot-boxes .other { stroke: rgba(238, 245, 255, .38); stroke-dasharray: 3 4; }
+.lot-boxes .subject { stroke: var(--orange); stroke-width: 3; }
+
+.gate-facts { margin: 0; display: grid; gap: 0; align-content: start; }
+.gate-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .8rem 0;
+  border-bottom: 1px solid var(--stage-rule);
+}
+.gate-facts dt {
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1.1px;
+  color: var(--stage-haze);
+  text-transform: uppercase;
+}
+.gate-facts dd {
+  margin: 0;
+  font: 500 1.02rem/1.3 'Barlow', sans-serif;
+  text-align: right;
+}
+
+/* --- act 2: the deck ------------------------------------------------------ */
+
+.act-read { list-style: none; margin: 0; padding: 0; }
+.beat {
+  display: grid;
+  gap: clamp(1.2rem, 2.5vw, 2.25rem);
+  padding-block: clamp(2rem, 5vw, 3.5rem);
+  border-bottom: 1px solid var(--stage-rule);
+}
+.beat:last-child { border-bottom: 0; }
+@media (min-width: 900px) {
+  .beat { grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); align-items: start; }
+}
+
+.beat-figure { margin: 0; }
+.beat-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: var(--stage-lift);
+}
+.beat-index {
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1.2px;
+  color: var(--stage-haze);
+  text-transform: uppercase;
+  margin: 0 0 .55rem;
+}
+.beat-verdict .beat-shows {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 500;
+  font-size: clamp(1.3rem, 2.1vw, 1.85rem);
+  line-height: 1.14;
+  letter-spacing: -.015em;
+  margin: 0 0 1.1rem;
+  max-width: 26ch;
+}
+
+.beat-issues { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .8rem; }
+.beat-issues li {
+  border-left: 2px solid var(--stage-rule);
+  padding: .1rem 0 .1rem .85rem;
+}
+.beat-issues b {
+  display: block;
+  font-weight: 600;
+  font-size: .98rem;
+  text-transform: capitalize;
+  margin: .3rem 0 .25rem;
+}
+.issue-text {
+  display: block;
+  font-size: .93rem;
+  line-height: 1.55;
+  color: var(--stage-haze);
+}
+.sev-chip {
+  display: inline-block;
+  font: 400 8px/1 var(--mono);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 4px 6px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+/* Four severities, four weights. `major` is the only one that gets the stop
+   colour; cosmetic gets no hue at all, because a colour on a scuff would read
+   as a fault the price cared about. */
+.sev-cosmetic  .sev-chip { color: var(--stage-haze); }
+.sev-minor     .sev-chip { color: var(--caution-lit); }
+.sev-moderate  .sev-chip { color: var(--caution-lit); border-width: 2px; }
+.sev-major     .sev-chip { color: var(--stop-lit); border-width: 2px; }
+.sev-minor     { border-left-color: var(--caution-lit); }
+.sev-moderate  { border-left-color: var(--caution-lit); }
+.sev-major     { border-left-color: var(--stop-lit); }
+
+.also {
+  display: inline-block;
+  margin-top: .4rem;
+  font: 400 8px/1.6 var(--mono);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--verified-lit);
+}
+.beat-clean {
+  margin: 0 0 1rem;
+  font-size: .95rem;
+  color: var(--verified-lit);
+}
+.beat-odo {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: var(--stage-text);
+}
+.beat-odo b { font-variant-numeric: tabular-nums; }
+
+.beat-strengths summary {
+  cursor: pointer;
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--stage-haze);
+  padding: .5rem 0;
+  border-top: 1px solid var(--stage-rule);
+}
+.beat-strengths summary:hover { color: var(--verified-lit); }
+.beat-strengths ul {
+  margin: .3rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: .5rem;
+  font-size: .89rem;
+  line-height: 1.5;
+  color: var(--stage-haze);
+}
+
+/* --- act 3: the merge ----------------------------------------------------- */
+
+.merge-count {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(1.6rem, 3.4vw, 2.8rem);
+  font-weight: 500;
+  letter-spacing: -.02em;
+  margin: 0 0 1.2rem;
+  color: var(--stage-haze);
+}
+.merge-count b { color: var(--stage-text); font-variant-numeric: tabular-nums; }
+.merge-example {
+  max-width: 60ch;
+  margin: 0;
+  padding-left: .9rem;
+  border-left: 2px solid var(--verified-lit);
+  font-size: .97rem;
+  color: var(--stage-haze);
+}
+.merge-example b { color: var(--stage-text); text-transform: capitalize; }
+
+/* --- act 4: the cross-checks ---------------------------------------------- */
+
+.act-check { display: grid; gap: clamp(1.5rem, 3vw, 2.5rem); }
+@media (min-width: 900px) {
+  .act-check { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .act-check h3 { grid-column: 1 / -1; margin-bottom: 0; }
+}
+.check {
+  border: 1px solid var(--stage-rule);
+  border-radius: 10px;
+  padding: clamp(1.1rem, 2.2vw, 1.65rem);
+  background: var(--stage-lift);
+}
+.readings { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .1rem; }
+.readings li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .9rem;
+  flex-wrap: wrap;
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--stage-rule);
+}
+.readings li:last-child { border-bottom: 0; }
+.readings li > span {
+  font: 400 9px/1.6 var(--mono);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--stage-haze);
+}
+.readings b {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.readings em {
+  flex-basis: 100%;
+  font: 400 8px/1.6 var(--mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--stage-haze);
+  font-style: normal;
+}
+.check-verdict { margin: 0; font-size: .93rem; line-height: 1.58; color: var(--stage-haze); }
+.check-verdict.agree::before,
+.check-verdict.differ::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: .5rem;
+  vertical-align: middle;
+}
+.check-verdict.agree::before  { background: var(--verified-lit); }
+.check-verdict.differ::before { background: var(--caution-lit); }
+
+/* --- act 5: the number ---------------------------------------------------- */
+
+.story-band { display: grid; gap: 1.4rem; margin-bottom: 1.5rem; }
+@media (min-width: 900px) { .story-band { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.band-row {
+  display: grid;
+  gap: .45rem;
+  padding: 1.1rem 0 0;
+  border-top: 2px solid var(--stage-rule);
+}
+.band-row[data-band-row="adjusted"] { border-top-color: var(--orange); }
+.band-label {
+  font: 400 9px/1.7 var(--mono);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--stage-haze);
+}
+.band-values {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.9rem, 4.4vw, 3.4rem);
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.band-sub { font-size: .88rem; line-height: 1.55; color: var(--stage-haze); max-width: 44ch; }
+.band-usd, .band-asking, .band-grade { margin: 0 0 .7rem; font-size: .97rem; color: var(--stage-haze); }
+.band-asking b, .band-grade b { color: var(--stage-text); text-transform: capitalize; }
+
+/* --- act 6: the limits ---------------------------------------------------- */
+
+.limits {
+  list-style: none;
+  margin: 0 0 2rem;
+  padding: 0;
+  display: grid;
+  gap: .55rem;
+  max-width: 68ch;
+}
+.limits li {
+  padding-left: 1.3rem;
+  position: relative;
+  font-size: .96rem;
+  line-height: 1.55;
+  color: var(--stage-haze);
+}
+/* No hue. An absence drawn in a colour would read as a finding. */
+.limits li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--stage-rule);
+}
+.act-limits .button {
+  /* The act is a grid so its content can centre on the pinned stage, which
+     makes a lone <a> stretch the full column. */
+  justify-self: start;
+  min-height: 54px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 30px;
+  font-size: 16px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: var(--orange);
+  color: #081b43;
+  transition: transform .2s, box-shadow .2s;
+}
+.act-limits .button:hover { transform: translate(-2px, -3px); box-shadow: 4px 5px 0 rgba(0, 0, 0, .35); }
+.act-limits .button span { font-size: 23px; }
+
+/* ==========================================================================
+   The choreographed layer.
+
+   `js/story/index.js` adds `.is-driven` to the section once it has measured
+   the acts and taken over. Everything below this line is scoped to it, so a
+   parse error, a failed import or a browser without JS leaves the static
+   document above completely intact.
+   ========================================================================== */
+
+.story.is-driven .story-track { height: var(--track-height, 800vh); }
+
+.story.is-driven .story-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.story.is-driven .stage-body { flex: 1; min-height: 0; margin-top: 1.1rem; }
+
+/* Acts become stacked layers. Only the live one is in the accessibility tree:
+   six simultaneous copies of a verdict read aloud is worse than none. */
+.story.is-driven .act {
+  position: absolute;
+  inset: 0;
+  padding-block: 0;
+  border-bottom: 0;
+  /* An act taller than the stage has to be scrollable, and it must chain back
+     to the page when it reaches its end - `overscroll-behavior: contain` here
+     trapped the wheel inside the act on a short viewport. */
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(18px);
+  transition: opacity .45s var(--ease-out), transform .45s var(--ease-out),
+              visibility 0s linear .45s;
+}
+.story.is-driven .act:not(.act-read) {
+  display: grid;
+  /* `safe` so that content too tall for the stage falls back to top-aligned.
+     Plain `center` overflows equally in both directions and puts the first
+     line above the scroll origin, where it cannot be reached at all. */
+  align-content: safe center;
+}
+.story.is-driven .act.is-live {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity .5s var(--ease-out), transform .5s var(--ease-out),
+              visibility 0s;
+}
+/* An act that is scrolled past leaves upward, so the sequence has a direction. */
+.story.is-driven .act.is-done { transform: translateY(-18px); }
+
+.story.is-driven .act-read { position: absolute; inset: 0; }
+
+/* The deck. Each beat is a full-bleed layer; JS transforms the figure inside
+   it so the six photographs stack, lift and file without the layers moving. */
+.story.is-driven .beat {
+  position: absolute;
+  inset: 0;
+  padding-block: 0;
+  border-bottom: 0;
+  display: block;
+  pointer-events: none;
+}
+.story.is-driven .beat-figure {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: min(52%, 620px);
+  margin: 0;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+.story.is-driven .beat-figure img {
+  box-shadow: 0 24px 60px -22px rgba(0, 0, 0, .75);
+  outline: 1px solid rgba(238, 245, 255, .12);
+  outline-offset: -1px;
+}
+.story.is-driven .beat-verdict {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: min(42%, 460px);
+  max-height: 84%;
+  overflow-y: auto;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+.story.is-driven .beat.is-live { pointer-events: auto; }
+.story.is-driven .beat.is-live .beat-verdict { pointer-events: auto; }
+
+/* The subject box, drawn on the live photograph by `deck.js`. One box, the one
+   the gate picked - colouring every detection here would contradict the gate. */
+.beat-box {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.beat-box rect {
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The mosaic of filed photographs, and the progress it stands for. */
+.story.is-driven .beat.is-filed .beat-figure img { box-shadow: none; opacity: .55; }
+
+/* ---- reduced motion, and narrow viewports -------------------------------- */
+
+/* Both land on the static document: unpinned, stacked, everything visible.
+   The choreography is the only thing lost, and it was never the content. */
+@media (prefers-reduced-motion: reduce) {
+  .story.is-driven .story-track { height: auto; }
+  .story.is-driven .story-stage { position: static; height: auto; overflow: visible; }
+  .story.is-driven .act,
+  .story.is-driven .act-read,
+  .story.is-driven .beat,
+  .story.is-driven .beat-figure,
+  .story.is-driven .beat-verdict {
+    position: static;
+    inset: auto;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: none;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    pointer-events: auto;
+  }
+  .story.is-driven .act { padding-block: clamp(2.5rem, 6vw, 4.5rem); border-bottom: 1px solid var(--stage-rule); }
+  .story.is-driven .beat { display: grid; padding-block: clamp(2rem, 5vw, 3.5rem); border-bottom: 1px solid var(--stage-rule); }
+  .story.is-driven .beat-figure figcaption { display: block; }
+  .story.is-driven .stage-count { display: none; }
+  .beat-box, .lot-boxes { display: none; }
+}
+
+@media (max-width: 819px) {
+  .story-intro { width: calc(100% - 40px); }
+  .story.is-driven .story-track { height: auto; }
+  .story.is-driven .story-stage { position: static; height: auto; overflow: visible; }
+  .story.is-driven .act,
+  .story.is-driven .act-read,
+  .story.is-driven .beat,
+  .story.is-driven .beat-figure,
+  .story.is-driven .beat-verdict {
+    position: static;
+    inset: auto;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: none;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    pointer-events: auto;
+  }
+  .story.is-driven .act { padding-block: clamp(2.5rem, 6vw, 4.5rem); border-bottom: 1px solid var(--stage-rule); }
+  .story.is-driven .beat { display: grid; padding-block: clamp(2rem, 5vw, 3.5rem); border-bottom: 1px solid var(--stage-rule); }
+  .story.is-driven .stage-count { display: none; }
+}

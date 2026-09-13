@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import register
 from ..config import ANTHROPIC_API_KEY, ANTHROPIC_EFFORT, ANTHROPIC_MODEL
+from ..config import EVIDENCE_IMAGE_LONG_EDGE
 from .base import BackendStatus, VLMBackend, VLMError, VLMResponse, encode_b64
 
 
@@ -61,10 +62,11 @@ class AnthropicBackend(VLMBackend):
     def complete(self, prompt: str, images: list[Path], *,
                  system: str = "", max_tokens: int = 16000,
                  json_schema: dict | None = None,
-                 effort: str | None = None) -> VLMResponse:
+                 effort: str | None = None,
+                 long_edge: int | None = None) -> VLMResponse:
         content: list[dict] = []
         for i, path in enumerate(images):
-            data, _ = encode_b64(path)
+            data, _ = encode_b64(path, long_edge or EVIDENCE_IMAGE_LONG_EDGE)
             content.append({"type": "text", "text": f"photo_id={i}"})
             content.append({"type": "image", "source": {
                 "type": "base64", "media_type": "image/jpeg", "data": data}})

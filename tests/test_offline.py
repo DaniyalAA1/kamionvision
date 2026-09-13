@@ -1695,6 +1695,31 @@ class BrandPalette(unittest.TestCase):
         for theirs in self.SHARED.values():
             self.assertRegex(self.landing[theirs], r"^#[0-9a-fA-F]{6}$")
 
+    # The scroll story is a third copy. It needs the dark stage and the lit
+    # severities, which exist only in `tokens.css`, and it scopes them to
+    # `.story` rather than opening a second `:root` on the landing page.
+    # Two copies drift; three drift faster.
+    STAGE = ("--stage", "--stage-lift", "--stage-rule", "--stage-text",
+             "--stage-haze", "--verified-lit", "--caution-lit", "--stop-lit")
+
+    def test_the_story_stage_matches_the_appraisal_stage(self):
+        from app.config import WEB
+        story = dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,8})",
+                                (WEB / "styles" / "story.css").read_text()))
+        for name in self.STAGE:
+            self.assertIn(name, story, f"story.css must define {name}")
+            self.assertEqual(self.app[name], story[name],
+                             f"story.css {name} must equal tokens.css")
+
+    def test_the_story_reuses_the_landing_brand_rather_than_redeclaring_it(self):
+        # `--orange` and `--paper` are the landing's and are inherited through
+        # the cascade. Redefining them here would be a fourth copy nothing pins.
+        from app.config import WEB
+        css = (WEB / "styles" / "story.css").read_text()
+        for brand in ("--paper", "--orange", "--ink", "--line"):
+            self.assertNotRegex(css, rf"{brand}\s*:\s*#",
+                                f"story.css redeclares {brand}; inherit it instead")
+
 
 class PagesAreConnected(unittest.TestCase):
     """`/` is the landing page and `/app` is the appraisal screen. A visitor

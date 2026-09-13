@@ -1,0 +1,569 @@
+{
+  "frozen_at": "2026-09-13",
+  "source": {
+    "case": "tr_clean",
+    "folder": "/Users/m3-max/Documents/GitHub/kamionvision/demo/tr_clean",
+    "backend": "cursor",
+    "model": "gpt-5.6-sol",
+    "elapsed_s": 232.0,
+    "vision_calls": 19
+  },
+  "truck": {
+    "make": "Ford Trucks",
+    "model": "F-MAX 500",
+    "body_type": "tractor_unit",
+    "cab_type": "high-roof sleeper",
+    "axle_config": "4x2",
+    "year_range": "2019-2023",
+    "year": 2021,
+    "km": 164374.0,
+    "asking": 2550000.0,
+    "currency": "TRY"
+  },
+  "gate": {
+    "decision": "pass",
+    "photos_total": 21,
+    "photos_usable": 21,
+    "photos_read": 16,
+    "views_present": [
+      "dashboard_odometer",
+      "exterior_front_34",
+      "exterior_rear",
+      "exterior_side",
+      "fifth_wheel",
+      "interior_cab",
+      "tire_wheel"
+    ],
+    "views_total": 11,
+    "subject_evidence": "the vehicle in 8 of 10 boxed frame(s) recurs, seeded from 3 unambiguous whole-vehicle frame(s) at mean cosine 0.82",
+    "subject_frames": 8,
+    "subject_consistency": 0.82,
+    "elapsed_s": 5.4,
+    "lot": {
+      "file": "006.jpg",
+      "width": 1100,
+      "height": 825,
+      "basis": "matches the vehicle the rest of the set is about (cosine 0.87)",
+      "n_vehicles": 10,
+      "n_other": 1,
+      "subject_area_pct": 62.5,
+      "detections": [
+        {
+          "label": "truck",
+          "confidence": 0.612,
+          "box": [
+            0.2732,
+            0.0006,
+            0.9649,
+            0.9051
+          ],
+          "area_frac": 0.6255,
+          "is_subject": true
+        },
+        {
+          "label": "truck",
+          "confidence": 0.511,
+          "box": [
+            0.823,
+            0.1739,
+            0.9994,
+            0.5885
+          ],
+          "area_frac": 0.0731,
+          "is_subject": false
+        },
+        {
+          "label": "car",
+          "confidence": 0.509,
+          "box": [
+            0.1902,
+            0.4142,
+            0.2542,
+            0.4758
+          ],
+          "area_frac": 0.004,
+          "is_subject": false
+        },
+        {
+          "label": "car",
+          "confidence": 0.44,
+          "box": [
+            0.2392,
+            0.4038,
+            0.3044,
+            0.4932
+          ],
+          "area_frac": 0.0058,
+          "is_subject": false
+        },
+        {
+          "label": "car",
+          "confidence": 0.373,
+          "box": [
+            0.1284,
+            0.4063,
+            0.202,
+            0.4778
+          ],
+          "area_frac": 0.0053,
+          "is_subject": false
+        },
+        {
+          "label": "truck",
+          "confidence": 0.316,
+          "box": [
+            0.6924,
+            0.2413,
+            0.8578,
+            0.5535
+          ],
+          "area_frac": 0.0517,
+          "is_subject": false
+        },
+        {
+          "label": "truck",
+          "confidence": 0.305,
+          "box": [
+            0.2767,
+            0.0062,
+            0.6238,
+            0.617
+          ],
+          "area_frac": 0.212,
+          "is_subject": false
+        },
+        {
+          "label": "car",
+          "confidence": 0.288,
+          "box": [
+            0.2715,
+            0.4052,
+            0.3023,
+            0.4369
+          ],
+          "area_frac": 0.001,
+          "is_subject": false
+        },
+        {
+          "label": "bus",
+          "confidence": 0.28,
+          "box": [
+            0.6177,
+            0.2631,
+            0.7658,
+            0.5277
+          ],
+          "area_frac": 0.0392,
+          "is_subject": false
+        },
+        {
+          "label": "car",
+          "confidence": 0.276,
+          "box": [
+            0.2496,
+            0.4024,
+            0.3012,
+            0.438
+          ],
+          "area_frac": 0.0018,
+          "is_subject": false
+        },
+        {
+          "label": "person",
+          "confidence": 0.27,
+          "box": [
+            0.0,
+            0.0,
+            0.1678,
+            0.9972
+          ],
+          "area_frac": 0.1674,
+          "is_subject": false
+        }
+      ]
+    }
+  },
+  "photos": [
+    {
+      "file": "000.jpg",
+      "photo_id": 1,
+      "source": "001.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "exterior_side",
+      "shows": "A straight-on front view of a red Ford Trucks F-MAX high-roof tractor unit.",
+      "cropped": true,
+      "quality": "good",
+      "subject_box": [
+        0.2306,
+        0.0375,
+        0.7031,
+        0.795
+      ],
+      "subject_basis": "matches the vehicle the rest of the set is about (cosine 0.95)",
+      "detections": 5,
+      "odometer_km": null,
+      "issues": [],
+      "strengths": [
+        "Visible front cab panels and bumper sit square, with parallel gaps and no evident distortion.",
+        "Red paint matches across the visible cab front, bumper corners and roof section.",
+        "Front bumper and lower valance are complete and aligned, with only ordinary road-use marks visible.",
+        "Grille is complete, securely seated and free of visible cracks or missing sections.",
+        "Both headlamp assemblies are complete and their lenses appear clear and undamaged.",
+        "Windscreen is clear in the visible area, with no evident chips or cracks.",
+        "Mirror housings and arms on both sides are complete and appear correctly aligned.",
+        "Roof deflector and upper cab trim appear complete, straight and securely fitted."
+      ],
+      "cannot_tell": [
+        "Side panel and door-gap alignment requires full near-side and off-side profile photographs.",
+        "Side fairings, skirts, cab steps and grab handles are not sufficiently shown; side views are required.",
+        "Fuel and AdBlue tanks, straps and tank surfaces are not visible; low side photographs are required.",
+        "Chassis rails and their corrosion state are not visible; provide clear low-angle chassis photographs.",
+        "Exhaust and DPF condition cannot be assessed from this frontal view.",
+        "Catwalk, fifth wheel and coupling area require a photograph from behind the cab."
+      ]
+    },
+    {
+      "file": "001.jpg",
+      "photo_id": 18,
+      "source": "018.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "exterior_rear",
+      "shows": "A clear rear three-quarter view of a Ford Trucks F-MAX 4x2 tractor, including the rear cab, coupling gear, drive axle and chassis rear.",
+      "cropped": false,
+      "quality": "good",
+      "subject_box": [
+        0.004,
+        0.0071,
+        0.7378,
+        0.9282
+      ],
+      "subject_basis": "matches the vehicle the rest of the set is about (cosine 0.83)",
+      "detections": 6,
+      "odometer_km": null,
+      "issues": [
+        {
+          "component": "paint_finish",
+          "severity": "cosmetic",
+          "observation": "The lower-centre rear cab panel carries a local band of pale paint scuffing; the panel itself remains straight with no visible split or distortion.",
+          "price_impact": "none",
+          "confidence": 0.33,
+          "also_seen_in": []
+        }
+      ],
+      "strengths": [
+        "The fifth-wheel plate is complete and level, with a grease film across the working face and no visible cracking, distortion or pronounced throat step.",
+        "The visible catwalk sections, rear lamp clusters and suzie coils are present, with no obvious breakage or severed lines.",
+        "Both rear mudflaps, guards and their brackets are present and substantially straight.",
+        "Visible chassis rails and crossmembers retain their paint, with no lifting scale, perforation or deformation apparent.",
+        "The visible drive tires have matching-looking tread patterns, substantial tread standing proud of the wear area and no obvious irregular shoulder wear or sidewall damage.",
+        "The rear cab panel and adjacent covers appear straight, with parallel closures and no visible impact distortion.",
+        "The fifth-wheel plate appears flat and complete, with a grease film and only ordinary coupling marks; no crack or distortion is visible.",
+        "The rear cab structure and visible side fairing run straight without abnormal panel-gap divergence."
+      ],
+      "cannot_tell": [
+        "Fifth-wheel jaw security, locking-handle operation and mounting-hole wear require a close overhead view of the throat and mountings.",
+        "Exact drive-tire tread depth, DOT dates, retread status and matching of every inner tire require square close-ups of all tread faces and sidewalls.",
+        "Brake, hub, shock-absorber and air-bag condition is obscured; under-axle close-ups are required.",
+        "Mechanical condition and fluid leakage cannot be established from this exterior view.",
+        "The fifth-wheel jaw, throat wear and locking action are obscured; a clean close-up looking directly into the throat is required.",
+        "Drive-tire brand matching, precise tread depth and wear across every tire cannot be confirmed from this angle; square-on views of both sides and the inner duals are required."
+      ]
+    },
+    {
+      "file": "002.jpg",
+      "photo_id": 2,
+      "source": "002.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "tire_wheel",
+      "shows": "Close-up of a drive-axle dual-tire assembly with part of the rim and chassis visible.",
+      "cropped": false,
+      "quality": "good",
+      "subject_box": null,
+      "subject_basis": "",
+      "detections": 0,
+      "odometer_km": null,
+      "issues": [
+        {
+          "component": "drive_tires",
+          "severity": "minor",
+          "observation": "The outer dual has a broad shoulder scrub band worn noticeably below the centre ribs, with local chunking along the tread edge; this is uneven wear beyond the stated distance and calls for tire replacement plus pressure, alignment and suspension checks. The angle does not prove that the lowest area is level with the wear bars or expose casing, either of which would require immediate removal from service.",
+          "price_impact": "low",
+          "confidence": 0.48,
+          "also_seen_in": []
+        }
+      ],
+      "strengths": [
+        "The inner dual's visible crown retains defined tread blocks and grooves standing proud of the wear bars.",
+        "No bulge, exposed cord or casing-deep cut is visible on the exposed outer sidewall.",
+        "The visible rim edge appears straight, without an evident crack or heavy kerbing.",
+        "The inner drive tire's visible tread remains clearly proud of the wear bars, without obvious cupping or scalloping.",
+        "The visible rim edge appears straight and free of cracking."
+      ],
+      "cannot_tell": [
+        "A tread gauge and square-on view of the wear bars are needed to establish remaining depth and current legal status at the worn shoulder.",
+        "The opposite-side drive tires are not shown, so axle-wide brand, pattern and wear matching cannot be confirmed.",
+        "DOT date codes and any retread buff line or cap edge are not legible.",
+        "Wheel nuts and indicators, valve stem, hub and brake area are obscured.",
+        "A perpendicular tread-gauge photograph is needed to confirm remaining depth and road legality at the outer tire's worn shoulder.",
+        "Exact tread depth relative to every wear bar requires a gauge reading and closer square-on tread photographs."
+      ]
+    },
+    {
+      "file": "003.jpg",
+      "photo_id": 15,
+      "source": "015.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "fifth_wheel",
+      "shows": "A close view of a front steer tire, wheel rim and wheel arch; the fifth wheel is not in frame.",
+      "cropped": false,
+      "quality": "good",
+      "subject_box": null,
+      "subject_basis": "",
+      "detections": 1,
+      "odometer_km": null,
+      "issues": [
+        {
+          "component": "steer_tires",
+          "severity": "minor",
+          "observation": "The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service.",
+          "price_impact": "low",
+          "confidence": 0.64,
+          "also_seen_in": [
+            19
+          ]
+        }
+      ],
+      "strengths": [
+        "The visible sidewall shows no obvious bulge, exposed cord or deep cracking.",
+        "The wheel rim appears straight, with all visible wheel fasteners present and no obvious hub-fluid streaking.",
+        "The steel wheel rim appears circular and serviceable, with no visible impact distortion.",
+        "Wheel fasteners are present, and the visible hub area is dry with no oil sling or active leakage.",
+        "The wheel rim appears straight without visible impact distortion; all visible wheel nuts are present.",
+        "The hub face is dry, with no visible fresh lubricant leakage."
+      ],
+      "cannot_tell": [
+        "Exact tread depth and legal margin require a tread-gauge reading across every rib.",
+        "Axle-wide tire matching and off-side wear require photographs of the opposite steer tire.",
+        "The fifth-wheel plate, grease film, jaws, locking handle, throat, ramps, mounting bolts, mounting plate, coupling height and packing plates are outside this frame and require clear overhead and side photographs of the coupling.",
+        "Exact tread depth and roadworthiness require a tread-depth gauge and clear views of the wear bars across the full tread width.",
+        "Brake lining, disc or drum condition is concealed behind the wheel.",
+        "The inner sidewall and brake components require views from behind the wheel."
+      ]
+    },
+    {
+      "file": "004.jpg",
+      "photo_id": 10,
+      "source": "010.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "interior_cab",
+      "shows": "The frame shows the high-roof sleeper area with the folded bunk, overhead lockers, roof hatch and part of the passenger seat.",
+      "cropped": false,
+      "quality": "fair",
+      "subject_box": null,
+      "subject_basis": "",
+      "detections": 0,
+      "odometer_km": null,
+      "issues": [
+        {
+          "component": "bunk_sleeper",
+          "severity": "cosmetic",
+          "observation": "Light grey handling and scuff soiling is visible along the lower edge of the folded bunk mattress; the covering remains intact.",
+          "price_impact": "none",
+          "confidence": 0.33,
+          "also_seen_in": []
+        }
+      ],
+      "strengths": [
+        "The visible bunk upholstery holds its shape with no tear, collapse or damp staining apparent.",
+        "Overhead storage doors sit shut and aligned, and the retaining net remains secured.",
+        "The headliner and roof-hatch surround appear dry, clean and free of sagging or water marks.",
+        "Visible sleeper trim and panels are complete and uncracked, with wear consistent with the stated distance.",
+        "The visible portion of the passenger seat retains its shape without apparent bolster collapse.",
+        "The visible sleeper upholstery is intact, with no tears, damp marks or mould staining apparent.",
+        "The folded bunk mattress holds its shape and shows no visible tears, cracked covering or damp staining.",
+        "The luggage net is complete, taut and securely mounted."
+      ],
+      "cannot_tell": [
+        "The driver's seat, bolster and suspension height require a full view from the open driver's door.",
+        "The steering wheel, controls, dashboard, instruments and warning lamps are outside this frame.",
+        "Floor covering, pedal rubbers and entry-step wear require a downward photograph of the driver's footwell.",
+        "The underside and hinges of the folded bunk require the bunk to be lowered and photographed.",
+        "The bunk mattress sleeping surface and lower storage closures are not exposed sufficiently for full assessment.",
+        "The driver's seat, bolster and seat height are not visible; a square-on photograph of the complete driver's seat is required."
+      ]
+    },
+    {
+      "file": "005.jpg",
+      "photo_id": 4,
+      "source": "004.jpg",
+      "width": 1100,
+      "height": 825,
+      "view": "dashboard_odometer",
+      "shows": "The live dashboard cluster shows the odometer, trip data and vehicle-status gauges in kilometres.",
+      "cropped": false,
+      "quality": "good",
+      "subject_box": [
+        0.0,
+        0.0008,
+        0.9897,
+        1.0
+      ],
+      "subject_basis": "matches the vehicle the rest of the set is about (cosine 0.56)",
+      "detections": 2,
+      "odometer_km": 164374,
+      "issues": [],
+      "strengths": [
+        "Odometer reads 164374 km, with \"km\" printed beside the digits; no digits are guessed.",
+        "Cluster is live and displays neutral, zero road speed and zero engine speed.",
+        "Fuel is at or very near empty: the display reads \"0 km to E\" and the amber low-fuel lamp is lit.",
+        "AdBlue gauge appears approximately one-third full; no numeric quantity is displayed.",
+        "Red parking-brake and seat-belt reminder lamps are lit while stationary. The red battery/charging lamp is also lit with the engine evidently stopped; no engine, ABS/EBS or emissions fault lamp is visible.",
+        "The displayed message is the trip-reset instruction \"Sıfırlamak için OK basılı tutun\"; no service-interval, DPF-regeneration or fault-code message is shown.",
+        "Visible trip data reads 1492.4 km, 65 km/h average speed, 27.6 l/100km average consumption and 22:40:03 elapsed time.",
+        "Instrument surround and visible dash top are complete, aligned and free from visible cracking or delamination."
+      ],
+      "cannot_tell": [
+        "The steering-wheel rim, stalks and driver switches are obscured or outside the frame; a wider, sharp driver's-position photograph is needed to assess wear against the stated distance.",
+        "Engine hours are not displayed on this screen; the engine-hours menu is required.",
+        "A running-engine cluster photograph is needed to confirm that the battery/charging and other startup telltales extinguish normally.",
+        "Seats, bunk, cab floor and lower trim are outside this frame.",
+        "Charging-system condition cannot be judged until the engine is running and the battery lamp extinguishing can be confirmed.",
+        "Seat, bunk, floor trim and the remainder of the cab interior are not visible."
+      ]
+    }
+  ],
+  "merge": {
+    "raw": 13,
+    "merged": 6,
+    "clamped": 1,
+    "disagreed": 1,
+    "example": {
+      "component": "steer_tires",
+      "severity": "minor",
+      "observation": "The visible steer tire has widespread, uneven crown wear with shallow main grooves and rounded shoulders, substantially more used than expected at the stated distance; gauge the tread and check steering geometry before continued service.",
+      "photo_id": 15,
+      "also_seen_in": [
+        19
+      ]
+    }
+  },
+  "cross_checks": {
+    "odometer": {
+      "declared": 164374.0,
+      "vlm": 164374,
+      "vlm_photo_id": 4,
+      "ocr": {
+        "available": true,
+        "km": 164374,
+        "confidence": 0.993,
+        "text": "164374km",
+        "reason": "read 164,374 km from a 'joined' token at OCR confidence 0.99",
+        "rule": "joined"
+      },
+      "agree": true
+    },
+    "price_routes": {
+      "comparables": 2451000.0,
+      "anchor": 2472000.0,
+      "gap_pct": 0.9,
+      "new_price": 7433143.0,
+      "retention_pct": 33.3,
+      "source": "Ford Trucks Turkiye official price list",
+      "source_url": "https://www.fordtrucks.com.tr/fiyat-listesi",
+      "source_type": "oem_official",
+      "as_of": "2026-09-08",
+      "basis": "7,433,143 TRY new (FORD F-MAX, oem official, as of 2026-09-08) x 33.3% retained at 5 years and 164,374 km"
+    }
+  },
+  "condition": {
+    "grade": "good",
+    "grade_reason": "good: 6 finding(s), none of them severe enough or confident enough to set a grade on its own; the wear totals 0.2 against a 1.8 threshold for fair",
+    "grade_model": "fair",
+    "coverage_pct": 74.5,
+    "confirmed_sound": [
+      "The visible steer tire has substantial tread above the wear indicators, with no obvious shoulder collapse, sidewall bulge or cracking.",
+      "The visible drive tires retain pronounced tread blocks and show no visible sidewall damage.",
+      "The visible chassis rail is straight, with paint attached and no lifting scale, perforation or repair plate apparent.",
+      "The fuel-tank casing appears complete and undistorted; visible dullness is consistent with road film and service wear.",
+      "The visible rear lamp cluster is complete, with unbroken lenses and a straight carrier.",
+      "The visible rear mudguard is present, straight and free of obvious cracks.",
+      "The visible drive tires carry matching tread patterns, with tread standing well proud of the wear bars and no evident irregular shoulder wear or sidewall damage.",
+      "The visible drive tires retain clearly defined tread grooves with no obvious cupping or abnormal shoulder wear.",
+      "Visible front cab panels and bumper sit square, with parallel gaps and no evident distortion.",
+      "Red paint matches across the visible cab front, bumper corners and roof section.",
+      "Front bumper and lower valance are complete and aligned, with only ordinary road-use marks visible.",
+      "Grille is complete, securely seated and free of visible cracks or missing sections.",
+      "Both headlamp assemblies are complete and their lenses appear clear and undamaged.",
+      "Windscreen is clear in the visible area, with no evident chips or cracks."
+    ],
+    "cannot_tell": [
+      "Measured tread depth, tire date codes, retread status, concealed dual sidewalls and opposite steer-tire condition",
+      "Brake linings, discs or drums and complete hub inspection",
+      "Air bags, shocks, steering and suspension condition",
+      "Fifth-wheel jaws, locking action and mounting play",
+      "Engine, driveline, fluid leakage and running condition",
+      "AdBlue tank, exhaust and DPF condition",
+      "Driver's seat, pedals and entry-step wear",
+      "Engine hours and running-engine warning-lamp check"
+    ]
+  },
+  "price": {
+    "currency": "TRY",
+    "low": 2015000.0,
+    "point": 2451000.0,
+    "high": 2619000.0,
+    "baseline_low": 2084000.0,
+    "baseline_point": 2462000.0,
+    "baseline_high": 2604000.0,
+    "low_usd": 41500.0,
+    "point_usd": 50400.0,
+    "high_usd": 53900.0,
+    "interval_level": 0.8,
+    "asking": {
+      "asking": 2550000.0,
+      "currency": "TRY",
+      "vs_comparables_pct": 8.8,
+      "vs_estimate_pct": 4.0,
+      "inside_comparable_band": true,
+      "label": "in line with the market",
+      "summary": "The asking price sits inside the band that comparable trucks of this age and mileage are listed at."
+    },
+    "adjustment": {
+      "multiplier": 0.9958,
+      "pct": -0.4,
+      "cap_pct": 9.4,
+      "drivers": [
+        "steer tires - one finding",
+        "drive tires - one finding"
+      ],
+      "direction": "discount",
+      "cap_basis": "measured: one out-of-fold residual standard deviation of the price model (+/-9.4%) - the variation in asking price that year, kilometres, brand and market do not explain",
+      "weights_basis": "assumed, not fitted: the severity x impact weight table, the per-subsystem saturation decay, the family value weights and the coverage thresholds are all hand-set. This corpus carries no condition ground truth to fit them against, so they are stated rather than measured"
+    },
+    "widened": [
+      "only 74% of the truck by value was photographed legibly, so the condition band widens 1.09x (an assumption, not a measurement)",
+      "the synthesis pass graded this fair and the deterministic rollup grades it good, so the condition band widens 1.08x (an assumption)"
+    ],
+    "caveats": [
+      "Trained on ASKING prices, not realised sale prices - the honest caveat, not a hidden one. Expect realised prices to sit below the band.",
+      "The measured interval coverage belongs to the comparable-asking band. The condition-adjusted band is that estimate moved by what the photos show, which is a deliberate departure from what sellers ask and is not covered by the same measurement.",
+      "Turkish prices converted at 48.596 TRY/USD as of 2026-09-11; at ~30% annual inflation this rate goes stale fast - refit rather than quote it later.",
+      "The Turkish comparables are brand-concentrated (78 of 84 Turkish listings are FORD), so an unfamiliar make is priced off the market average rather than off its own curve."
+    ],
+    "fx": 48.596,
+    "measured": {
+      "coverage": 80.3,
+      "coverage_n": 958,
+      "belongs_to": "baseline",
+      "r2": 0.842,
+      "mae_pct": 6.8,
+      "n_listings": 84,
+      "n_groups": 24
+    }
+  }
+}

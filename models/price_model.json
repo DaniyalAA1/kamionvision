@@ -12,16 +12,20 @@
     "euro6",
     "brand_FORD",
     "brand_MAN",
-    "brand_other"
+    "brand_other",
+    "log_new_price",
+    "new_price_missing"
   ],
   "coef": [
-    -0.24571,
-    -0.016692,
+    -0.187347,
+    -0.020666,
     0.0,
     0.0,
-    -0.004091,
-    -0.022118,
-    0.022118,
+    -0.001821,
+    0.033292,
+    -0.033292,
+    0.0,
+    0.107866,
     0.0
   ],
   "intercept": 14.651543,
@@ -33,6 +37,8 @@
     0.952381,
     0.928571,
     0.071429,
+    0.0,
+    15.818319,
     0.0
   ],
   "scale": [
@@ -43,40 +49,59 @@
     0.212959,
     0.257539,
     0.257539,
+    1.0,
+    0.044896,
     1.0
   ],
-  "residual_std": 0.0988,
+  "residual_std": 0.0551,
   "offsets": {
     "0.5": [
-      -0.0209,
-      0.0409
+      -0.0371,
+      0.0326
     ],
     "0.8": [
-      -0.1664,
-      0.0564
+      -0.0596,
+      0.064
     ],
     "0.9": [
-      -0.1736,
-      0.0738
+      -0.0675,
+      0.0803
     ]
   },
   "calibration": {
     "n": 84,
     "n_groups": 24,
-    "r2_oof": 0.8422,
-    "mae_pct_oof": 6.8,
-    "median_ape_oof": 4.2,
-    "residual_std_oof": 0.0988,
-    "coverage_0.5": 0.6013,
-    "band_width_pct_0.5": 15.1,
-    "coverage_0.8": 0.8027,
-    "band_width_pct_0.8": 31.8,
-    "coverage_0.9": 0.8612,
-    "band_width_pct_0.9": 42.4,
+    "r2_oof": 0.9506,
+    "mae_pct_oof": 4.4,
+    "median_ape_oof": 3.6,
+    "residual_std_oof": 0.0551,
+    "coverage_0.5": 0.4812,
+    "band_width_pct_0.5": 8.1,
+    "coverage_0.8": 0.8038,
+    "band_width_pct_0.8": 16.5,
+    "coverage_0.9": 0.8737,
+    "band_width_pct_0.9": 25.7,
     "coverage_n": 958,
     "coverage_splits": 40,
-    "scored_on": "all markets",
+    "scored_on": "TR",
+    "design": "shipped: log1p_age, log_km, market_tr, market_eu, euro6, brand_FORD, brand_MAN, brand_other, log_new_price, new_price_missing",
     "tr_only_view": {
+      "n": 84,
+      "n_groups": 24,
+      "r2_oof": 0.9506,
+      "mae_pct_oof": 4.4,
+      "median_ape_oof": 3.6,
+      "residual_std_oof": 0.0551,
+      "coverage_0.5": 0.4812,
+      "band_width_pct_0.5": 8.1,
+      "coverage_0.8": 0.8038,
+      "band_width_pct_0.8": 16.5,
+      "coverage_0.9": 0.8737,
+      "band_width_pct_0.9": 25.7,
+      "coverage_n": 958,
+      "coverage_splits": 40
+    },
+    "without_new_price_column": {
       "n": 84,
       "n_groups": 24,
       "r2_oof": 0.8422,
@@ -95,19 +120,42 @@
     "without_brand_columns": {
       "n": 84,
       "n_groups": 24,
-      "r2_oof": 0.8657,
-      "mae_pct_oof": 6.4,
-      "median_ape_oof": 3.8,
-      "residual_std_oof": 0.0909,
-      "coverage_0.5": 0.5877,
-      "band_width_pct_0.5": 11.6,
+      "r2_oof": 0.9178,
+      "mae_pct_oof": 5.0,
+      "median_ape_oof": 3.9,
+      "residual_std_oof": 0.0713,
+      "coverage_0.5": 0.5616,
+      "band_width_pct_0.5": 10.8,
       "coverage_0.8": 0.8006,
-      "band_width_pct_0.8": 31.1,
-      "coverage_0.9": 0.8424,
-      "band_width_pct_0.9": 40.9,
+      "band_width_pct_0.8": 20.4,
+      "coverage_0.9": 0.8841,
+      "band_width_pct_0.9": 26.0,
       "coverage_n": 958,
       "coverage_splits": 40
-    }
+    },
+    "training_set_choice": {
+      "pooled_tr_us": {
+        "r2_oof": 0.6536,
+        "n": 84,
+        "coverage_0.8": 0.8847
+      },
+      "tr_only": {
+        "r2_oof": 0.8422,
+        "n": 84,
+        "coverage_0.8": 0.8027
+      },
+      "pooled_tr_us_eu": {
+        "r2_oof": 0.6139,
+        "n": 84,
+        "coverage_0.8": 0.8956
+      },
+      "pooled_tr_eu": {
+        "r2_oof": 0.701,
+        "n": 84,
+        "coverage_0.8": 0.8977
+      }
+    },
+    "training_set_choice_basis": "scored on held-out TR listings with the new-price column OFF, because which market to train on and whether the model name may reach the fit are two separate questions and the first was settled against the design its answer was measured on"
   },
   "widening": {
     "unknown_brand": 1.85,
@@ -263,10 +311,90 @@
         "median_ape_with_anchor": 3.7,
         "basis": "whole Turkish makes held out of the hedonic fit and priced as unknowns, with the 1.85x unknown-brand widening alone versus the new-price anchor blended in"
       }
+    },
+    "unseen_brand_test_with_new_price_column": {
+      "TR:MAN": {
+        "n_held_out": 6,
+        "trained_on": [
+          "FORD"
+        ],
+        "coverage_widened_only": 0.667,
+        "coverage_with_anchor": 0.667,
+        "median_ape_widened_only": 5.0,
+        "median_ape_with_anchor": 2.5,
+        "band_factor_widened_only": 1.85,
+        "band_factor_with_anchor": 1.0,
+        "mean_anchor_weight": 0.716
+      },
+      "_summary": {
+        "ran": true,
+        "holdouts": 1,
+        "median_ape_widened_only": 5.0,
+        "median_ape_with_anchor": 2.5,
+        "basis": "whole Turkish makes held out of the hedonic fit and priced as unknowns, with the 1.85x unknown-brand widening alone versus the new-price anchor blended in"
+      }
     }
   },
+  "new_price": {
+    "in_design": true,
+    "gate": {
+      "r2_without": 0.8422,
+      "r2_with": 0.9506,
+      "median_ape_without": 4.2,
+      "median_ape_with": 3.6,
+      "sigma_without": 0.0988,
+      "sigma_with": 0.0551,
+      "coverage_0.8_without": 0.8027,
+      "coverage_0.8_with": 0.8038,
+      "band_width_pct_0.8_without": 31.8,
+      "band_width_pct_0.8_with": 16.5,
+      "min_gain": 0.02,
+      "max_coverage_loss": 0.02,
+      "basis": "out-of-fold, folds grouped on the same (market, brand, model, year, price) key everything else here uses, scored on TR"
+    },
+    "reference": "data/reference/new_prices_tr.json",
+    "markets": [
+      "TR"
+    ],
+    "permutation_test": {
+      "ran": true,
+      "observed_r2": 0.9506,
+      "n_models": 4,
+      "across_models": {
+        "permutations": 24,
+        "rank_of_truth": 2,
+        "p_exact": 0.0833,
+        "p_floor": 0.0417,
+        "max": 0.9508,
+        "median": 0.8919,
+        "min": 0.5887,
+        "reads": "every permutation is the same partition of rows, so a per-model dummy would score identically across all of them; the spread here is what the VALUES are worth. The true assignment is near the top but with this few models the test cannot resolve it from the two best alternatives - p_floor is the smallest p obtainable"
+      },
+      "across_rows": {
+        "draws": 200,
+        "p": 0.0,
+        "max": 0.8619,
+        "mean": 0.8407,
+        "reads": "the crude leakage story: it does not survive"
+      }
+    },
+    "log_mean": 15.818319,
+    "log_range": [
+      15.739119,
+      15.97561
+    ],
+    "price_range": [
+      6845613,
+      8672000
+    ],
+    "distinct_prices": 4,
+    "n_with_a_price": 84,
+    "n_without": 0,
+    "per_unit_coef": 2.4026,
+    "basis": "MEASURED: the column buys +0.108 out-of-fold R2 and halves the 80% band's width at the same coverage. ASSUMED, and the reason the column is clipped: the coefficient is identified from 4 published prices spanning 0.24 in log space, so outside that span it is extrapolation off a short lever and the value is pinned to the edge. MISSING is defined, not an error: a truck with no published new price takes the training mean, standardises to zero, and this column then says nothing about it - though the rest of the design was refitted around the column and does move, by about 14% for a brand the reference table has never heard of, which nothing on this corpus can measure because every Turkish make in it has a published price"
+  },
   "meta": {
-    "fitted_at": "2026-09-12T19:55:56",
+    "fitted_at": "2026-09-13T11:47:50",
     "training_set": "tr_only",
     "n_listings": 84,
     "n_groups": 24,
