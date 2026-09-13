@@ -128,64 +128,63 @@ def evaluate(df: pd.DataFrame, brands: list[str], *, score_market: str | None = 
 
 
 
-def leave_one_brand_out(df: pd.DataFrame, brands: list[str], level: float = 0.8) -> dict:
-    """What actually happens when a make the model has never fitted walks in.
+def leave_one_brand_out(df: pd.DataFrame, level: float = 0.8) -> dict:
+    """What happens when a make the model has never fitted walks in.
 
-    The "refit without the brand columns" measurement is not informative on a
-    corpus that is 93% one brand - it can only report that brand barely
-    matters *here*. This does the honest version: hold out an entire make,
-    fit on the rest, and price that make as an unknown. The widening factor is
-    how much the band has to grow before it covers at its nominal rate.
+    Done WITHIN a market, never across. On this corpus brand is nearly
+    collinear with market - Türkiye is 93% Ford, the European stock is 95%
+    Mercedes - so holding a make out of the pooled frame removes an entire
+    market with it, and what comes back is the cost of extrapolating across a
+    border, not across a brand. Measured that way the numbers were absurd:
+    holding out Ford reported a 442% median error, because the model was left
+    estimating the Turkish intercept from six MAN listings.
 
-    It is the single most demo-relevant number in the file, because the brief
-    hands you photos of a truck you have never seen.
+    Restricted to one market at a time it answers the real question, and the
+    European stock is the only market with enough makes to ask it.
     """
-    results = {}
-    factors = []
-    for held in [b for b in brands if b != "other"]:
-        train = df[df.brand != held]
-        test = df[df.brand == held]
-        if len(test) < 5 or train.brand.nunique() < 2:
+    results, factors = {}, []
+    for market, group in df.groupby(df.market.str.upper()):
+        brands_here = F.brand_vocabulary(group, min_n=F.MIN_BRAND_N)
+        if len([b for b in brands_here if b != "other"]) < 2:
             continue
-        train_brands = F.brand_vocabulary(train, min_n=F.MIN_BRAND_N)
-        Xtr, ytr = F.matrix(train, train_brands), train.y.to_numpy()
-        Xte, yte = F.matrix(test, train_brands), test.y.to_numpy()
+        for held in [b for b in brands_here if b != "other"]:
+            train = group[group.brand != held]
+            test = group[group.brand == held]
+            if len(test) < 5 or train.brand.nunique() < 2:
+                continue
+            train_brands = F.brand_vocabulary(train, min_n=F.MIN_BRAND_N)
+            Xtr, ytr = F.matrix(train, train_brands), train.y.to_numpy()
+            Xte, yte = F.matrix(test, train_brands), test.y.to_numpy()
 
-        model, mean, scale = _fit(Xtr, ytr)
-        # Band from out-of-fold residuals on the training brands only.
-        gtr = train.group.to_numpy()
-        oof = np.full(len(train), np.nan)
-        for a, b in GroupKFold(n_splits=min(5, len(set(gtr)))).split(Xtr, ytr, gtr):
-            m, mu_, sc_ = _fit(Xtr[a], ytr[a])
-            oof[b] = _predict(m, mu_, sc_, Xtr[a.size and b])
-        oof = np.full(len(train), np.nan)
-        for a, b in GroupKFold(n_splits=min(5, len(set(gtr)))).split(Xtr, ytr, gtr):
-            m, mu_, sc_ = _fit(Xtr[a], ytr[a])
-            oof[b] = _predict(m, mu_, sc_, Xtr[b])
-        band = ytr - oof
-        lo, hi = _offsets(band, level)
-        pred = _predict(model, mean, scale, Xte)
+            model, mean, scale = _fit(Xtr, ytr)
+            gtr = train.group.to_numpy()
+            oof = np.full(len(train), np.nan)
+            for a, b in GroupKFold(n_splits=min(5, len(set(gtr)))).split(Xtr, ytr, gtr):
+                m, mu_, sc_ = _fit(Xtr[a], ytr[a])
+                oof[b] = _predict(m, mu_, sc_, Xtr[b])
+            lo, hi = _offsets(ytr - oof, level)
+            pred = _predict(model, mean, scale, Xte)
 
-        covered = float(np.mean((yte >= pred + lo) & (yte <= pred + hi)))
-        # Smallest symmetric inflation of the band that reaches the nominal rate.
-        factor = 1.0
-        for f in np.arange(1.0, 4.01, 0.05):
-            if float(np.mean((yte >= pred + lo * f) & (yte <= pred + hi * f))) >= level:
-                factor = float(f)
-                break
-        else:
+            covered = float(np.mean((yte >= pred + lo) & (yte <= pred + hi)))
             factor = 4.0
-        results[held] = {
-            "n_held_out": int(len(test)),
-            "coverage_unwidened": round(covered, 3),
-            "widening_needed": round(factor, 2),
-            "median_ape_pct": round(float(np.median(np.abs(np.expm1(yte - pred)))) * 100, 1),
-        }
-        factors.append(factor)
+            for f in np.arange(1.0, 4.01, 0.05):
+                if float(np.mean((yte >= pred + lo * f) & (yte <= pred + hi * f))) >= level:
+                    factor = float(f)
+                    break
+            results[f"{market}:{held}"] = {
+                "market": market, "brand": held,
+                "n_held_out": int(len(test)),
+                "trained_on_brands": [b for b in train_brands if b != "other"],
+                "coverage_unwidened": round(covered, 3),
+                "widening_needed": round(factor, 2),
+                "median_ape_pct": round(float(np.median(np.abs(np.expm1(yte - pred)))) * 100, 1),
+            }
+            factors.append(factor)
     results["_summary"] = {
-        "brands_tested": len(factors),
+        "holdouts": len(factors),
         "max_widening_needed": round(max(factors), 2) if factors else None,
         "median_widening_needed": round(float(np.median(factors)), 2) if factors else None,
+        "method": "within-market leave-one-brand-out",
     }
     return results
 
@@ -193,6 +192,7 @@ def leave_one_brand_out(df: pd.DataFrame, brands: list[str], level: float = 0.8)
 def main() -> None:
     listings = pd.read_csv(LISTINGS_CSV)
     df = F.build_frame(listings)
+    pooled_eu = F.build_frame(listings, include_eu=True)
     brands = F.brand_vocabulary(df)
     tr = df[df.market.str.upper() == "TR"]
 
@@ -205,6 +205,14 @@ def main() -> None:
         "pooled_tr_us": (df, brands),
         "tr_only": (tr, F.brand_vocabulary(tr, min_n=3)),
     }
+    if (pooled_eu.market.str.upper() == "EU").any():
+        # TruckStore's European tractor units. Same vehicle class as the
+        # Turkish stock, unlike the US conventionals - the open question is
+        # whether depreciation and mileage slopes transfer across the border.
+        candidates["pooled_tr_us_eu"] = (pooled_eu, F.brand_vocabulary(pooled_eu))
+        candidates["pooled_tr_eu"] = (
+            pooled_eu[pooled_eu.market.str.upper() != "US"],
+            F.brand_vocabulary(pooled_eu[pooled_eu.market.str.upper() != "US"]))
     comparison = {}
     for name, (frame, brand_set) in candidates.items():
         comparison[name] = evaluate(frame, brand_set, score_market="TR")
@@ -216,8 +224,12 @@ def main() -> None:
     # Prefer the pooled fit unless TR-only is clearly better on TR trucks.
     # Pooling is not free - it assumes the age and km slopes transfer across
     # markets - so it has to earn its place on the market being demoed.
-    pooled_better = (comparison["pooled_tr_us"]["r2_oof"] >= comparison["tr_only"]["r2_oof"] - 0.02)
-    chosen = "pooled_tr_us" if pooled_better else "tr_only"
+    # Whichever prices a Turkish truck best on held-out Turkish listings wins,
+    # tie-broken toward the smaller training set: pooling assumes slopes
+    # transfer across markets, and that assumption has to pay for itself.
+    best = max(comparison.items(), key=lambda kv: (kv[1]["r2_oof"] or -9))
+    chosen = best[0] if (best[1]["r2_oof"] or -9) > (comparison["tr_only"]["r2_oof"] or -9) + 0.02 \
+        else "tr_only"
     fit_df, fit_brands = candidates[chosen]
     print(f"\nchosen training set: {chosen}")
 
@@ -227,17 +239,18 @@ def main() -> None:
     # How much wider does the band have to be for a make we never fitted?
     # Measured by holding out entire brands, pooled, because the TR-only
     # corpus has too few makes to answer the question at all.
-    lobo = leave_one_brand_out(df, brands)
-    print("\nleave-one-brand-out (pooled) - pricing a make the fit never saw:")
-    for brand, r in lobo.items():
-        if brand.startswith("_"):
+    lobo = leave_one_brand_out(pooled_eu if len(pooled_eu) > len(df) else df)
+    print("\nwithin-market leave-one-brand-out - pricing a make the fit never saw:")
+    for key, r in lobo.items():
+        if key.startswith("_"):
             continue
-        print(f"  {brand:14s} n={r['n_held_out']:3d}  80% band covered "
+        print(f"  {key:18s} n={r['n_held_out']:4d}  80% band covered "
               f"{r['coverage_unwidened']:.2f} unwidened, needed {r['widening_needed']:.2f}x, "
-              f"median error {r['median_ape_pct']:.0f}%")
+              f"median error {r['median_ape_pct']:5.1f}%")
     widen = lobo["_summary"]["median_widening_needed"] or 1.5
     widen = round(max(1.2, min(4.0, widen)), 2)
-    print(f"  -> unseen-brand widening set to {widen:.2f}x (median across held-out makes)")
+    print(f"  -> unseen-brand widening set to {widen:.2f}x "
+          f"(median over {lobo['_summary']['holdouts']} within-market holdouts)")
     print(f"brand columns are worth {overall['r2_oof'] - no_brand['r2_oof']:+.3f} R2 within the corpus")
 
     # --- final fit on everything -----------------------------------------
@@ -270,16 +283,19 @@ def main() -> None:
                      "without_brand_columns": no_brand},
         widening={"unknown_brand": widen,
                   "unknown_brand_basis": (
-                      "measured by leave-one-brand-out: entire makes were held out of the "
-                      "pooled fit and priced as unknowns; this is the median band inflation "
-                      "needed to restore 80% coverage on them"),
+                      "measured by within-market leave-one-brand-out: whole makes were held "
+                      "out of the fit for their own market and priced as unknowns; this is "
+                      "the median band inflation needed to restore 80% coverage. Done within "
+                      "a market because brand is nearly collinear with market on this corpus, "
+                      "so a cross-market holdout measures the border, not the brand"),
                   "leave_one_brand_out": lobo},
         meta={
             "fitted_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "training_set": chosen,
             "n_listings": int(len(fit_df)),
             "n_groups": int(fit_df.group.nunique()),
-            "target": "log(asking price in USD)",
+            "target": "log(asking price in the market's own currency; "
+                      "market dummies absorb the FX constant)",
             "fx": {"usd_try": USD_TRY, "as_of": FX_AS_OF},
             "markets": sorted(fit_df.market.str.upper().unique().tolist()),
             "tr_brand_note": f"{top_n} of {len(tr)} Turkish listings are {top_brand}",

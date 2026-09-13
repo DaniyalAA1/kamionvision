@@ -151,6 +151,30 @@ class Pricing(unittest.TestCase):
         e = self.estimate()
         self.assertAlmostEqual(e.point_usd, e.point / USD_TRY, delta=e.point_usd * 0.01)
 
+    def test_prediction_is_anchored_to_the_real_market(self):
+        """Order-of-magnitude guard, in absolute terms.
+
+        The ratio test above is internally consistent even when both numbers
+        are wrong by the same factor, and that is exactly what happened:
+        switching the model target to native currency left `estimate` still
+        multiplying by the TRY rate, and a 2021 F-MAX came out at 118,000,000
+        TRY instead of 2,435,000 - a 48x error that every relative assertion
+        in this file sailed past. Real 2021 F-MAX listings in the corpus ask
+        2.35-2.55M TRY.
+        """
+        e = self.estimate(year=2021, km=164374)
+        self.assertGreater(e.point, 1_000_000)
+        self.assertLess(e.point, 6_000_000)
+        # And the USD view has to land in a plausible band for a used tractor.
+        self.assertGreater(e.point_usd, 10_000)
+        self.assertLess(e.point_usd, 200_000)
+
+    def test_band_brackets_the_real_asking_price_of_a_known_spec(self):
+        """The comparable band for a listing IN the corpus should contain it."""
+        e = self.estimate(year=2021, km=164374)
+        self.assertLessEqual(e.baseline_low, 2_550_000)
+        self.assertGreaterEqual(e.baseline_high, 2_550_000)
+
     def test_missing_inputs_decline_rather_than_guess(self):
         for kw in ({"year": None}, {"km": None}):
             with self.subTest(**kw):

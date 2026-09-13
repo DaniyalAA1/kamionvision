@@ -11,14 +11,23 @@ someone who buys trucks for a living.
                  linear term lets that tail drag the fit
     brand        one column per brand with enough listings to estimate, and a
                  shared `other` column that an unseen brand falls into
-    market       TR and US price differently in absolute terms; a shared
-                 intercept shift lets both markets inform the age and km
-                 slopes without pretending they are one market
-    euro6        Euro 5 -> Euro 6 is a step change in this segment. Derived
-                 from year when not stated, and always flagged as inferred.
+    market       TR, US and EU price differently in absolute terms; an
+                 intercept shift per market lets them all inform the age and
+                 km slopes without pretending they are one market
+    euro6        Euro 5 -> Euro 6 is a step change in this segment. Stated by
+                 the dealer where the source provides it, otherwise derived
+                 from year and flagged as inferred.
+
+The target is log price in each listing's OWN currency, with no FX conversion.
+That is not laziness: a currency conversion is multiplication by a constant, so
+in log space it is an additive constant, which the market dummy absorbs exactly.
+Converting first would put a stamped exchange rate inside the fitted model and
+make it go stale; this way FX appears only where it belongs, in the display of
+a price.
 """
 from __future__ import annotations
 
+import json
 import math
 
 import numpy as np
@@ -47,36 +56,73 @@ def row_features(year, km, make, market, euro_norm=None) -> dict:
     age = max(0.0, REF_YEAR - float(year))
     km = max(KM_FLOOR, float(km))
     norm = euro_norm or euro_norm_for_year(int(year) if year else None)
+    market = str(market).upper()
     return {
         "log1p_age": math.log1p(age),
         "log_km": math.log(km),
         "brand": normalise_brand(make),
-        "market_tr": 1.0 if str(market).upper() == "TR" else 0.0,
+        **{f"market_{m}": 1.0 if market == m.upper() else 0.0 for m in MARKETS},
         "euro6": 1.0 if norm == "Euro 6" else 0.0,
     }
 
 
+MARKETS = ("tr", "eu")          # US is the reference level
+
+
 def design_columns(brands: list[str]) -> list[str]:
-    return ["log1p_age", "log_km", "market_tr", "euro6"] + [f"brand_{b}" for b in brands]
+    return (["log1p_age", "log_km"] + [f"market_{m}" for m in MARKETS] + ["euro6"]
+            + [f"brand_{b}" for b in brands])
 
 
 def to_vector(feats: dict, brands: list[str]) -> np.ndarray:
     brand = feats["brand"] if feats["brand"] in brands else "other"
-    row = [feats["log1p_age"], feats["log_km"], feats["market_tr"], feats["euro6"]]
+    row = [feats["log1p_age"], feats["log_km"]]
+    row += [feats.get(f"market_{m}", 0.0) for m in MARKETS]
+    row.append(feats["euro6"])
     row += [1.0 if brand == b else 0.0 for b in brands]
     return np.array(row, dtype=float)
 
 
-def build_frame(listings: pd.DataFrame) -> pd.DataFrame:
+def load_eu_listings() -> pd.DataFrame:
+    """TruckStore's European tractor units, if they have been harvested.
+
+    Kept out of listings.csv on purpose: that file is the photo corpus, and
+    these rows carry one thumbnail each, no usable imagery. They exist only as
+    price comparables.
+    """
+    from ..config import META
+    path = META / "sources" / "truckstore_eu.jsonl"
+    if not path.exists():
+        return pd.DataFrame()
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    df = pd.DataFrame(rows)
+    df["source_key"] = "truckstore_eu"
+    df["price_usd"] = np.nan
+    return df
+
+
+def build_frame(listings: pd.DataFrame, include_eu: bool = False) -> pd.DataFrame:
     """Priced listings -> a tidy frame with features, target and a group key."""
+    if include_eu:
+        eu = load_eu_listings()
+        if not eu.empty:
+            listings = pd.concat([listings, eu], ignore_index=True)
     df = listings[listings.price.notna() & listings.year.notna() & listings.km.notna()].copy()
     df["brand"] = df.make.map(normalise_brand)
     df["log1p_age"] = np.log1p((REF_YEAR - df.year).clip(lower=0))
     df["log_km"] = np.log(df.km.clip(lower=KM_FLOOR))
-    df["market_tr"] = (df.market.str.upper() == "TR").astype(float)
-    df["euro_norm"] = df.year.map(lambda y: euro_norm_for_year(int(y)))
-    df["euro6"] = (df.euro_norm == "Euro 6").astype(float)
-    df["y"] = np.log(df.price_usd.where(df.price_usd.notna(), df.price))
+    market = df.market.str.upper()
+    for m in MARKETS:
+        df[f"market_{m}"] = (market == m.upper()).astype(float)
+    # Dealer-stated where the source carries it (TruckStore does), inferred
+    # from year where it does not (TruckMarket, SelecTrucks).
+    stated = df["euro_norm"] if "euro_norm" in df.columns else pd.Series(index=df.index, dtype=object)
+    df["euro_norm"] = stated.where(stated.notna() & (stated != ""),
+                                   df.year.map(lambda y: euro_norm_for_year(int(y))))
+    df["euro6"] = (df.euro_norm.astype(str).str.strip() == "Euro 6").astype(float)
+    # Native currency, no FX: a conversion is an additive constant in log space
+    # and the market dummy absorbs it exactly.
+    df["y"] = np.log(df.price)
     # Dealer stock is listed in batches: 26 of the Turkish listings are the
     # same 2022 F-MAX at the same asking price. Folds are grouped on this key
     # so an identical spec can never sit on both sides of a split - the same
@@ -93,10 +139,8 @@ def brand_vocabulary(df: pd.DataFrame, min_n: int = MIN_BRAND_N) -> list[str]:
 
 
 def matrix(df: pd.DataFrame, brands: list[str]) -> np.ndarray:
-    rows = []
-    for r in df.itertuples():
-        brand = r.brand if r.brand in brands else "other"
-        row = [r.log1p_age, r.log_km, r.market_tr, r.euro6]
-        row += [1.0 if brand == b else 0.0 for b in brands]
-        rows.append(row)
-    return np.array(rows, dtype=float)
+    cols = ["log1p_age", "log_km"] + [f"market_{m}" for m in MARKETS] + ["euro6"]
+    base = df[cols].to_numpy(dtype=float)
+    brand = df.brand.where(df.brand.isin(brands), "other")
+    dummies = np.stack([(brand == b).to_numpy(dtype=float) for b in brands], axis=1)
+    return np.concatenate([base, dummies], axis=1)

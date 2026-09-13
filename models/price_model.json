@@ -8,6 +8,7 @@
     "log1p_age",
     "log_km",
     "market_tr",
+    "market_eu",
     "euro6",
     "brand_FORD",
     "brand_MAN",
@@ -17,16 +18,18 @@
     -0.24571,
     -0.016692,
     0.0,
+    0.0,
     -0.004091,
     -0.022118,
     0.022118,
     0.0
   ],
-  "intercept": 10.768002,
+  "intercept": 14.651543,
   "mean": [
     1.857635,
     12.671526,
     1.0,
+    0.0,
     0.952381,
     0.928571,
     0.071429,
@@ -35,6 +38,7 @@
   "scale": [
     0.331339,
     0.601145,
+    1.0,
     1.0,
     0.212959,
     0.257539,
@@ -91,61 +95,130 @@
     "without_brand_columns": {
       "n": 84,
       "n_groups": 24,
-      "r2_oof": 0.8252,
-      "mae_pct_oof": 7.0,
-      "median_ape_oof": 3.9,
-      "residual_std_oof": 0.1036,
-      "coverage_0.5": 0.5637,
-      "band_width_pct_0.5": 13.2,
-      "coverage_0.8": 0.7745,
-      "band_width_pct_0.8": 33.5,
-      "coverage_0.9": 0.8372,
-      "band_width_pct_0.9": 45.3,
+      "r2_oof": 0.8657,
+      "mae_pct_oof": 6.4,
+      "median_ape_oof": 3.8,
+      "residual_std_oof": 0.0909,
+      "coverage_0.5": 0.5877,
+      "band_width_pct_0.5": 11.6,
+      "coverage_0.8": 0.8006,
+      "band_width_pct_0.8": 31.1,
+      "coverage_0.9": 0.8424,
+      "band_width_pct_0.9": 40.9,
       "coverage_n": 958,
       "coverage_splits": 40
     }
   },
   "widening": {
-    "unknown_brand": 1.65,
-    "unknown_brand_basis": "measured by leave-one-brand-out: entire makes were held out of the pooled fit and priced as unknowns; this is the median band inflation needed to restore 80% coverage on them",
+    "unknown_brand": 1.85,
+    "unknown_brand_basis": "measured by within-market leave-one-brand-out: whole makes were held out of the fit for their own market and priced as unknowns; this is the median band inflation needed to restore 80% coverage. Done within a market because brand is nearly collinear with market on this corpus, so a cross-market holdout measures the border, not the brand",
     "leave_one_brand_out": {
-      "FORD": {
-        "n_held_out": 78,
-        "coverage_unwidened": 0.051,
-        "widening_needed": 2.0,
-        "median_ape_pct": 35.9
+      "EU:DAF": {
+        "market": "EU",
+        "brand": "DAF",
+        "n_held_out": 6,
+        "trained_on_brands": [
+          "MAN",
+          "MERCEDES-BENZ",
+          "SCANIA",
+          "VOLVO"
+        ],
+        "coverage_unwidened": 0.667,
+        "widening_needed": 1.55,
+        "median_ape_pct": 10.0
       },
-      "FREIGHTLINER": {
+      "EU:MAN": {
+        "market": "EU",
+        "brand": "MAN",
+        "n_held_out": 16,
+        "trained_on_brands": [
+          "DAF",
+          "MERCEDES-BENZ",
+          "SCANIA",
+          "VOLVO"
+        ],
+        "coverage_unwidened": 0.375,
+        "widening_needed": 1.85,
+        "median_ape_pct": 27.1
+      },
+      "EU:MERCEDES-BENZ": {
+        "market": "EU",
+        "brand": "MERCEDES-BENZ",
+        "n_held_out": 1005,
+        "trained_on_brands": [
+          "DAF",
+          "MAN",
+          "SCANIA",
+          "VOLVO"
+        ],
+        "coverage_unwidened": 0.509,
+        "widening_needed": 1.85,
+        "median_ape_pct": 21.4
+      },
+      "EU:SCANIA": {
+        "market": "EU",
+        "brand": "SCANIA",
+        "n_held_out": 9,
+        "trained_on_brands": [
+          "DAF",
+          "MAN",
+          "MERCEDES-BENZ",
+          "VOLVO"
+        ],
+        "coverage_unwidened": 0.111,
+        "widening_needed": 3.65,
+        "median_ape_pct": 50.7
+      },
+      "EU:VOLVO": {
+        "market": "EU",
+        "brand": "VOLVO",
+        "n_held_out": 15,
+        "trained_on_brands": [
+          "DAF",
+          "MAN",
+          "MERCEDES-BENZ",
+          "SCANIA"
+        ],
+        "coverage_unwidened": 0.0,
+        "widening_needed": 3.25,
+        "median_ape_pct": 75.1
+      },
+      "US:FREIGHTLINER": {
+        "market": "US",
+        "brand": "FREIGHTLINER",
         "n_held_out": 58,
-        "coverage_unwidened": 0.224,
-        "widening_needed": 2.65,
-        "median_ape_pct": 15.3
+        "trained_on_brands": [
+          "KENWORTH"
+        ],
+        "coverage_unwidened": 0.69,
+        "widening_needed": 1.1,
+        "median_ape_pct": 18.9
       },
-      "KENWORTH": {
+      "US:KENWORTH": {
+        "market": "US",
+        "brand": "KENWORTH",
         "n_held_out": 5,
+        "trained_on_brands": [
+          "FREIGHTLINER"
+        ],
         "coverage_unwidened": 0.8,
         "widening_needed": 1.0,
-        "median_ape_pct": 8.5
-      },
-      "MAN": {
-        "n_held_out": 6,
-        "coverage_unwidened": 0.667,
-        "widening_needed": 1.3,
-        "median_ape_pct": 5.6
+        "median_ape_pct": 5.2
       },
       "_summary": {
-        "brands_tested": 4,
-        "max_widening_needed": 2.65,
-        "median_widening_needed": 1.65
+        "holdouts": 7,
+        "max_widening_needed": 3.65,
+        "median_widening_needed": 1.85,
+        "method": "within-market leave-one-brand-out"
       }
     }
   },
   "meta": {
-    "fitted_at": "2026-09-12T17:57:33",
+    "fitted_at": "2026-09-12T19:06:07",
     "training_set": "tr_only",
     "n_listings": 84,
     "n_groups": 24,
-    "target": "log(asking price in USD)",
+    "target": "log(asking price in the market's own currency; market dummies absorb the FX constant)",
     "fx": {
       "usd_try": 48.596,
       "as_of": "2026-09-11"

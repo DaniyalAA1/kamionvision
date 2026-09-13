@@ -113,7 +113,7 @@ is named:
 | Gate false-refusal on real trucks | **1 of 200** vehicles (3 of their degraded twins) | `app/calibrate_gate.py`, over all 3,729 originals and 3,729 twins |
 | Capture-quality floors | drop 2.3% of originals, 14.4% of twins | quantiles of the degraded-twin population, not round numbers |
 | Condition adjustment cap | ±9.4% | one out-of-fold residual standard deviation — the price variation age, km, brand and market do *not* explain |
-| Unseen-brand widening | 1.65× | leave-one-brand-out: whole makes held out and priced as unknowns |
+| Unseen-brand widening | 1.85× | **within-market** leave-one-brand-out over 7 holdouts across two markets |
 
 Two numbers are **stated assumptions, not measurements**, and the report says so
 where it uses them: the 1.12× band widening per missing canonical view, and the
@@ -128,7 +128,14 @@ Three things that went the other way, and were fixed because they were measured:
   twenty-six times). Folds are grouped by spec — the same reason the image splits
   are grouped by vehicle.
 - Unseen-brand widening measured by dropping the brand columns came out at 1.05×,
-  which is meaningless on a corpus that is 93% Ford. Leave-one-brand-out says 1.65×.
+  which is meaningless on a corpus that is 93% Ford. Leave-one-brand-out across
+  markets then reported a **442% median error** for Ford — because holding Ford
+  out removes Türkiye, so it was measuring the border, not the brand. Done
+  within a market it says **1.85×**.
+- A 2021 F-MAX priced at **₺118,000,000**. Moving the model target to native
+  currency left `estimate` still multiplying by the TRY rate, and every relative
+  assertion in the test suite sailed past a 48× error because both numbers were
+  wrong by the same factor. There is now an absolute magnitude test.
 
 ## Vision backends
 
@@ -367,12 +374,46 @@ arabam.com) are ToS-prohibited and technically defended. The brand concentration
 is a property of what is legitimately reachable, not a collection shortcut — and
 the 1.65× unseen-brand widening exists precisely because of it.
 
-Worth noting for anyone continuing this: TruckStore's European stock *is* freely
-reachable through that API and carries year, kilometres, Euro norm, engine, body
-and price for 1,584 multi-brand tractor units. It was not pooled in because the
-TR+US pooling experiment already measured what mixing markets costs — R² on
-Turkish trucks fell from 0.84 to 0.67 — and a Romanian asking price is not a
-Turkish one. It is the obvious next experiment, not an obvious next import.
+### The European experiment, and why it did not ship
+
+TruckStore's European stock *is* freely reachable — `scripts/harvest_truckstore_eu.py`
+pulls **1,056 tractor units** with dealer-stated Euro norm, engine, body,
+kilometres and ex-VAT price, across Germany, Spain, Czechia, Romania, Portugal,
+Italy, Austria and the Netherlands. Unlike the US conventionals these are the
+same product as the Turkish stock, so the question was whether depreciation and
+mileage slopes transfer across the border. Measured on held-out **Turkish**
+listings:
+
+| Training set | R² on TR | Median error | 80% band |
+|---|---:|---:|---:|
+| **`tr_only`** (84 listings) | **0.842** | **6.8%** | ±16% |
+| `pooled_tr_eu` (1,140) | 0.701 | 9.4% | ±21% |
+| `pooled_tr_us` (155) | 0.654 | 10.0% | ±26% |
+| `pooled_tr_us_eu` (1,211) | 0.614 | 10.9% | ±22% |
+
+Pooling loses. Fourteen times the data makes Turkish predictions worse, so
+`tr_only` ships and the European rows are kept only as a measurement instrument.
+
+It also does not fix the brand problem, because TruckStore is Mercedes' own OEM
+channel: **95% of its stock is Mercedes-Benz**, against 93% Ford in Türkiye. That
+makes brand very nearly collinear with market, which is precisely why the
+unseen-brand widening has to be measured *within* a market.
+
+That measurement is the most demo-relevant number in the repo, because the brief
+hands you photos of a truck you have never seen:
+
+| Held-out make | n | 80% band covered | Widening needed | Median error |
+|---|---:|---:|---:|---:|
+| US Kenworth | 5 | 0.80 | 1.00× | 5.2% |
+| EU DAF | 6 | 0.67 | 1.55× | 10.0% |
+| US Freightliner | 58 | 0.69 | 1.10× | 18.9% |
+| EU Mercedes-Benz | 1,005 | 0.51 | 1.85× | 21.4% |
+| EU MAN | 16 | 0.38 | 1.85× | 27.1% |
+| EU Volvo | 15 | 0.00 | 3.25× | **75.1%** |
+| EU Scania | 9 | 0.11 | 3.65× | **50.7%** |
+
+A make the model has never fitted can be mispriced by half. 1.85× is the median,
+and the report says out loud when it is being applied.
 
 ## Provenance and ethics
 

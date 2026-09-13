@@ -245,16 +245,24 @@ def estimate(model: PriceModel, *, year, km, make, market: str = "TR",
         factor *= f
         widened.append(label)
 
-    usd = math.exp(mu + adj_log)
-    lo_usd = math.exp(mu + adj_log + lo_off * factor)
-    hi_usd = math.exp(mu + adj_log + hi_off * factor)
+    # The model predicts log price in the NATIVE currency of the market it was
+    # fit on - no FX inside the fit, because a conversion is an additive
+    # constant in log space that the market dummy absorbs. So exp(mu) is TRY
+    # for a Turkish query and USD for an American one, and the only conversion
+    # happens here, for display.
+    native = math.exp(mu + adj_log)
+    lo_native = math.exp(mu + adj_log + lo_off * factor)
+    hi_native = math.exp(mu + adj_log + hi_off * factor)
+    to_usd = (1.0 / USD_TRY) if est.currency == "TRY" else 1.0
 
-    rate = USD_TRY if est.currency == "TRY" else 1.0
-    est.point, est.low, est.high = round(usd * rate, -3), round(lo_usd * rate, -3), round(hi_usd * rate, -3)
-    est.baseline_point = round(math.exp(mu) * rate, -3)
-    est.baseline_low = round(math.exp(mu + lo_off * factor) * rate, -3)
-    est.baseline_high = round(math.exp(mu + hi_off * factor) * rate, -3)
-    est.point_usd, est.low_usd, est.high_usd = round(usd, -2), round(lo_usd, -2), round(hi_usd, -2)
+    est.point, est.low, est.high = (round(native, -3), round(lo_native, -3),
+                                    round(hi_native, -3))
+    est.baseline_point = round(math.exp(mu), -3)
+    est.baseline_low = round(math.exp(mu + lo_off * factor), -3)
+    est.baseline_high = round(math.exp(mu + hi_off * factor), -3)
+    est.point_usd = round(native * to_usd, -2)
+    est.low_usd = round(lo_native * to_usd, -2)
+    est.high_usd = round(hi_native * to_usd, -2)
     est.adjustment = adj
     est.widened = widened
     est.drivers = model.contributions(vector)

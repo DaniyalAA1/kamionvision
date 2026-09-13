@@ -95,7 +95,7 @@ def collect_photos(source: str | Path) -> list[Path]:
 
 def appraise(photos: list[Path], declared: dict | None = None, *,
              market: str = "TR", backend: str | None = None,
-             on_step=None) -> Appraisal:
+             on_step=None, on_gate=None) -> Appraisal:
     from . import __version__
 
     t0 = time.time()
@@ -108,6 +108,14 @@ def appraise(photos: list[Path], declared: dict | None = None, *,
     result.gate = gate
     result.trace.append(TraceStep("gate", gate.headline, gate.elapsed_s))
     result.requests = list(gate.requests)
+
+    # The gate is complete ~1 s in and the vision call that follows takes half a
+    # minute. Handing the finished report over now lets a caller show the real
+    # per-photo detections and view coverage during that wait instead of hiding
+    # data it already has. Fired before the refusal return below, so a refusal
+    # gets the same evidence - that frame is the whole explanation.
+    if on_gate:
+        on_gate(gate)
 
     if gate.decision in (GateDecision.REFUSE_NOT_A_TRUCK, GateDecision.REFUSE_QUALITY,
                          GateDecision.REFUSE_NO_PHOTOS):

@@ -111,6 +111,18 @@ app/
   collapse into 19 identical-spec groups; row splits score memorisation.
 - **The interval is built from out-of-fold residuals, never in-sample ones.** In-sample residuals
   after a ridge fit on ~18 groups gave an "80%" band that covered 70%.
+- **The model target is log price in each market's OWN currency.** No FX inside the fit: a
+  conversion is an additive constant in log space and the market dummy absorbs it exactly.
+  `estimate()` is the only place a rate is applied. Getting this wrong once produced a 2021 F-MAX
+  at ₺118,000,000, and every *relative* test passed because both numbers were off by the same 48×
+  — hence the absolute magnitude test in `tests/test_offline.py`.
+- **Leave-one-brand-out is done WITHIN a market, never across.** Brand is nearly collinear with
+  market here (TR 93% Ford, EU 95% Mercedes), so a cross-market holdout measures the border and
+  reports nonsense — 442% median error for Ford.
+- **Pooling markets was measured and rejected.** `pooled_tr_eu` R²=0.70 and `pooled_tr_us` R²=0.65
+  against `tr_only` R²=0.84 on held-out Turkish listings. 14x the data makes it worse. The
+  European rows stay as a measurement instrument, not as training data. Don't re-pool without
+  re-running `app.pricing.train` and beating 0.84.
 - **Two bands, and they are not interchangeable.** The measured 80.3% coverage belongs to the
   comparable-*asking* band. The condition-adjusted band is that estimate moved by the photos and
   carries no such guarantee — never label it with the measured number.
@@ -177,6 +189,7 @@ That is why the live numbers below are smaller than the cleaning report's.
 | TR brands | **78 of 84 are Ford**, 6 MAN — the binding limitation, see README source vetting |
 | Price model | `tr_only`, R² 0.84, median error 4.2%, 80% band covers 80.3% |
 | Gate thresholds | calibrated on all 7,458 images; 1 of 200 vehicles false-refused |
+| EU comparables | 1,056 TruckStore tractor units (95% Mercedes) — measurement only, not training |
 
 ## Invariants the scripts encode — don't break them
 
