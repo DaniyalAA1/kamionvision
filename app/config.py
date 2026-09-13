@@ -132,6 +132,64 @@ CLOSEUP_SAMPLES = int(os.environ.get("KAMION_CLOSEUP_SAMPLES", "3"))
 # this the finding is still shown and still cited - it just cannot be
 # promoted to `major` on one vote.
 CLOSEUP_QUORUM = int(os.environ.get("KAMION_CLOSEUP_QUORUM", "2"))
+
+# --- identity, sampled the same way ---------------------------------------
+# Pass A was a single call, and it is the most load-bearing call in the run:
+# `make` picks the brand column in the price model, `model` picks the anchor
+# row, `body_type` can stop the pricing stage outright and `same_vehicle` can
+# stop the valuation. Every close-up photo has been read three times with a
+# measured agreement rate since the fan-out landed; the call that decides what
+# the truck IS was still one draw from an unmeasured distribution.
+#
+# Three, for the same reason as CLOSEUP_SAMPLES: the smallest k supporting both
+# a majority and a median. Two extra calls against a ~51-call run.
+IDENTITY_SAMPLES = int(os.environ.get("KAMION_IDENTITY_SAMPLES", "3"))
+# Samples that must name the same make before it counts as agreed. Below this
+# the read still stands - it is the band that widens, never the answer that
+# gets deleted.
+IDENTITY_QUORUM = int(os.environ.get("KAMION_IDENTITY_QUORUM", "2"))
+
+# Pass A gets its own photo selection and its own resolution. `select_photos`
+# round-robins on VIEW_PRIORITY, which leads with a tire close-up - correct for
+# pass B, wrong for A. Identity lives in the front three-quarter, the side
+# profile and the badge; a tire close-up contributes nothing to make, model or
+# axle count and costs a slot. A side profile is also the ONLY view that can
+# honestly settle 4x2 against 6x2.
+IDENTITY_PHOTOS = int(os.environ.get("KAMION_IDENTITY_PHOTOS", "8"))
+# Higher than EVIDENCE_IMAGE_LONG_EDGE: a model badge is small in frame and
+# 1024 px across a whole tractor leaves "F-MAX 500" a few pixels tall.
+IDENTITY_IMAGE_LONG_EDGE = int(os.environ.get("KAMION_IDENTITY_LONG_EDGE", "1536"))
+
+# --- the badge read -------------------------------------------------------
+# A second, independent identity measurement, the same posture as the odometer
+# OCR and the chassis-plate VIN: one full-resolution call on a crop of the
+# grille and door region, rather than trusting a badge read off a downscaled
+# 8-photo montage. `badges_seen` has been collected since the first fan-out and
+# was only ever displayed - nothing checked it corroborated make and model.
+BADGE_READ = os.environ.get("KAMION_BADGE_READ", "1").strip() not in ("0", "false", "")
+BADGE_MAX_TOKENS = int(os.environ.get("KAMION_BADGE_MAX_TOKENS", "2000"))
+BADGE_EFFORT = os.environ.get("KAMION_BADGE_EFFORT", "low").strip()
+# Fraction of the frame height the badge band occupies, measured down from the
+# top of the subject box. The grille badge and the door model script both sit
+# in the upper half of a cab-over tractor.
+BADGE_CROP_TOP = float(os.environ.get("KAMION_BADGE_CROP_TOP", "0.10"))
+BADGE_CROP_BOTTOM = float(os.environ.get("KAMION_BADGE_CROP_BOTTOM", "0.75"))
+
+# --- identity widenings ---------------------------------------------------
+# All three ASSUMED, and labelled so wherever they surface. This corpus has no
+# ground truth for a misidentification, so none of them can be fitted - the
+# same footing as the 1.12x-per-missing-view figure, and deliberately smaller
+# than the measured 1.85x unknown-brand widening, which is a different and
+# larger claim.
+WMI_CONFLICT_WIDENING = float(os.environ.get("KAMION_WMI_CONFLICT_WIDENING", "1.20"))
+IDENTITY_DISPUTED_WIDENING = float(os.environ.get("KAMION_IDENTITY_DISPUTED_WIDENING", "1.25"))
+IDENTITY_UNKNOWN_WIDENING = float(os.environ.get("KAMION_IDENTITY_UNKNOWN_WIDENING", "1.35"))
+
+# --- the model spec card --------------------------------------------------
+# data/reference/models_tr.json, read by app/modelspec.py. Soft: absent, every
+# accessor returns empty and the prompts read exactly as they did before.
+# Days before app.cli doctor calls the card stale, matching new_prices_tr.json.
+MODEL_SPEC_STALE_DAYS = int(os.environ.get("KAMION_MODEL_SPEC_STALE_DAYS", "180"))
 # Pass D: the set-aware severity calibration, text-only, after the merge.
 CALIBRATION_MAX_TOKENS = int(os.environ.get("KAMION_CALIBRATION_MAX_TOKENS", "8000"))
 

@@ -356,6 +356,78 @@ class VehicleRead(_Dict):
     badges_seen: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
+    # --- what the model string is actually worth --------------------------
+    # `model` is whatever the vision model typed. `model_canonical` is that
+    # string folded through `modelspec.normalise_model`, which is what the
+    # anchor row, the spec card and any model-aware prompt join on. Kept
+    # separate rather than overwriting `model`, because the raw answer is
+    # evidence about the read and the folded one is a key.
+    model_canonical: str | None = None
+    # A generation id from the model card's closed list, decided from visual
+    # markers rather than from the declared year - a year-derived generation
+    # would make every cross-check against the year circular.
+    generation: str | None = None
+    generation_conf: float = 0.0
+    # Why the vision model believes the year range it gave. A free-text range
+    # could never be checked against anything; this can be read next to the
+    # VIN year and the declared year.
+    year_evidence: str = ""
+
+    # --- the second, independent identity reads ---------------------------
+    # Badge text read from a full-resolution crop of the grille or door, which
+    # is a different measurement from `badges_seen` (collected from the
+    # 16-photo, downscaled identity call and, until now, only ever displayed).
+    badge_text: list[str] = field(default_factory=list)
+    badge_photo_id: int | None = None
+    # World Manufacturer Identifier, VIN characters 1-3, and the brand it
+    # decodes to. `vin.read` has always returned the former and nothing
+    # consumed it.
+    wmi: str | None = None
+    wmi_brand: str | None = None
+
+    # Agreement across the sampled identity calls, in the same spirit as
+    # `Issue.confidence`: a measured quantity about the claim, not the model's
+    # self-report about it. `confidence` above stays the self-report.
+    identity_agreement: float = 0.0
+    identity_samples: int = 1
+
+
+@dataclass
+class IdentityVerdict(_Dict):
+    """Whether this system is confident enough about WHAT the truck is to price it.
+
+    Until this existed, identity confidence was a number the vision model wrote
+    about itself (`VehicleRead.confidence`) and only `body_type` and
+    `same_vehicle` could stop the pipeline. Nothing could say "I do not know
+    what this truck is well enough to put a band on it" - even though brand is
+    a term in the price model and an unseen brand is the measured 1.85x
+    widening, which is to say the likeliest way this fails in the room.
+
+    `status` is one of:
+      confirmed   several independent reads agree; price normally
+      probable    agreement is thin or partial; price, and widen the band
+      disputed    two reads name different vehicles; price on the badge, widen,
+                  and say so in the open
+      unknown     nothing legible enough to identify; this is the re-ask path
+    """
+    status: str = "unknown"
+    make: str | None = None
+    model: str | None = None
+    confidence: float = 0.0
+    # One line per read that contributed, e.g.
+    # ("badge", "F-MAX", 0.9) / ("wmi", "FORD", 1.0) / ("head", "FORD", 0.71).
+    witnesses: list[list] = field(default_factory=list)
+    agreed: list[str] = field(default_factory=list)
+    disagreed: list[str] = field(default_factory=list)
+    # What to ask the seller for when `status` is "unknown". The brief rewards
+    # the re-ask path explicitly and it existed only for capture quality.
+    reask: str = ""
+    # Band multiplier this verdict contributes, and why. 1.0 contributes
+    # nothing. Never narrows: the measured coverage belongs to the unwidened
+    # interval, same rule as everywhere else.
+    widening: float = 1.0
+    reason: str = ""
+
 
 @dataclass
 class FamilyRollup(_Dict):
@@ -396,6 +468,10 @@ class EvidenceReport(_Dict):
     # condition across two vehicles produces a confident number about neither.
     same_vehicle: bool = True
     vehicle_mismatch: str = ""
+    # The combined read on what this truck is: the sampled identity calls, the
+    # badge crop, the chassis-plate WMI and the trained head, reconciled. None
+    # when the identity pass could not be run at all.
+    identity: IdentityVerdict | None = None
     photo_findings: list[PhotoFinding] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     condition_summary: dict[str, str] = field(default_factory=dict)

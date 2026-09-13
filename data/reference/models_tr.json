@@ -1,0 +1,320 @@
+{
+  "what": "Per-model specification cards for the tractor units this system appraises. Read into the identity and close-up prompts so the vision model knows what specific truck it is looking at, not merely that it is a truck.",
+  "why": "The only model-specific thing in the pipeline used to be a string. `passes.vehicle_line` turned the identity read into one sentence and that sentence was everything passes B, C and D knew about the vehicle. A 2015 Ford Cargo tractor and a 2023 F-MAX at the same odometer received the same reference for what 'on schedule' looks like, the same component checklist and the same expectations.",
+  "basis": "Two kinds of row, labelled separately and never mixed. `corpus` blocks are computed from data/metadata/sources/tr_truckmarket.jsonl and are facts about this dataset, not about the model in general. Everything else is hand-curated from the cited sources and carries the same contract as data/reference/new_prices_tr.json - a URL, a date and a source_type per model.",
+  "no_prices": "This file is read into a prompt. app/modelspec.py:assert_priceless walks it on load and raises on anything that reads as a currency figure, because 'the VLM never sees or emits a price' is the separation that makes this system more than a thin wrapper. Say what a component does and how it fails, never what it costs.",
+  "refresh": "Hand-curated and stamped, the same posture as USD_TRY in app/config.py and the rows in new_prices_tr.json. Re-check the source URLs and update as_of; app.cli doctor reports the age and how many models actually carry a citation.",
+  "as_of": "2026-09-13",
+  "models": [
+    {
+      "brand": "FORD",
+      "model": "F-MAX",
+      "aliases": [
+        "FMAX",
+        "F MAX",
+        "FORD TRUCKS F-MAX",
+        "F-MAX 500"
+      ],
+      "corpus": {
+        "n_listings": 168,
+        "n_vehicles_in_gallery": 66,
+        "year_range": "2020-2024",
+        "median_km": 255170,
+        "fifth_wheel_height_mm": {
+          "1100": 80,
+          "1200": 59,
+          "960": 20,
+          "980": 3,
+          "940": 5
+        },
+        "drive_type": {
+          "4x2": 40,
+          "unstated": 128
+        },
+        "transmission": {
+          "Otomatik": 168
+        },
+        "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
+      },
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "FORD",
+      "model": "TRUCKS",
+      "aliases": [
+        "FORD TRUCKS",
+        "CARGO",
+        "1848T",
+        "1846T",
+        "1842T",
+        "1845T"
+      ],
+      "corpus": {
+        "n_listings": 33,
+        "n_vehicles_in_gallery": 12,
+        "year_range": "2012-2022",
+        "median_km": 563520,
+        "fifth_wheel_height_mm": {
+          "980": 19,
+          "1200": 5,
+          "1100": 2,
+          "960": 2
+        },
+        "drive_type": {
+          "4x2": 4,
+          "8x4": 1,
+          "unstated": 28
+        },
+        "transmission": {
+          "Otomatik": 26,
+          "Manuel (Aktarmali)": 3,
+          "Manuel": 4
+        },
+        "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
+      },
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2",
+        "8x4"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": [],
+      "maintainer_note": "The Turkish listing site records every pre-F-MAX Ford Otosan tractor under the literal model name 'TRUCKS' - 33 of 218 source rows. These are the Cargo-derived tractors and they are a visually different vehicle from an F-MAX. app/pricing/anchor.py already aliases (FORD, TRUCKS) to the 1845T for the new-price lookup; this card is the same correction on the description side."
+    },
+    {
+      "brand": "MAN",
+      "model": "TGS",
+      "aliases": [
+        "TGS 18.480",
+        "MAN TGS"
+      ],
+      "corpus": {
+        "n_listings": 7,
+        "year_range": "2016-2016",
+        "median_km": 952768,
+        "fifth_wheel_height_mm": {
+          "1200": 7
+        },
+        "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
+      },
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "MAN",
+      "model": "TGX",
+      "aliases": [
+        "TGX 18.480",
+        "MAN TGX"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "MERCEDES-BENZ",
+      "model": "ACTROS",
+      "aliases": [
+        "ACTROS 1845",
+        "MB ACTROS",
+        "MERCEDES ACTROS"
+      ],
+      "corpus": {
+        "n_listings": 3,
+        "year_range": "2017-2017",
+        "median_km": 773025,
+        "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
+      },
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "IVECO",
+      "model": "STRALIS",
+      "aliases": [
+        "IVECO STRALIS",
+        "STRALIS AS440"
+      ],
+      "corpus": {
+        "n_listings": 4,
+        "year_range": "2015-2016",
+        "median_km": 830175,
+        "basis": "computed from tr_truckmarket.jsonl; these describe the corpus, not the model"
+      },
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "IVECO",
+      "model": "S-WAY",
+      "aliases": [
+        "SWAY",
+        "S WAY",
+        "IVECO S-WAY"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "SCANIA",
+      "model": "R-SERIES",
+      "aliases": [
+        "R",
+        "SCANIA R",
+        "R450",
+        "R500",
+        "R SERIES"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "SCANIA",
+      "model": "S-SERIES",
+      "aliases": [
+        "S",
+        "SCANIA S",
+        "S500",
+        "S SERIES"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "DAF",
+      "model": "XF",
+      "aliases": [
+        "DAF XF",
+        "XF 105",
+        "XF 106"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "VOLVO",
+      "model": "FH",
+      "aliases": [
+        "VOLVO FH",
+        "FH16",
+        "FH 460",
+        "FH 500"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    },
+    {
+      "brand": "RENAULT",
+      "model": "T",
+      "aliases": [
+        "RENAULT T",
+        "T460",
+        "T480",
+        "T HIGH"
+      ],
+      "segment": null,
+      "cab": null,
+      "driveline": null,
+      "axle_configs": [
+        "4x2",
+        "6x2"
+      ],
+      "generations": [],
+      "known_weak_points": [],
+      "identity_tells": [],
+      "sources": []
+    }
+  ]
+}

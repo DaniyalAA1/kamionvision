@@ -1,0 +1,22 @@
+{
+  "what": "World Manufacturer Identifier (VIN characters 1-3) to brand, for the heavy tractor units this system appraises.",
+  "why": "app/vin.py already reads a 17-character VIN off a chassis plate and already returns `wmi=vin[:3]` - and nothing consumed it. The WMI is a deterministic, standards-backed brand identifier, which makes it the one brand cross-check that works in exactly the case the trained identity head cannot help with: the head may only dispute brands in its own class list, and the corpus contains no Scania, no DAF and no Volvo. A judge arriving with an unseen brand is the measured 1.85x failure mode of this system; this table is the cheapest defence against it.",
+  "basis": "ISO 3780 world manufacturer identifiers. Each row must carry a source URL that was actually fetched. A row whose `verified` is false has NOT been checked against a source and must not be relied on - app/vin.py ignores unverified rows unless KAMION_WMI_ALLOW_UNVERIFIED is set.",
+  "caveat": "A WMI identifies the MANUFACTURER, not the model, and a manufacturer may hold several. Absence from this table means 'unknown', never 'conflict' - a VIN whose WMI is not listed must never dispute a badge the vision model can plainly read.",
+  "refresh": "Hand-curated and stamped, like new_prices_tr.json and models_tr.json. app.cli doctor reports the age and the verified count.",
+  "as_of": "2026-09-13",
+  "rows": [
+    {"wmi": "NM0", "brand": "FORD", "note": "Ford Otosan, Turkiye", "verified": false, "source_url": null},
+    {"wmi": "WDB", "brand": "MERCEDES-BENZ", "note": "Daimler, Germany", "verified": false, "source_url": null},
+    {"wmi": "WMA", "brand": "MAN", "note": "MAN Truck & Bus, Germany", "verified": false, "source_url": null},
+    {"wmi": "YS2", "brand": "SCANIA", "note": "Scania, Sweden", "verified": false, "source_url": null},
+    {"wmi": "XLR", "brand": "DAF", "note": "DAF Trucks, Netherlands", "verified": false, "source_url": null},
+    {"wmi": "YV2", "brand": "VOLVO", "note": "Volvo Trucks, Sweden", "verified": false, "source_url": null},
+    {"wmi": "VF6", "brand": "RENAULT", "note": "Renault Trucks, France", "verified": false, "source_url": null},
+    {"wmi": "ZCF", "brand": "IVECO", "note": "Iveco, Italy", "verified": false, "source_url": null},
+    {"wmi": "1FU", "brand": "FREIGHTLINER", "note": "Freightliner, USA", "verified": false, "source_url": null},
+    {"wmi": "1XK", "brand": "KENWORTH", "note": "Kenworth, USA", "verified": false, "source_url": null},
+    {"wmi": "1XP", "brand": "PETERBILT", "note": "Peterbilt, USA", "verified": false, "source_url": null},
+    {"wmi": "1M1", "brand": "MACK", "note": "Mack Trucks, USA", "verified": false, "source_url": null}
+  ]
+}
